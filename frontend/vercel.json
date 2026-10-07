@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://sired-backend.onrender.com/api/:path*"
+      "destination": "https://mimate-nails-api.onrender.com/api/:path*"
     },
     {
       "source": "/:match*",
