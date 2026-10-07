@@ -1,48 +1,61 @@
-# Ecosistema de Reservas Deportivas vía WhatsApp & Visor Web
+# 💅 JL Mímate Nails Spa - Sistema de Reservas & Bot WhatsApp
 
-Sistema integral de gestión de reservas en tiempo real diseñado para complejos deportivos (Fútbol 5/8/11, Pádel, Tenis y Vóley), implementado con una arquitectura **100% Gratuita ($0 USD de costo mensual)**.
-
----
-
-## 📁 Estructura del Proyecto
-
-```text
-desarrollo/
-├── PLAN_DE_ACCION.md       # Hoja de ruta completa, estudio de costos y arquitectura
-├── GUIA_DESPLIEGUE_NUBE.md # Guía para publicar en Vercel, Render y Meta WhatsApp gratis
-├── database/               # Base de Datos (PostgreSQL / Supabase)
-│   ├── schema.sql          # Tablas, constraints anti-sobreventa y funciones RPC
-│   └── README.md           # Guía de despliegue en Supabase en 2 minutos
-├── backend/                # Servidor Node.js + Express + TypeScript
-│   ├── src/
-│   │   ├── bot/            # Motor del Bot de WhatsApp y flujos conversacionales
-│   │   ├── services/       # Lógica atómica de reservas, pagos y recordatorios
-│   │   └── index.ts        # Webhook de Meta, simulador y API REST
-│   └── package.json
-└── frontend/               # Visor Web Administrativo (React + Vite + Tailwind)
-    ├── src/
-    │   ├── components/     # Calendario interactivo, métricas y simulador de chat
-    │   └── App.tsx         # Dashboard administrativo con WebSockets en tiempo real
-    └── package.json
-```
+Sistema web de reservas de citas y gestión de turnos para el salón y spa de uñas **JL Mímate Nails**. Cuenta con bot interactivo de WhatsApp (Meta Cloud API), gestión de agendas para manicuristas y verificación de pagos.
 
 ---
 
-## 🚀 Cómo Ejecutar en Modo Local
+## 🚀 Estructura del Proyecto
 
-### 1. Iniciar el Backend (API y Bot de WhatsApp)
-Abre una terminal en `desarrollo/backend`:
-```powershell
-npm.cmd run dev
-```
-El servidor quedará disponible en `http://localhost:3000`:
-- **Webhook de WhatsApp:** `http://localhost:3000/webhook`
-- **Simulador del Bot:** `http://localhost:3000/api/bot/simulate`
-- **Cron Recordatorios:** `http://localhost:3000/api/cron/recordatorios`
+- **`frontend/`**: Aplicación web desarrollada con React, Vite y Tailwind CSS.
+  - `/` o `/reservar`: Página web pública de reservas para clientas.
+  - `/admin` o `/mimate-admin`: Dashboard de gestión de turnos y agenda para las manicuristas (PIN por defecto: `1234`).
+- **`backend/`**: Servidor API con Express, TypeScript y Node.js.
+  - Webhooks de WhatsApp Cloud API.
+  - Sincronización en tiempo real con Supabase.
+  - Notificaciones y recordatorios automáticos 24 horas antes de cada cita.
+- **`database/`**:
+  - `mimate_schema.sql`: Script listo para ejecutar en el SQL Editor de tu proyecto en Supabase.
 
-### 2. Iniciar el Frontend (Visor Web de Gestión)
-Abre otra terminal en `desarrollo/frontend`:
-```powershell
-npm.cmd run dev
+---
+
+## 🛠️ Ejecución en Local
+
+### 1. Backend:
+```bash
+cd backend
+npm install
+npm run dev
+# Servidor corriendo en http://localhost:3000
 ```
-Abre tu navegador en `http://localhost:5173`.
+
+### 2. Frontend:
+```bash
+cd frontend
+npm install
+npm run dev
+# Aplicación corriendo en http://localhost:5173
+```
+
+---
+
+## 🔑 Variables de Entorno Backend (`backend/.env`)
+
+```ini
+PORT=3000
+NODE_ENV=development
+
+# Credenciales de Supabase
+SUPABASE_URL=https://TU_PROYECTO.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=tu_secret_service_role_key
+
+# Configuración de WhatsApp Cloud API (Meta Developers)
+WHATSAPP_TOKEN=tu_token_permanente
+WHATSAPP_PHONE_NUMBER_ID=tu_phone_number_id
+WHATSAPP_VERIFY_TOKEN=token_secreto_mimate_2026
+
+# ID del negocio Mímate Nails
+DEFAULT_COMPLEJO_ID=id_uuid_mimate_nails
+
+# Google Gemini AI Vision (Gratis)
+GEMINI_API_KEY=tu_api_key_de_gemini
+```
