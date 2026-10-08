@@ -1428,78 +1428,80 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       {/* CONTENIDO PRINCIPAL */}
       <main className="max-w-7xl mx-auto w-full p-4 sm:p-6 space-y-6 flex-1">
         
-        {/* BARRA DE FECHA CON FLECHAS DÍA ANTERIOR / SIGUIENTE */}
-        <div className="bg-white rounded-2xl p-4 border border-[#F2C4D2] shadow-xs flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-[#FCE8EF] text-[#8C243B] flex items-center justify-center shrink-0">
-              <IconClock className="w-4 h-4" />
+        {/* BARRA DE FECHA CON FLECHAS DÍA ANTERIOR / SIGUIENTE (Solo en vista de agenda) */}
+        {(!esAdmin || tabAdmin === 'agenda') && (
+          <div className="bg-white rounded-2xl p-4 border border-[#F2C4D2] shadow-xs flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-[#FCE8EF] text-[#8C243B] flex items-center justify-center shrink-0">
+                <IconClock className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-[#2D2529]">
+                  {esAdmin
+                    ? 'Agenda General del Spa'
+                    : `Mi Agenda Personal (${perfilActual.nombre})`}
+                </p>
+                <p className="text-[11px] text-[#7D6870]">
+                  {fechaLegible} · <strong className="text-[#8C243B]">{citasClientesDelDia.length} citas</strong>
+                  {bloqueosDelDia.length > 0 && (
+                    <span className="ml-1 text-amber-700 font-semibold">
+                      · {bloqueosDelDia.length} {bloqueosDelDia.length === 1 ? 'bloqueo' : 'bloqueos'}
+                    </span>
+                  )}{' '}
+                  programadas
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="text-xs font-bold text-[#2D2529]">
-                {esAdmin
-                  ? 'Agenda General del Spa'
-                  : `Mi Agenda Personal (${perfilActual.nombre})`}
-              </p>
-              <p className="text-[11px] text-[#7D6870]">
-                {fechaLegible} · <strong className="text-[#8C243B]">{citasClientesDelDia.length} citas</strong>
-                {bloqueosDelDia.length > 0 && (
-                  <span className="ml-1 text-amber-700 font-semibold">
-                    · {bloqueosDelDia.length} {bloqueosDelDia.length === 1 ? 'bloqueo' : 'bloqueos'}
-                  </span>
-                )}{' '}
-                programadas
-              </p>
-            </div>
-          </div>
 
-          {/* CONTROLES DE FECHA CON FLECHAS */}
-          <div className="flex items-center gap-1.5 bg-[#FFF5F7] p-1.5 rounded-2xl border border-[#F2C4D2]">
-            {/* ACCESO RÁPIDO: Volver a Hoy a la izquierda */}
-            {fechaSeleccionada !== hoyStr && (
+            {/* CONTROLES DE FECHA CON FLECHAS */}
+            <div className="flex items-center gap-1.5 bg-[#FFF5F7] p-1.5 rounded-2xl border border-[#F2C4D2]">
+              {/* ACCESO RÁPIDO: Volver a Hoy a la izquierda */}
+              {fechaSeleccionada !== hoyStr && (
+                <button
+                  onClick={() => setFechaSeleccionada(hoyStr)}
+                  className="px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-white text-[#8C243B] hover:bg-[#FCE8EF] border border-[#F2C4D2] transition cursor-pointer shadow-2xs animate-in fade-in"
+                  title="Volver a la fecha actual"
+                >
+                  Ir a Hoy
+                </button>
+              )}
+
+              <button
+                onClick={() => cambiarDia(-1)}
+                className="p-2 rounded-xl bg-white hover:bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2] transition cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
+                title="Día anterior"
+              >
+                <IconChevronLeft className="w-4 h-4 stroke-[2.5]" />
+              </button>
+
+              {/* BOTÓN/ETIQUETA DINÁMICA: Hoy, Mañana, Ayer o Sáb, 10 oct */}
               <button
                 onClick={() => setFechaSeleccionada(hoyStr)}
-                className="px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-white text-[#8C243B] hover:bg-[#FCE8EF] border border-[#F2C4D2] transition cursor-pointer shadow-2xs animate-in fade-in"
-                title="Volver a la fecha actual"
+                title={fechaSeleccionada === hoyStr ? 'Estás en el día de hoy' : 'Clic para volver al día de hoy'}
+                className="px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs bg-[#8C243B] text-white min-w-[70px] text-center hover:opacity-95 active:scale-95"
               >
-                Ir a Hoy
+                {etiquetaFechaRelativa}
               </button>
-            )}
 
-            <button
-              onClick={() => cambiarDia(-1)}
-              className="p-2 rounded-xl bg-white hover:bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2] transition cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
-              title="Día anterior"
-            >
-              <IconChevronLeft className="w-4 h-4 stroke-[2.5]" />
-            </button>
+              <button
+                onClick={() => cambiarDia(1)}
+                className="p-2 rounded-xl bg-white hover:bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2] transition cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
+                title="Día siguiente"
+              >
+                <IconChevronRight className="w-4 h-4 stroke-[2.5]" />
+              </button>
 
-            {/* BOTÓN/ETIQUETA DINÁMICA: Hoy, Mañana, Ayer o Sáb, 10 oct */}
-            <button
-              onClick={() => setFechaSeleccionada(hoyStr)}
-              title={fechaSeleccionada === hoyStr ? 'Estás en el día de hoy' : 'Clic para volver al día de hoy'}
-              className="px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs bg-[#8C243B] text-white min-w-[70px] text-center hover:opacity-95 active:scale-95"
-            >
-              {etiquetaFechaRelativa}
-            </button>
-
-            <button
-              onClick={() => cambiarDia(1)}
-              className="p-2 rounded-xl bg-white hover:bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2] transition cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
-              title="Día siguiente"
-            >
-              <IconChevronRight className="w-4 h-4 stroke-[2.5]" />
-            </button>
-
-            <div className="relative pl-1">
-              <input
-                type="date"
-                value={fechaSeleccionada}
-                onChange={(e) => setFechaSeleccionada(e.target.value)}
-                className="px-3 py-1.5 bg-white border border-[#F2C4D2] rounded-xl text-xs font-bold text-[#2D2529] outline-none cursor-pointer hover:border-[#8C243B] transition shadow-2xs"
-              />
+              <div className="relative pl-1">
+                <input
+                  type="date"
+                  value={fechaSeleccionada}
+                  onChange={(e) => setFechaSeleccionada(e.target.value)}
+                  className="px-3 py-1.5 bg-white border border-[#F2C4D2] rounded-xl text-xs font-bold text-[#2D2529] outline-none cursor-pointer hover:border-[#8C243B] transition shadow-2xs"
+                />
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* ==================================================================== */}
         {/* CASO A: VISTA DE LA ADMINISTRADORA (TABLA DE TODAS LAS MANICURISTAS)  */}
