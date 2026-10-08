@@ -382,6 +382,22 @@ app.patch('/api/reservas/:id/estado', async (req: Request, res: Response) => {
   res.json(data);
 });
 
+// Eliminar una reserva (Cancelar y remover del sistema)
+app.delete('/api/reservas/:id', async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  // Primero eliminamos pagos asociados si los hubiese
+  await supabase.from('pagos_anticipos').delete().eq('reserva_id', id);
+
+  const { error } = await supabase
+    .from('reservas')
+    .delete()
+    .eq('id', id);
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true, message: 'Reserva eliminada con éxito' });
+});
+
 // ==============================================================================
 // OPCIÓN A: APROBACIÓN ASISTIDA DESDE EL VISOR WEB (CON NOTIFICACIÓN WHATSAPP)
 // ==============================================================================

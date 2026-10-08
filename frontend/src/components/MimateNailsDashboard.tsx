@@ -18,6 +18,7 @@ import {
   IconChevronLeft,
   IconChevronRight,
   IconChevronDown,
+  IconTrash,
 } from '@tabler/icons-react';
 
 interface Cancha {
@@ -385,6 +386,23 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       }
     } catch (e) {
       console.error('Error actualizando estado:', e);
+    }
+  };
+
+  // Eliminar una cita definitivamente (Solo Admin)
+  const handleEliminarCita = async (reservaId: string, nombreClienta: string) => {
+    if (!window.confirm(`¿Estás segura de eliminar la cita de "${nombreClienta}"?`)) return;
+    try {
+      const res = await fetch(`/api/reservas/${reservaId}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        setReservas((prev) => prev.filter((r) => r.id !== reservaId));
+      } else {
+        alert('No se pudo eliminar la cita.');
+      }
+    } catch (e) {
+      console.error('Error eliminando cita:', e);
     }
   };
 
@@ -853,6 +871,17 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                                     <span>Completada</span>
                                   </button>
                                 )}
+
+                                {esAdmin && (
+                                  <button
+                                    onClick={() => handleEliminarCita(cita.id, nombreClienta)}
+                                    className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold transition shadow-2xs cursor-pointer active:scale-95"
+                                    title="Eliminar cita definitivamente"
+                                  >
+                                    <IconTrash className="w-3.5 h-3.5" />
+                                    <span className="hidden sm:inline">Eliminar</span>
+                                  </button>
+                                )}
                               </div>
                             </div>
                           );
@@ -1234,6 +1263,17 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                                       title="Marcar como atendida / completada"
                                     >
                                       <IconCheck className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+
+                                  {/* Botón Eliminar Cita (Admin) */}
+                                  {esAdmin && (
+                                    <button
+                                      onClick={() => handleEliminarCita(cita.id, nombreClienta)}
+                                      className="p-1 rounded-md bg-rose-50 text-rose-600 hover:bg-rose-100 transition cursor-pointer"
+                                      title="Eliminar cita definitivamente"
+                                    >
+                                      <IconTrash className="w-3.5 h-3.5" />
                                     </button>
                                   )}
                                 </div>
