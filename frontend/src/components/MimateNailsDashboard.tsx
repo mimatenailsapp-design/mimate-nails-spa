@@ -1454,6 +1454,17 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
           {/* CONTROLES DE FECHA CON FLECHAS */}
           <div className="flex items-center gap-1.5 bg-[#FFF5F7] p-1.5 rounded-2xl border border-[#F2C4D2]">
+            {/* ACCESO RÁPIDO: Volver a Hoy a la izquierda */}
+            {fechaSeleccionada !== hoyStr && (
+              <button
+                onClick={() => setFechaSeleccionada(hoyStr)}
+                className="px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-white text-[#8C243B] hover:bg-[#FCE8EF] border border-[#F2C4D2] transition cursor-pointer shadow-2xs animate-in fade-in"
+                title="Volver a la fecha actual"
+              >
+                Ir a Hoy
+              </button>
+            )}
+
             <button
               onClick={() => cambiarDia(-1)}
               className="p-2 rounded-xl bg-white hover:bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2] transition cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
@@ -1478,17 +1489,6 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
             >
               <IconChevronRight className="w-4 h-4 stroke-[2.5]" />
             </button>
-
-            {/* ACCESO RÁPIDO: Volver a Hoy si está en otra fecha */}
-            {fechaSeleccionada !== hoyStr && (
-              <button
-                onClick={() => setFechaSeleccionada(hoyStr)}
-                className="px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-white text-[#8C243B] hover:bg-[#FCE8EF] border border-[#F2C4D2] transition cursor-pointer shadow-2xs animate-in fade-in"
-                title="Volver a la fecha actual"
-              >
-                Ir a Hoy
-              </button>
-            )}
 
             <div className="relative pl-1">
               <input
@@ -1806,6 +1806,15 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                 {/* Si está en modo DÍA: Navegación de Días */}
                 {modoMetricas === 'dia' && (
                   <div className="flex items-center gap-1 bg-[#FFF5F7] p-1 rounded-2xl border border-[#F2C4D2]">
+                    {fechaSeleccionada !== hoyStr && (
+                      <button
+                        onClick={() => setFechaSeleccionada(hoyStr)}
+                        className="px-2 py-1 rounded-xl text-xs font-semibold bg-white text-[#8C243B] hover:bg-[#FCE8EF] border border-[#F2C4D2] transition cursor-pointer shadow-2xs"
+                        title="Volver a la fecha actual"
+                      >
+                        Ir a Hoy
+                      </button>
+                    )}
                     <button
                       onClick={() => cambiarDia(-1)}
                       className="p-1.5 rounded-xl bg-white hover:bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2] transition cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
