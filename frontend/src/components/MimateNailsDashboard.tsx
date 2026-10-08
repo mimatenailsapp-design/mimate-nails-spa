@@ -251,8 +251,6 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   const [especialistaSeleccionadaId, setEspecialistaSeleccionadaId] = useState<string>('todas');
   // Selector de vista de agenda: Día (diario por horas / 4 columnas) vs Semana (planificador de 7 días)
   const [vistaAgenda, setVistaAgenda] = useState<'dia' | 'semana'>('dia');
-  // Modo de despliegue dentro de semana: 'dia' (día específico seleccionado) vs 'todos' (los 7 días de lunes a domingo desplegados)
-  const [modoDespliegueSemana, setModoDespliegueSemana] = useState<'dia' | 'todos'>('dia');
 
   // Estado para la pestaña de Métricas (Por Día vs Por Mes)
   const [modoMetricas, setModoMetricas] = useState<'dia' | 'mes'>('dia');
@@ -1404,15 +1402,14 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   };
 
   // ============================================================================
-  // RENDERIZADO: VISTA SEMANAL (7 DÍAS LUNES A DOMINGO CON TIMELINE POR HORAS)
+  // RENDERIZADO: PLANIFICADOR SEMANAL MATRIZ (WEEKLY SCHEDULE TABLE)
+  // Estilo Planner: Horas a la izquierda x 7 Días (Lunes a Domingo)
   // ============================================================================
   const renderVistaSemanal = (
     citasFiltradas: Reserva[],
     esVistaAdmin: boolean,
     especialistaIdActual?: string
   ) => {
-    const diaActualObj =
-      diasDeLaSemana.find((d) => d.fechaIso === fechaSeleccionada) || diasDeLaSemana[0];
     const targetCancha = canchas.find((c) => c.id === especialistaIdActual);
     const nombreTarget =
       especialistaIdActual && especialistaIdActual !== 'todas'
@@ -1422,221 +1419,317 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
         : perfilActual?.nombre || 'Mi Agenda';
 
     return (
-      <div className="space-y-4">
-        {/* BARRA SUPERIOR DE LOS 7 DÍAS (LUNES A DOMINGO) */}
-        <div className="bg-white rounded-3xl p-3.5 sm:p-4 border border-[#F2C4D2] shadow-xs space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="bg-white rounded-3xl border border-[#F2C4D2] shadow-sm overflow-hidden space-y-0">
+        {/* ENCABEZADO SUPERIOR ESTILO PLANNER ("Weekly Schedule") */}
+        <div className="p-4 sm:p-5 bg-gradient-to-r from-[#FFF5F7] via-white to-[#FCE8EF] border-b-2 border-[#F2C4D2] flex flex-wrap items-center justify-between gap-4">
+          <div className="space-y-1">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-[#FCE8EF] text-[#8C243B] flex items-center justify-center font-bold">
-                <IconCalendarMonth className="w-4 h-4" />
-              </div>
-              <div>
-                <h3 className="text-xs sm:text-sm font-bold text-[#2D2529] font-serif">
-                  Planificación Semanal · {etiquetaSemana}
-                </h3>
-                <p className="text-[11px] text-[#7D6870]">
-                  {modoDespliegueSemana === 'dia'
-                    ? 'Toca cualquier día de lunes a domingo para ver su horario por horas'
-                    : 'Visualizando los 7 días de la semana con su línea de tiempo organizada'}
-                </p>
-              </div>
+              <span className="text-2xl">🗓️</span>
+              <h2 className="text-xl sm:text-2xl font-bold text-[#2D2529] font-serif tracking-tight">
+                Weekly Schedule
+              </h2>
+              <span className="text-xs font-bold text-[#8C243B] bg-[#FFF5F7] px-2.5 py-1 rounded-full border border-[#F2C4D2]">
+                {nombreTarget}
+              </span>
             </div>
-
-            {/* Selector de Despliegue: Día por Día vs Toda la Semana Desplegada */}
-            <div className="flex items-center bg-[#FFF5F7] p-1 rounded-2xl border border-[#F2C4D2]">
-              <button
-                onClick={() => setModoDespliegueSemana('dia')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs ${
-                  modoDespliegueSemana === 'dia'
-                    ? 'bg-[#8C243B] text-white shadow-xs'
-                    : 'text-[#7D6870] hover:text-[#2D2529]'
-                }`}
-                title="Ver un día específico con su horario por horas"
-              >
-                <IconCalendarEvent className="w-3.5 h-3.5" />
-                <span>Día por Día</span>
-              </button>
-              <button
-                onClick={() => setModoDespliegueSemana('todos')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs ${
-                  modoDespliegueSemana === 'todos'
-                    ? 'bg-[#8C243B] text-white shadow-xs'
-                    : 'text-[#7D6870] hover:text-[#2D2529]'
-                }`}
-                title="Desplegar los 7 días de lunes a domingo de corrido"
-              >
-                <IconCalendar className="w-3.5 h-3.5" />
-                <span>Semana Completa</span>
-              </button>
-            </div>
+            <p className="text-xs text-[#7D6870]">
+              Planificador semanal de turnos y disponibilidad por horas · Spa JL Mímate Nails
+            </p>
           </div>
 
-          {/* BOTONES INTERACTIVOS DE LOS 7 DÍAS (LUNES A DOMINGO) */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 pt-1">
-            {diasDeLaSemana.map((d) => {
-              const estaActivo = fechaSeleccionada === d.fechaIso && modoDespliegueSemana === 'dia';
-              const citasDelDia = citasFiltradas.filter((r) => {
-                if (!r.fecha_inicio) return false;
-                const fCita = new Date(r.fecha_inicio).toLocaleDateString('en-CA', {
-                  timeZone: 'America/Bogota',
-                });
-                return fCita === d.fechaIso && r.estado !== 'cancelada' && r.estado !== 'bloqueada';
-              });
-
-              return (
-                <button
-                  key={d.fechaIso}
-                  onClick={() => {
-                    setFechaSeleccionada(d.fechaIso);
-                    setModoDespliegueSemana('dia');
-                  }}
-                  className={`p-2.5 rounded-2xl border transition-all text-center cursor-pointer flex flex-col items-center justify-between gap-1 shadow-2xs hover:scale-[1.02] active:scale-95 ${
-                    estaActivo
-                      ? 'bg-[#8C243B] text-white border-[#8C243B] shadow-md ring-2 ring-[#8C243B]/20'
-                      : d.esHoy
-                      ? 'bg-[#FFF5F7] text-[#8C243B] border-[#8C243B] font-bold'
-                      : 'bg-white text-[#2D2529] border-[#F2C4D2] hover:bg-[#FFF5F7]'
-                  }`}
-                >
-                  <div className="flex items-center gap-1">
-                    <span className="text-[11px] font-bold uppercase tracking-wider">
-                      {d.nombreCorto}
-                    </span>
-                    {d.esHoy && (
-                      <span
-                        className={`text-[8px] font-extrabold px-1.5 py-0.2 rounded-full ${
-                          estaActivo ? 'bg-white text-[#8C243B]' : 'bg-[#8C243B] text-white'
-                        }`}
-                      >
-                        HOY
-                      </span>
-                    )}
-                  </div>
-
-                  <span className="text-lg font-extrabold font-serif leading-none">
-                    {d.diaNum}
-                  </span>
-
-                  <span
-                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                      estaActivo
-                        ? 'bg-white/20 text-white border-white/30'
-                        : citasDelDia.length > 0
-                        ? 'bg-[#FCE8EF] text-[#8C243B] border-[#F2C4D2]'
-                        : 'bg-slate-50 text-[#7D6870] border-slate-200'
-                    }`}
-                  >
-                    {citasDelDia.length} {citasDelDia.length === 1 ? 'cita' : 'citas'}
-                  </span>
-                </button>
-              );
-            })}
+          {/* Rango de la semana estilo plantilla (Píldora destacada) */}
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-[#7D6870]">
+              Semana del:
+            </span>
+            <span className="px-3.5 py-1.5 rounded-xl text-xs font-extrabold bg-[#8C243B] text-white shadow-2xs">
+              {etiquetaSemana}
+            </span>
           </div>
         </div>
 
-        {/* CONTENIDO DEL HORARIO: TIMELINE EXACTO COMO EN LA FOTO */}
-        {modoDespliegueSemana === 'dia' ? (
-          /* MODO A: TIMELINE DEL DÍA SELECCIONADO CON BOTONES DÍA ANTERIOR / SIGUIENTE */
-          (() => {
-            const citasDia = citasFiltradas.filter((r) => {
-              if (!r.fecha_inicio) return false;
-              const fCita = new Date(r.fecha_inicio).toLocaleDateString('en-CA', {
-                timeZone: 'America/Bogota',
-              });
-              return fCita === fechaSeleccionada;
-            });
+        {/* TABLA MATRIZ PLANIFICADOR SEMANAL: HORAS (FILAS) x DÍAS (COLUMNAS) */}
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse min-w-[980px] table-fixed">
+            {/* ENCABEZADOS DE COLUMNA (LUNES A DOMINGO) */}
+            <thead>
+              <tr className="border-b border-[#F2C4D2]">
+                {/* Columna de la hora */}
+                <th className="w-20 sm:w-24 p-3 bg-[#FCE8EF] text-[#8C243B] text-xs font-extrabold uppercase tracking-wider text-center border-r border-[#F2C4D2]">
+                  HORA
+                </th>
 
-            return (
-              <div className="space-y-3">
-                {/* Selector rápido de día anterior / siguiente dentro de la semana */}
-                <div className="flex items-center justify-between px-1">
-                  <button
-                    onClick={() => cambiarDia(-1)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2] text-xs font-bold rounded-xl transition cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
-                    title="Ver día anterior"
-                  >
-                    <IconChevronLeft className="w-4 h-4 stroke-[2.5]" />
-                    <span>Día Anterior</span>
-                  </button>
+                {/* 7 Columnas: Lunes a Domingo */}
+                {diasDeLaSemana.map((d) => {
+                  const citasDelDia = citasFiltradas.filter((r) => {
+                    if (!r.fecha_inicio) return false;
+                    const fCita = new Date(r.fecha_inicio).toLocaleDateString('en-CA', {
+                      timeZone: 'America/Bogota',
+                    });
+                    return fCita === d.fechaIso && r.estado !== 'cancelada' && r.estado !== 'bloqueada';
+                  });
 
-                  <span className="text-xs font-bold text-[#8C243B] bg-[#FFF5F7] px-3.5 py-1.5 rounded-xl border border-[#F2C4D2]">
-                    {diaActualObj
-                      ? `${diaActualObj.nombreLargo}, ${diaActualObj.diaNum} de ${diaActualObj.mesCorto}`
-                      : fechaLegible}
-                  </span>
-
-                  <button
-                    onClick={() => cambiarDia(1)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2] text-xs font-bold rounded-xl transition cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
-                    title="Ver día siguiente"
-                  >
-                    <span>Día Siguiente</span>
-                    <IconChevronRight className="w-4 h-4 stroke-[2.5]" />
-                  </button>
-                </div>
-
-                {/* TIMELINE DIARIO POR HORAS (8 A.M. A 7 P.M.) */}
-                {renderTimelineManicurista(
-                  citasDia,
-                  nombreTarget,
-                  especialistaIdActual !== 'todas' ? especialistaIdActual : undefined,
-                  esVistaAdmin,
-                  fechaSeleccionada,
-                  diaActualObj
-                    ? `${diaActualObj.nombreLargo}, ${diaActualObj.diaNum} de ${diaActualObj.mesCorto}`
-                    : fechaLegible
-                )}
-              </div>
-            );
-          })()
-        ) : (
-          /* MODO B: DESPLEGAR TODOS LOS 7 DÍAS DE LUNES A DOMINGO CON SU TIMELINE POR HORAS */
-          <div className="space-y-6">
-            {diasDeLaSemana.map((d) => {
-              const citasDia = citasFiltradas.filter((r) => {
-                if (!r.fecha_inicio) return false;
-                const fCita = new Date(r.fecha_inicio).toLocaleDateString('en-CA', {
-                  timeZone: 'America/Bogota',
-                });
-                return fCita === d.fechaIso;
-              });
-
-              const citasClientes = citasDia.filter(
-                (r) => r.estado !== 'bloqueada' && r.estado !== 'cancelada'
-              );
-
-              return (
-                <div key={d.fechaIso} className="space-y-2">
-                  <div className="flex items-center justify-between px-2 pt-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold uppercase text-[#8C243B] bg-white px-3 py-1.5 rounded-xl border border-[#F2C4D2] shadow-2xs">
-                        📅 {d.nombreLargo}, {d.diaNum} de {d.mesCorto}
-                      </span>
-                      {d.esHoy && (
-                        <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-[#8C243B] text-white shadow-2xs">
-                          HOY
+                  return (
+                    <th
+                      key={d.fechaIso}
+                      className={`p-2.5 text-center border-r border-[#F2C4D2] last:border-r-0 transition-colors ${
+                        d.esHoy
+                          ? 'bg-[#8C243B] text-white'
+                          : 'bg-[#FCE8EF] text-[#8C243B]'
+                      }`}
+                    >
+                      <div className="flex flex-col items-center justify-center gap-0.5">
+                        <span
+                          className={`text-xs font-extrabold uppercase tracking-wider ${
+                            d.esHoy ? 'text-white' : 'text-[#8C243B]'
+                          }`}
+                        >
+                          {d.nombreCorto}
                         </span>
-                      )}
-                    </div>
-                    <span className="text-xs font-semibold text-[#7D6870]">
-                      {citasClientes.length}{' '}
-                      {citasClientes.length === 1 ? 'cita agendada' : 'citas agendadas'}
-                    </span>
-                  </div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-sm sm:text-base font-extrabold font-serif">
+                            {d.diaNum} {d.mesCorto}
+                          </span>
+                          {d.esHoy && (
+                            <span className="text-[8px] font-extrabold px-1 py-0.2 rounded bg-white text-[#8C243B] leading-none">
+                              HOY
+                            </span>
+                          )}
+                        </div>
+                        <span
+                          className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full border ${
+                            d.esHoy
+                              ? 'bg-white/20 text-white border-white/30'
+                              : 'bg-white text-[#8C243B] border-[#F2C4D2]'
+                          }`}
+                        >
+                          {citasDelDia.length} {citasDelDia.length === 1 ? 'cita' : 'citas'}
+                        </span>
+                      </div>
+                    </th>
+                  );
+                })}
+              </tr>
+            </thead>
 
-                  {renderTimelineManicurista(
-                    citasDia,
-                    nombreTarget,
-                    especialistaIdActual !== 'todas' ? especialistaIdActual : undefined,
-                    esVistaAdmin,
-                    d.fechaIso,
-                    `${d.nombreLargo}, ${d.diaNum} de ${d.mesCorto}`
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
+            {/* CUERPO: 12 FILAS DE HORAS (8:00 AM A 7:00 PM) */}
+            <tbody className="divide-y divide-[#F2C4D2]/70">
+              {HORAS_TIMELINE.map((h) => {
+                const horaLabel = formatearHora12(h);
+
+                return (
+                  <tr key={h} className="group hover:bg-[#FFF5F7]/30 transition">
+                    {/* Celda de la Hora a la izquierda (Rosa como en la plantilla) */}
+                    <td className="p-2.5 bg-[#FFF5F7] text-[#8C243B] font-mono font-bold text-xs text-center border-r border-[#F2C4D2] select-none align-middle">
+                      {horaLabel}
+                    </td>
+
+                    {/* 7 Celdas de los Días (Lunes a Domingo) */}
+                    {diasDeLaSemana.map((d) => {
+                      // Citas que caen en este día y en esta hora
+                      const citasEnCelda = citasFiltradas.filter((r) => {
+                        if (!r.fecha_inicio) return false;
+                        const fCita = new Date(r.fecha_inicio).toLocaleDateString('en-CA', {
+                          timeZone: 'America/Bogota',
+                        });
+                        if (fCita !== d.fechaIso) return false;
+                        const hCita = obtenerHoraEnteraBogota(r.fecha_inicio);
+                        return hCita === h;
+                      });
+
+                      const esCeldaHoyHoraActual = d.esHoy && ahora.getHours() === h;
+
+                      return (
+                        <td
+                          key={d.fechaIso}
+                          className={`p-1.5 border-r border-[#F2C4D2]/70 last:border-r-0 align-top transition min-h-[68px] h-20 relative ${
+                            esCeldaHoyHoraActual
+                              ? 'bg-rose-50/40 ring-1 ring-inset ring-rose-300'
+                              : ''
+                          }`}
+                        >
+                          {citasEnCelda.length > 0 ? (
+                            <div className="space-y-1.5">
+                              {citasEnCelda.map((cita) => {
+                                const horaInicio = obtenerHoraMinutosBogota(cita.fecha_inicio);
+                                const horaFin = cita.fecha_fin ? obtenerHoraMinutosBogota(cita.fecha_fin) : '';
+                                const esBloqueada = cita.estado === 'bloqueada';
+                                const { motivo: motivoBloqueo, por: bloqueadoPor } = obtenerDetalleBloqueo(cita);
+                                const nombreClienta = obtenerNombreClienta(cita);
+                                const servicioNombre = obtenerServicioCita(cita);
+                                const telLimpio = String(cita.clientes?.telefono_wa || '').replace(/\D/g, '');
+                                const canchaCita = canchas.find((c) => c.id === cita.cancha_id);
+                                const puedeDesbloquear =
+                                  esVistaAdmin || (perfilActual?.canchaId === cita.cancha_id);
+
+                                return (
+                                  <div
+                                    key={cita.id}
+                                    className={`p-1.5 sm:p-2 rounded-xl border text-[11px] space-y-1 transition shadow-2xs ${
+                                      esBloqueada
+                                        ? 'bg-amber-50 border-amber-300 text-amber-950'
+                                        : cita.estado === 'completada'
+                                        ? 'bg-emerald-50/80 border-emerald-300 text-emerald-950'
+                                        : cita.estado === 'cancelada'
+                                        ? 'bg-slate-50 border-slate-200 text-slate-500 opacity-60'
+                                        : 'bg-white border-[#F2C4D2] hover:border-[#8C243B] text-[#2D2529]'
+                                    }`}
+                                  >
+                                    {/* Hora y Estado */}
+                                    <div className="flex items-center justify-between gap-1 leading-none">
+                                      <span
+                                        className={`font-mono font-bold text-[10px] ${
+                                          esBloqueada ? 'text-amber-900' : 'text-[#8C243B]'
+                                        }`}
+                                      >
+                                        {horaInicio} {horaFin && `- ${horaFin}`}
+                                      </span>
+                                      <span
+                                        className={`text-[8px] font-extrabold px-1 py-0.2 rounded border ${
+                                          esBloqueada
+                                            ? 'bg-amber-200 text-amber-900 border-amber-300'
+                                            : cita.estado === 'completada'
+                                            ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                            : cita.estado === 'cancelada'
+                                            ? 'bg-rose-100 text-rose-800 border-rose-300'
+                                            : 'bg-[#FCE8EF] text-[#8C243B] border-[#F2C4D2]'
+                                        }`}
+                                      >
+                                        {esBloqueada
+                                          ? 'BLOQ'
+                                          : cita.estado === 'completada'
+                                          ? 'LISTA'
+                                          : 'CONF'}
+                                      </span>
+                                    </div>
+
+                                    {/* Nombre Clienta / Bloqueo */}
+                                    <div className="leading-tight">
+                                      <p
+                                        className="font-bold text-[11px] truncate"
+                                        title={esBloqueada ? motivoBloqueo : nombreClienta}
+                                      >
+                                        {esBloqueada ? `🔒 ${motivoBloqueo}` : nombreClienta}
+                                      </p>
+                                      <p
+                                        className="text-[10px] text-[#7D6870] truncate"
+                                        title={servicioNombre}
+                                      >
+                                        {esBloqueada ? bloqueadoPor : servicioNombre}
+                                      </p>
+                                    </div>
+
+                                    {/* Si se ven todas las especialistas, mostrar pill de la manicurista */}
+                                    {(!especialistaIdActual || especialistaIdActual === 'todas') &&
+                                      canchaCita && (
+                                        <div className="leading-none pt-0.5">
+                                          <span className="text-[9px] font-bold text-[#8C243B] bg-[#FFF5F7] px-1.5 py-0.5 rounded border border-[#F2C4D2] truncate block max-w-full">
+                                            💅 {canchaCita.nombre}
+                                          </span>
+                                        </div>
+                                      )}
+
+                                    {/* Acciones */}
+                                    <div className="flex items-center justify-between pt-1 border-t border-[#FCE8EF] text-[9px]">
+                                      <span className="font-mono font-bold text-[#2D2529]">
+                                        {esBloqueada
+                                          ? ''
+                                          : `$${Number(cita.valor_total || 25000).toLocaleString('es-CO')}`}
+                                      </span>
+
+                                      <div className="flex items-center gap-0.5">
+                                        {esBloqueada ? (
+                                          puedeDesbloquear && (
+                                            <button
+                                              onClick={() =>
+                                                handleDesbloquearHorario(cita.id, horaInicio)
+                                              }
+                                              className="px-1 py-0.5 rounded bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 text-[8px] font-bold transition cursor-pointer"
+                                              title="Desbloquear"
+                                            >
+                                              Liberar
+                                            </button>
+                                          )
+                                        ) : (
+                                          <>
+                                            {telLimpio && (
+                                              <a
+                                                href={`https://wa.me/${telLimpio}?text=Hola%20${encodeURIComponent(
+                                                  nombreClienta
+                                                )},%20te%20saludamos%20de%20JL%20M%C3%ADmate%20Nails%20respecto%20a%20tu%20cita.`}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="p-1 rounded text-emerald-700 hover:bg-emerald-100 transition"
+                                                title="WhatsApp"
+                                              >
+                                                <IconBrandWhatsapp className="w-3 h-3" />
+                                              </a>
+                                            )}
+                                            {esVistaAdmin && cita.estado !== 'completada' && (
+                                              <button
+                                                onClick={() =>
+                                                  handleCambiarEstado(cita.id, 'completada')
+                                                }
+                                                className="p-1 rounded text-emerald-700 hover:bg-emerald-100 transition cursor-pointer"
+                                                title="Marcar Completada"
+                                              >
+                                                <IconCheck className="w-3 h-3" />
+                                              </button>
+                                            )}
+                                            {esVistaAdmin && (
+                                              <button
+                                                onClick={() =>
+                                                  handleEliminarCita(cita.id, nombreClienta)
+                                                }
+                                                className="p-1 rounded text-rose-700 hover:bg-rose-100 transition cursor-pointer"
+                                                title="Eliminar"
+                                              >
+                                                <IconTrash className="w-3 h-3" />
+                                              </button>
+                                            )}
+                                          </>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            /* CELDA VACÍA (ESPACIO LIBRE) */
+                            <div className="h-full min-h-[50px] flex items-center justify-center group/cell relative">
+                              <span className="text-[10px] text-[#7D6870]/30 italic opacity-0 group-hover/cell:opacity-100 transition select-none">
+                                Libre
+                              </span>
+                              {/* Botón rápido para agendar en ese día y hora al hacer hover */}
+                              {esVistaAdmin && (
+                                <button
+                                  onClick={() =>
+                                    abrirModalAgendar(
+                                      especialistaIdActual !== 'todas'
+                                        ? especialistaIdActual
+                                        : undefined,
+                                      `${String(h).padStart(2, '0')}:00`,
+                                      d.fechaIso
+                                    )
+                                  }
+                                  className="hidden group-hover/cell:flex items-center justify-center p-1 rounded-lg bg-white border border-[#F2C4D2] text-[#8C243B] hover:bg-[#8C243B] hover:text-white transition shadow-2xs absolute inset-1 m-auto w-6 h-6 cursor-pointer"
+                                  title={`Agendar turno para ${d.nombreCorto} ${d.diaNum} a las ${horaLabel}`}
+                                >
+                                  <IconPlus className="w-3 h-3" />
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
     );
   };
