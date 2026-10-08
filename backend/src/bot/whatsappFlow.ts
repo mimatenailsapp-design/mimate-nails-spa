@@ -97,14 +97,38 @@ export class WhatsAppFlow {
 
       const input = texto.trim().toLowerCase();
 
+      // Manejo de reinicio explícito para pruebas o limpiar conversaciones previas
+      if (input === 'reiniciar' || input === 'reset' || input === 'limpiar' || input === 'borrar') {
+        sesiones.delete(telefono);
+        session = { paso: 'INICIO', complejoId: complejo.id, ultimoMensaje: ahora };
+        sesiones.set(telefono, session);
+        const esSpa = complejo.slug === 'mimate-nails' || complejo.tipo_negocio === 'belleza_unas';
+        return {
+          texto: esSpa
+            ? `🔄 *Conversación reiniciada con éxito* 🌸\n\n` +
+              `¡Hola reina! Tu sesión anterior ha sido limpiada por completo.\n` +
+              `Escribe *HOLA* o *MENU* para consultar nuestros servicios y agendar tu cita en *${complejo.nombre}* 💕💅.`
+            : `🔄 *Conversación reiniciada con éxito.*\n\nEscribe *HOLA* para comenzar tu reserva en *${complejo.nombre}*.`,
+        };
+      }
+
       // Detección de respuesta al menú de recordatorio (Confirmar, Cancelar o Reagendar)
       const resRecordatorio = await this.manejarRespuestaRecordatorio(telefono, texto, input, complejo, session);
       if (resRecordatorio) {
         return resRecordatorio;
       }
 
-      if (input === 'reiniciar' || input === 'menu' || input === 'cancelar' || (input === 'hola' && session.paso !== 'INICIO' && session.paso !== 'ESPERA_PAGO')) {
+      if (
+        input === 'menu' ||
+        input === 'cancelar' ||
+        input === 'inicio' ||
+        (input === 'hola' && session.paso !== 'INICIO')
+      ) {
         session.paso = 'INICIO';
+        session.canchaSeleccionada = undefined;
+        session.fechaSeleccionada = undefined;
+        session.horariosDisponibles = undefined;
+        session.reservaId = undefined;
       }
 
       // Detección inteligente de consultas libres (FAQ) y derivación a asesor humano
@@ -170,8 +194,11 @@ export class WhatsAppFlow {
 
         default:
           session.paso = 'INICIO';
+          const esSpaDef = complejo.slug === 'mimate-nails' || complejo.tipo_negocio === 'belleza_unas';
           return {
-            texto: `¡Hola! Escribe *HOLA* para comenzar tu reserva en *${complejo.nombre}* ⚽🎾.`,
+            texto: esSpaDef
+              ? `🌸 ¡Hola reina! Escribe *HOLA* o *MENU* para consultar nuestros servicios y agendar tu cita en *${complejo.nombre}* 💕💅.`
+              : `¡Hola! Escribe *HOLA* para comenzar tu reserva en *${complejo.nombre}*.`,
           };
       }
     } catch (globalErr: any) {
@@ -386,35 +413,43 @@ export class WhatsAppFlow {
       }
     }
 
+    const esSpa = complejo.slug === 'mimate-nails' || complejo.tipo_negocio === 'belleza_unas';
+
     const rows: InteractiveRow[] = canchas.slice(0, 9).map((c) => ({
       id: `cancha_${c.id}`,
       title: c.nombre.slice(0, 24),
-      description: `${c.deporte.toUpperCase().replace('_', ' ')} • $${c.precio_estandar.toLocaleString('es-CO')}`.slice(0, 72),
+      description: esSpa
+        ? `Profesional de Uñas • Mímate Nails`.slice(0, 72)
+        : `${c.deporte.toUpperCase().replace('_', ' ')} • $${c.precio_estandar.toLocaleString('es-CO')}`.slice(0, 72),
     }));
 
     // Opción para hablar directamente con un encargado o asesor
     rows.push({
       id: 'contacto_asesor',
       title: '💬 Hablar con Asesor',
-      description: 'Atención personalizada con encargado',
+      description: esSpa ? 'Atención personalizada con encargada' : 'Atención personalizada con encargado',
     });
 
-    const textoRespuesta = `👋 ¡Hola ${nombrePush || ''}! Bienvenido a las reservas 24/7 de *${complejo.nombre}*.\n\n` +
-      `• Abre el menú desplegable a continuación para seleccionar tu cancha o servicio ⚽🎾.\n` +
-      `• O puedes escribir *ASESOR* en cualquier momento para hablar con un encargado.`;
+    const textoRespuesta = esSpa
+      ? `👋 ¡Hola ${nombrePush || 'reina'}! Te damos la bienvenida a *${complejo.nombre}* 🌸✨.\n\n` +
+        `• Toca el botón a continuación para elegir tu manicurista preferida 💕.\n` +
+        `• O puedes escribir *ASESOR* en cualquier momento para atención personalizada.`
+      : `👋 ¡Hola ${nombrePush || ''}! Bienvenido a las reservas 24/7 de *${complejo.nombre}*.\n\n` +
+        `• Abre el menú desplegable a continuación para seleccionar tu cancha o servicio ⚽🎾.\n` +
+        `• O puedes escribir *ASESOR* en cualquier momento para hablar con un encargado.`;
 
     return {
       texto: textoRespuesta,
       interactive: {
         type: 'list',
-        header: complejo.nombre.slice(0, 60),
+        header: esSpa ? 'JL Mímate Nails Spa' : complejo.nombre.slice(0, 60),
         body: textoRespuesta,
         footer: 'Elige del menú o escribe ASESOR',
         action: {
-          button: 'Elegir Opción',
+          button: esSpa ? 'Elegir Profesional' : 'Elegir Opción',
           sections: [
             {
-              title: 'Canchas y Opciones',
+              title: esSpa ? 'Nuestras Manicuristas' : 'Canchas y Opciones',
               rows,
             },
           ],
@@ -873,6 +908,22 @@ export class WhatsAppFlow {
       if (!exigeAnticipo) {
         session.reservaId = reserva.id;
         session.paso = 'INICIO';
+
+        const esSpa = complejo.slug === 'mimate-nails' || complejo.tipo_negocio === 'belleza_unas';
+
+        if (esSpa) {
+          return {
+            texto: `🌸✨ *¡CITA 100% CONFIRMADA EN JL MÍMATE NAILS!* ✨🌸\n\n` +
+              `🏢 Spa: *${complejo.nombre}*\n` +
+              `💅 Manicurista: *${session.canchaSeleccionada!.nombre}*\n` +
+              `📅 Fecha: *${session.fechaSeleccionada}*\n` +
+              `⏰ Horario: *${horaIniNorm} - ${horaFinNorm}*\n` +
+              `💰 Valor: *${totalFmt}*\n\n` +
+              `📍 Te esperamos con todo el amor en nuestro spa (Pereira, Cuba - Calle 66 bis #26-57).\n` +
+              `✨ El pago lo realizas directamente en el spa al recibir tu atención (sin cobro anticipado).\n\n` +
+              `🔔 Te enviaremos un recordatorio 1 día antes con opciones interactivas para gestionar tu cita. ¡Nos vemos para consentirte reina! 💕💅`,
+          };
+        }
 
         return {
           texto: `🎉 *¡RESERVA 100% CONFIRMADA!*\n\n` +
@@ -1426,9 +1477,11 @@ export class WhatsAppFlow {
       return null;
     }
 
-    if (!idDirecto && session.paso !== 'INICIO') {
-      return null;
-    }
+    // Resetear inmediatamente el paso de la sesión para salir de cualquier flujo anterior
+    session.paso = 'INICIO';
+    session.canchaSeleccionada = undefined;
+    session.fechaSeleccionada = undefined;
+    session.horariosDisponibles = undefined;
 
     let reserva: any = null;
 
@@ -1443,41 +1496,101 @@ export class WhatsAppFlow {
 
     if (!reserva) {
       const cleanTel = telefono.replace(/\D/g, '');
-      const telVariaciones = [
+      const ultimos10 = cleanTel.slice(-10);
+      const telVariaciones = Array.from(new Set([
         telefono,
         cleanTel,
         cleanTel.startsWith('57') ? cleanTel.slice(2) : `57${cleanTel}`,
-      ];
+        `+${cleanTel}`,
+        `+57${ultimos10}`,
+        ultimos10,
+      ]));
 
       const { data: clientes } = await supabase
         .from('clientes')
-        .select('id')
-        .in('telefono_wa', telVariaciones);
+        .select('id, telefono_wa');
 
-      const clienteIds = (clientes || []).map((c) => c.id);
+      const clienteIds = (clientes || [])
+        .filter((c) => {
+          if (!c.telefono_wa) return false;
+          const cClean = String(c.telefono_wa).replace(/\D/g, '');
+          return (
+            telVariaciones.includes(c.telefono_wa) ||
+            telVariaciones.includes(cClean) ||
+            cClean.slice(-10) === ultimos10
+          );
+        })
+        .map((c) => c.id);
 
       if (clienteIds.length > 0) {
         const { data: proxReservas } = await supabase
           .from('reservas')
           .select('*, canchas!inner(*, complejos!inner(*)), clientes(*)')
           .in('cliente_id', clienteIds)
-          .eq('estado', 'confirmada')
-          .gte('fecha_inicio', new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString())
+          .eq('canchas.complejo_id', complejo.id)
+          .neq('estado', 'cancelada')
+          .gte('fecha_inicio', new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString())
           .order('fecha_inicio', { ascending: true })
           .limit(1);
 
         if (proxReservas && proxReservas.length > 0) {
           reserva = proxReservas[0];
+        } else {
+          const { data: altReservas } = await supabase
+            .from('reservas')
+            .select('*, canchas!inner(*, complejos!inner(*)), clientes(*)')
+            .in('cliente_id', clienteIds)
+            .neq('estado', 'cancelada')
+            .gte('fecha_inicio', new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString())
+            .order('fecha_inicio', { ascending: true })
+            .limit(1);
+
+          if (altReservas && altReservas.length > 0) {
+            reserva = altReservas[0];
+          }
         }
       }
     }
 
     if (!reserva) {
-      if (idDirecto || input.includes('cita')) {
+      const baseUrl = process.env.FRONTEND_URL || 'https://mimate-nails-spa.vercel.app';
+      const esSpa = complejo.slug === 'mimate-nails' || complejo.tipo_negocio === 'belleza_unas';
+
+      if (esReagendar) {
+        const textoSinCita = esSpa
+          ? `🌸 *REAGENDAR CITA - JL MÍMATE NAILS* 🌸\n\n` +
+            `¡Hola reina! No encontramos una cita activa previa registrada con tu número (*${telefono}*) para reagendar en este momento.\n\n` +
+            `👉 Pero no te preocupes, puedes elegir tu servicio, horario y manicurista favorita directamente en nuestra agenda tocando el botón a continuación:\n\n` +
+            `¡Te esperamos para consentirte! 💕💅`
+          : `📅 *REAGENDAR CITA*\n\nNo encontramos una reserva activa para este número. Toca el botón a continuación para abrir la agenda y seleccionar tu horario:`;
+
         return {
-          texto: `Hola, no encontramos una cita activa para confirmar o modificar en este momento. Si deseas programar una nueva cita, escribe *MENU*. 🌸`,
+          texto: textoSinCita,
+          urlRedirect: baseUrl,
+          interactive: {
+            type: 'cta_url',
+            header: esSpa ? '🌸 Abrir Agenda Spa' : '📅 Reservar Turno',
+            body: textoSinCita,
+            footer: 'JL Mímate Nails',
+            action: {
+              name: 'cta_url',
+              parameters: {
+                display_text: '📅 Abrir Agenda',
+                url: baseUrl,
+              },
+            },
+          },
         };
       }
+
+      if (esConfirmar || esCancelar || idDirecto || input.includes('cita')) {
+        return {
+          texto: esSpa
+            ? `🌸 ¡Hola reina! No encontramos una cita activa registrada para confirmar o cancelar con este número en este momento.\n\nSi deseas agendar tu cita, escribe *MENU* o visita nuestra web:\n${baseUrl} 💕`
+            : `Hola, no encontramos una reserva activa para confirmar o cancelar en este momento. Si deseas programar un nuevo turno, escribe *MENU*.`,
+        };
+      }
+
       return null;
     }
 
