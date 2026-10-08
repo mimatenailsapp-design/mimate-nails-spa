@@ -264,6 +264,29 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     return texto.charAt(0).toUpperCase() + texto.slice(1);
   }, [fechaSeleccionada]);
 
+  // Etiqueta contextual y no ambigua: Hoy, Mañana, Ayer o día específico (ej: Sáb, 10 oct)
+  const etiquetaFechaRelativa = useMemo(() => {
+    if (!fechaSeleccionada || !hoyStr) return 'Hoy';
+    const [y1, m1, d1] = hoyStr.split('-').map(Number);
+    const [y2, m2, d2] = fechaSeleccionada.split('-').map(Number);
+    const dHoy = new Date(y1, m1 - 1, d1);
+    const dSel = new Date(y2, m2 - 1, d2);
+
+    const diffMs = dSel.getTime() - dHoy.getTime();
+    const diffDias = Math.round(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffDias === 0) return 'Hoy';
+    if (diffDias === 1) return 'Mañana';
+    if (diffDias === -1) return 'Ayer';
+
+    // Para cualquier otra fecha: día abreviado + número de día + mes (ej: "Sáb, 10 oct", "Lun, 12 oct")
+    const diaSemana = dSel.toLocaleDateString('es-CO', { weekday: 'short' });
+    const diaMes = dSel.getDate();
+    const mes = dSel.toLocaleDateString('es-CO', { month: 'short' }).replace('.', '');
+    const diaCapitalizado = diaSemana.charAt(0).toUpperCase() + diaSemana.slice(1).replace('.', '');
+    return `${diaCapitalizado}, ${diaMes} ${mes}`;
+  }, [fechaSeleccionada, hoyStr]);
+
   // Manejo de Login con PIN
   const handleIniciarSesion = (perfil: StaffProfile) => {
     setModalPinPerfil(perfil);
@@ -745,15 +768,13 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
               <IconChevronLeft className="w-4 h-4 stroke-[2.5]" />
             </button>
 
+            {/* BOTÓN/ETIQUETA DINÁMICA: Hoy, Mañana, Ayer o Sáb, 10 oct */}
             <button
               onClick={() => setFechaSeleccionada(hoyStr)}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs ${
-                fechaSeleccionada === hoyStr
-                  ? 'bg-[#8C243B] text-white shadow-xs'
-                  : 'bg-white text-[#7D6870] hover:text-[#2D2529] border border-[#F2C4D2]'
-              }`}
+              title={fechaSeleccionada === hoyStr ? 'Estás en el día de hoy' : 'Clic para volver al día de hoy'}
+              className="px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs bg-[#8C243B] text-white min-w-[70px] text-center hover:opacity-95 active:scale-95"
             >
-              Hoy
+              {etiquetaFechaRelativa}
             </button>
 
             <button
@@ -763,6 +784,17 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
             >
               <IconChevronRight className="w-4 h-4 stroke-[2.5]" />
             </button>
+
+            {/* ACCESO RÁPIDO: Volver a Hoy si está en otra fecha */}
+            {fechaSeleccionada !== hoyStr && (
+              <button
+                onClick={() => setFechaSeleccionada(hoyStr)}
+                className="px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-white text-[#8C243B] hover:bg-[#FCE8EF] border border-[#F2C4D2] transition cursor-pointer shadow-2xs animate-in fade-in"
+                title="Volver a la fecha actual"
+              >
+                Ir a Hoy
+              </button>
+            )}
 
             <div className="relative pl-1">
               <input
