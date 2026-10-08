@@ -125,44 +125,43 @@ app.get('/api/debug/subscribe-waba', async (req: Request, res: Response) => {
   }
 
   try {
-    // 1. Obtener la WABA (WhatsApp Business Account) vinculada a este número
-    const phoneRes = await axios.get(
-      `https://graph.facebook.com/v21.0/${phoneId}?fields=whatsapp_business_account`,
-      {
-        headers: { Authorization: `Bearer ${token}` },
-      }
+    // 1. Obtener información del token (granular scopes y WABA ID)
+    const tokenInfoRes = await axios.get(
+      `https://graph.facebook.com/debug_token?input_token=${token}&access_token=${token}`
     );
-    const wabaId = phoneRes.data?.whatsapp_business_account?.id;
+    const tokenData = tokenInfoRes.data?.data;
+    const granularScopes = tokenData?.granular_scopes || [];
+    const waScope = granularScopes.find((s: any) => s.scope === 'whatsapp_business_messaging' || s.scope === 'whatsapp_business_management');
+    const targetWabaId = waScope?.target_ids?.[0];
 
-    if (!wabaId) {
-      return res.status(400).json({
-        error: 'No se pudo obtener el WABA ID',
-        phone_response: phoneRes.data,
-      });
+    let subResult: any = null;
+    let appsSuscritas: any = null;
+
+    if (targetWabaId) {
+      try {
+        const subRes = await axios.post(
+          `https://graph.facebook.com/v21.0/${targetWabaId}/subscribed_apps`,
+          {},
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        subResult = subRes.data;
+
+        const checkRes = await axios.get(
+          `https://graph.facebook.com/v21.0/${targetWabaId}/subscribed_apps`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        appsSuscritas = checkRes.data;
+      } catch (subErr: any) {
+        subResult = { error: subErr.response?.data || subErr.message };
+      }
     }
-
-    // 2. Suscribir la app a la WABA (Esencial para que Meta dispare los webhooks de mensajes reales)
-    const subRes = await axios.post(
-      `https://graph.facebook.com/v21.0/${wabaId}/subscribed_apps`,
-      {},
-      {
-        headers: { Authorization: `Bearer ${token}` },
-      }
-    );
-
-    // 3. Consultar las apps suscritas actualmente
-    const checkRes = await axios.get(
-      `https://graph.facebook.com/v21.0/${wabaId}/subscribed_apps`,
-      {
-        headers: { Authorization: `Bearer ${token}` },
-      }
-    );
 
     return res.json({
       success: true,
-      waba_id: wabaId,
-      subscripcion_result: subRes.data,
-      apps_suscritas: checkRes.data,
+      waba_id_detectado: targetWabaId || null,
+      granular_scopes: granularScopes,
+      subscripcion_result: subResult,
+      apps_suscritas: appsSuscritas,
     });
   } catch (err: any) {
     return res.status(err.response?.status || 500).json({
