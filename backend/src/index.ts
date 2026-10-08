@@ -60,6 +60,86 @@ app.get('/webhook', (req: Request, res: Response) => {
   }
 });
 
+interface DebugLog {
+  timestamp: string;
+  type: 'WEBHOOK_IN' | 'SEND_SUCCESS' | 'SEND_ERROR' | 'CONFIG_CHECK';
+  detalles: any;
+}
+const debugLogs: DebugLog[] = [];
+function addDebugLog(type: DebugLog['type'], detalles: any) {
+  debugLogs.unshift({ timestamp: new Date().toISOString(), type, detalles });
+  if (debugLogs.length > 50) debugLogs.pop();
+}
+
+app.get('/api/debug/whatsapp', (req: Request, res: Response) => {
+  const token = (process.env.WHATSAPP_TOKEN || '').trim();
+  const phoneId = (process.env.WHATSAPP_PHONE_NUMBER_ID || '').trim();
+  const verifyToken = (process.env.WHATSAPP_VERIFY_TOKEN || '').trim();
+
+  res.json({
+    status: 'ok',
+    environment_variables: {
+      has_whatsapp_token: token.length > 0,
+      whatsapp_token_length: token.length,
+      whatsapp_token_preview: token.length > 10 ? `${token.slice(0, 7)}...${token.slice(-5)}` : null,
+      whatsapp_phone_number_id: phoneId || 'NO_CONFIGURADO_EN_RENDER',
+      has_whatsapp_verify_token: verifyToken.length > 0,
+      has_supabase_url: !!process.env.SUPABASE_URL,
+      has_supabase_service_key: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+    },
+    total_logs: debugLogs.length,
+    recent_logs: debugLogs.slice(0, 20),
+  });
+});
+
+app.post('/api/debug/test-send', async (req: Request, res: Response) => {
+  const { to, text } = req.body;
+  if (!to) {
+    return res.status(400).json({ error: 'Falta parametro "to" (ej. "573219610896")' });
+  }
+
+  const token = (process.env.WHATSAPP_TOKEN || '').trim();
+  const phoneId = (process.env.WHATSAPP_PHONE_NUMBER_ID || '').trim();
+
+  if (!token || !phoneId) {
+    return res.status(500).json({
+      error: 'Variables no configuradas en Render',
+      has_token: !!token,
+      has_phone_id: !!phoneId,
+    });
+  }
+
+  let cleanTo = String(to).replace(/\D/g, '');
+  if (cleanTo.length === 10 && cleanTo.startsWith('3')) {
+    cleanTo = `57${cleanTo}`;
+  }
+
+  try {
+    const apiRes = await axios.post(
+      `https://graph.facebook.com/v21.0/${phoneId}/messages`,
+      {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: cleanTo,
+        type: 'text',
+        text: { body: text || 'Prueba de conexión directa con Meta Cloud API' },
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+    addDebugLog('SEND_SUCCESS', { to: cleanTo, data: apiRes.data });
+    return res.json({ success: true, meta_response: apiRes.data });
+  } catch (err: any) {
+    const errorData = err.response?.data || err.message;
+    addDebugLog('SEND_ERROR', { to: cleanTo, error: errorData });
+    return res.status(err.response?.status || 500).json({ success: false, error: errorData });
+  }
+});
+
 app.post('/webhook', async (req: Request, res: Response) => {
   try {
     const body = req.body;
@@ -79,12 +159,21 @@ app.post('/webhook', async (req: Request, res: Response) => {
         const phoneId = value.metadata?.phone_number_id;
         const displayPhone = value.metadata?.display_phone_number;
 
-        // Buscar a qué empresa le pertenece este número de WhatsApp
-        const complejo = await BookingService.getComplejoByPhone(phoneId, displayPhone);
-
         const telefonoCliente = messageObj.from;
         let texto = messageObj.text?.body || '';
         const nombrePush = contactObj?.profile?.name;
+
+        addDebugLog('WEBHOOK_IN', {
+          telefonoCliente,
+          nombrePush,
+          phoneId,
+          displayPhone,
+          tipoMensaje: messageObj.type,
+          texto,
+        });
+
+        // Buscar a qué empresa le pertenece este número de WhatsApp
+        const complejo = await BookingService.getComplejoByPhone(phoneId, displayPhone);
 
         // Soporte para respuestas interactivas de WhatsApp (Menú desplegable / Botones)
         if (messageObj.type === 'interactive' && messageObj.interactive) {
@@ -106,7 +195,7 @@ app.post('/webhook', async (req: Request, res: Response) => {
           texto = messageObj.image?.caption || 'comprobante_imagen';
         }
 
-        // 2. Procesar con las canchas, tarifas, Nequi y comprobantes de ESE complejo
+        // 2. Procesar con las especialistas, tarifas, Nequi y comprobantes de ESE complejo
         const respuestaBot = await WhatsAppFlow.procesarMensaje(
           telefonoCliente,
           texto,
@@ -118,13 +207,22 @@ app.post('/webhook', async (req: Request, res: Response) => {
 
         // 3. Responder al cliente usando el token y número de ese complejo (con menú desplegable si aplica)
         await enviarMensajeWhatsApp(telefonoCliente, respuestaBot, complejo.whatsapp_token, phoneId);
+      } else {
+        // Puede ser un status update (delivered, read, sent)
+        const change = body.entry?.[0]?.changes?.[0];
+        if (change?.value?.statuses) {
+          // Status update ignorado silenciosamente
+        } else {
+          addDebugLog('WEBHOOK_IN', { raw_entry: body.entry });
+        }
       }
       res.sendStatus(200);
     } else {
       res.sendStatus(404);
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error procesando webhook multi-tenant:', error);
+    addDebugLog('SEND_ERROR', { error: error?.message || error });
     res.sendStatus(500);
   }
 });
@@ -205,7 +303,13 @@ async function enviarMensajeWhatsApp(
   }
 
   if (!token || !phoneId) {
-    console.log(`[WHATSAPP MENSAJE a ${cleanTo}]:`, JSON.stringify(payload, null, 2));
+    console.warn(`[WHATSAPP MENSAJE NO ENVIADO a ${cleanTo}]: Faltan credenciales (token: ${!!token}, phoneId: ${phoneId || 'null'})`);
+    addDebugLog('SEND_ERROR', {
+      to: cleanTo,
+      motivo: 'Faltan credenciales en Render o Complejo',
+      has_token: !!token,
+      phone_id: phoneId || null,
+    });
     return;
   }
 
@@ -221,8 +325,12 @@ async function enviarMensajeWhatsApp(
       }
     );
     console.log(`✅ [WHATSAPP ENVIADO EXITOSAMENTE a ${cleanTo}]: ID ${res.data?.messages?.[0]?.id}`);
+    addDebugLog('SEND_SUCCESS', { to: cleanTo, messageId: res.data?.messages?.[0]?.id });
   } catch (err: any) {
-    console.error(`❌ [ERROR WHATSAPP a ${cleanTo}]:`, err.response?.data || err.message);
+    const errorMeta = err.response?.data || err.message;
+    console.error(`❌ [ERROR WHATSAPP a ${cleanTo}]:`, errorMeta);
+    addDebugLog('SEND_ERROR', { to: cleanTo, error: errorMeta });
+
     if (typeof message === 'object' && message.interactive) {
       try {
         console.log(`[WHATSAPP FALLBACK]: Enviando mensaje en texto plano a ${cleanTo}`);
@@ -243,6 +351,7 @@ async function enviarMensajeWhatsApp(
           }
         );
         console.log(`✅ [WHATSAPP FALLBACK ENVIADO a ${cleanTo}]: ID ${fallbackRes.data?.messages?.[0]?.id}`);
+        addDebugLog('SEND_SUCCESS', { to: cleanTo, fallback: true, messageId: fallbackRes.data?.messages?.[0]?.id });
       } catch (fallbackErr: any) {
         console.error('Error en fallback de texto WhatsApp:', fallbackErr.response?.data || fallbackErr.message);
       }
