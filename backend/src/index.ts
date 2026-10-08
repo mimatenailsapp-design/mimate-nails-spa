@@ -26,9 +26,59 @@ app.get('/', (req: Request, res: Response) => {
     base_de_datos: 'Supabase PostgreSQL Conectada',
     version: '2.0.0',
     webhook_url: '/webhook',
+    politica_privacidad: '/politica-de-privacidad',
     simulador_bot: '/api/bot/simulate',
     cron_recordatorios: '/api/cron/recordatorios',
   });
+});
+
+app.get('/politica-de-privacidad', (req: Request, res: Response) => {
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(`<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Política de Privacidad - JL Mímate Nails Spa</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; max-width: 800px; margin: 40px auto; padding: 0 20px; color: #333; }
+    h1 { color: #db2777; border-bottom: 2px solid #fbcfe8; padding-bottom: 10px; }
+    h2 { color: #be185d; margin-top: 30px; }
+    p, li { font-size: 15px; }
+    .footer { margin-top: 50px; font-size: 13px; color: #888; border-top: 1px solid #eee; padding-top: 20px; }
+  </style>
+</head>
+<body>
+  <h1>Política de Privacidad - JL Mímate Nails Spa</h1>
+  <p><strong>Última actualización:</strong> Octubre de 2026</p>
+  <p>En <strong>JL Mímate Nails Spa</strong> (Pereira, Colombia), nos tomamos muy en serio la privacidad y protección de los datos personales de nuestras clientas.</p>
+  
+  <h2>1. Información que recopilamos</h2>
+  <p>Cuando interactúas con nuestro servicio de agendamiento y atención por WhatsApp o plataforma web, podemos recopilar:</p>
+  <ul>
+    <li>Nombre completo y número de teléfono de contacto.</li>
+    <li>Historial de citas, servicios solicitados (manicura, pedicura, etc.) y fechas deseadas.</li>
+  </ul>
+
+  <h2>2. Uso de la información</h2>
+  <p>Los datos recopilados se utilizan exclusivamente para:</p>
+  <ul>
+    <li>Gestionar y confirmar tus citas en nuestro spa.</li>
+    <li>Enviarte recordatorios automáticos de tus citas para tu comodidad.</li>
+    <li>Brindarte atención y soporte personalizado sobre nuestros servicios.</li>
+  </ul>
+
+  <h2>3. Protección de tus datos</h2>
+  <p>No compartimos, vendemos ni divulgamos tu información personal con terceros para fines publicitarios. Tus datos están almacenados de forma segura con estándares de cifrado.</p>
+
+  <h2>4. Contacto</h2>
+  <p>Si tienes preguntas o deseas solicitar la eliminación de tus datos, puedes comunicarte con nosotros vía WhatsApp al +57 321 961 0896 o en nuestra sede en Pereira, Cuba.</p>
+
+  <div class="footer">
+    <p>© 2026 JL Mímate Nails Spa. Todos los derechos reservados.</p>
+  </div>
+</body>
+</html>`);
 });
 
 // ==============================================================================
