@@ -80,6 +80,7 @@ export class ReminderService {
         `📅 *Fecha:* ${fechaCita}\n` +
         `⏰ *Hora:* ${horaInicio}\n\n` +
         `📍 *Lugar:* Pereira, Cuba (Calle 66 bis #26-57)\n` +
+        `🗺️ *Cómo llegar (Maps):* https://maps.app.goo.gl/KdSvqi1b2iAe5xgg8\n` +
         `✨ *Nota:* Recuerda que cancelas el valor en el spa (sin cobros anticipados).\n\n` +
         `Por favor, confirma tu asistencia seleccionando una opción o respondiendo:\n` +
         `1️⃣ *Confirmar cita*\n` +

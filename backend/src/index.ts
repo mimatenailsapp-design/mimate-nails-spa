@@ -1284,6 +1284,7 @@ app.post('/api/spa/reservar', async (req: Request, res: Response) => {
       `⏱️ *Duración aprox:* ${duracion_minutos} min\n` +
       `💰 *Valor a pagar:* ${precioFmt}\n\n` +
       `📍 *Dirección:* Pereira, Cuba (Calle 66 bis #26-57)\n` +
+      `🗺️ *Ubicación Maps:* https://maps.app.goo.gl/KdSvqi1b2iAe5xgg8\n` +
       `🏢 *Lugar:* JL Mímate Nails - Spa de Uñas\n\n` +
       `───────────────\n` +
       avisoReagendado +

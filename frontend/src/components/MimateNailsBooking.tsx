@@ -119,7 +119,8 @@ const CATEGORIAS = [
   'Recubrimiento & Cuidado',
 ];
 
-const DIRECCION_SPA_QUERY = encodeURIComponent('Calle 66 bis #26-57, Pereira, Risaralda');
+const GOOGLE_MAPS_SPA_URL = 'https://maps.app.goo.gl/KdSvqi1b2iAe5xgg8';
+const APPLE_MAPS_SPA_URL = 'https://maps.apple.com/?q=M%C3%ADmate+Nails&ll=4.8067489,-75.7350633';
 
 function obtenerUrlMapaSpa(): string {
   if (typeof navigator !== 'undefined') {
@@ -127,10 +128,10 @@ function obtenerUrlMapaSpa(): string {
       /iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent) &&
       !/Windows|Android/.test(navigator.userAgent);
     if (esApple) {
-      return `https://maps.apple.com/?q=${DIRECCION_SPA_QUERY}`;
+      return APPLE_MAPS_SPA_URL;
     }
   }
-  return `https://www.google.com/maps/search/?api=1&query=${DIRECCION_SPA_QUERY}`;
+  return GOOGLE_MAPS_SPA_URL;
 }
 
 interface Props {

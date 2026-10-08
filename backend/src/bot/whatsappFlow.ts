@@ -441,6 +441,7 @@ export class WhatsAppFlow {
         `🌸✨ *¡HOLA${saludoNombre ? saludoNombre.toUpperCase() : ' REINA'}! BIENVENIDA A JL MÍMATE NAILS* ✨🌸\n\n` +
         `Nos alegra mucho saludarte. Para agendar tu cita, ver nuestros servicios y elegir tu manicurista preferida, abre nuestra agenda tocando el botón a continuación:\n\n` +
         `📍 Pereira, Cuba (Calle 66 bis #26-57)\n` +
+        `🗺️ Maps: https://maps.app.goo.gl/KdSvqi1b2iAe5xgg8\n` +
         `💅 Sin cobros anticipados (pagas en el spa).\n\n` +
         `¡Te esperamos con amor para consentirte! 💕`;
 
@@ -962,6 +963,7 @@ export class WhatsAppFlow {
               `⏰ Horario: *${horaIniNorm} - ${horaFinNorm}*\n` +
               `💰 Valor: *${totalFmt}*\n\n` +
               `📍 Te esperamos con todo el amor en nuestro spa (Pereira, Cuba - Calle 66 bis #26-57).\n` +
+              `🗺️ Cómo llegar: https://maps.app.goo.gl/KdSvqi1b2iAe5xgg8\n` +
               `✨ El pago lo realizas directamente en el spa al recibir tu atención (sin cobro anticipado).\n\n` +
               `🔔 Te enviaremos un recordatorio 1 día antes con opciones interactivas para gestionar tu cita. ¡Nos vemos para consentirte reina! 💕💅`,
           };
@@ -975,6 +977,7 @@ export class WhatsAppFlow {
             `⏰ Horario: *${horaIniNorm} - ${horaFinNorm}*\n` +
             `💰 Valor: *${totalFmt}*\n\n` +
             `📍 Te esperamos con todo el amor en nuestro spa (Pereira, Cuba - Calle 66 bis #26-57).\n` +
+            `🗺️ Cómo llegar: https://maps.app.goo.gl/KdSvqi1b2iAe5xgg8\n` +
             `✨ El pago lo realizas directamente en el spa al recibir tu atención (sin cobro anticipado).\n\n` +
             `🔔 Te enviaremos un recordatorio 1 día antes con opciones para gestionar tu cita. ¡Nos vemos para consentirte reina! 💕💅`,
         };
@@ -1457,6 +1460,7 @@ export class WhatsAppFlow {
           `🌸✨ *¡CITA CONFIRMADA EXITOSAMENTE!* ✨🌸\n\n` +
           `¡Muchísimas gracias reina! Tu asistencia para el *${fechaCita}* a las *${horaInicio}* con *${cancha.nombre}* está 100% confirmada.\n\n` +
           `📍 Te esperamos con todo el amor en nuestro spa (Pereira, Cuba - Calle 66 bis #26-57).\n` +
+          `🗺️ Cómo llegar: https://maps.app.goo.gl/KdSvqi1b2iAe5xgg8\n` +
           `¡Nos vemos mañana para consentirte y dejarte hermosa! 💕💅`,
       };
     }
