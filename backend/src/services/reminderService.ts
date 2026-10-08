@@ -67,6 +67,8 @@ export class ReminderService {
 
       let mensaje = '';
 
+      let botonesOpciones: Array<{ id: string; title: string }> | undefined;
+
       if (complejo?.slug === 'mimate-nails' || complejo?.tipo_negocio === 'belleza_unas') {
         let servicio = 'tu servicio de uñas';
         const matchSvc = notas.match(/Servicio:\s*([^|[\n]+)/i);
@@ -80,8 +82,18 @@ export class ReminderService {
           `📅 *Fecha:* ${fechaCita}\n` +
           `⏰ *Hora:* ${horaInicio}\n\n` +
           `📍 *Lugar:* Pereira, Cuba (Calle 66 bis #26-57)\n` +
-          `✨ *Nota:* Recuerda que cancelas el valor en el spa (sin cobros anticipados).\n` +
-          `Si necesitas reprogramar o tienes alguna pregunta, respóndenos a este mensaje. ¡Nos vemos mañana para consentirte reina! 💕`;
+          `✨ *Nota:* Recuerda que cancelas el valor en el spa (sin cobros anticipados).\n\n` +
+          `Por favor, confirma tu asistencia seleccionando una opción o respondiendo:\n` +
+          `1️⃣ *Confirmar cita*\n` +
+          `2️⃣ *Cancelar cita*\n` +
+          `3️⃣ *Cambiar fecha (Reagendar)*\n\n` +
+          `¡Nos vemos mañana para consentirte reina! 💕`;
+
+        botonesOpciones = [
+          { id: `confirmar_cita_${r.id}`, title: '✅ Confirmar Cita' },
+          { id: `cancelar_cita_${r.id}`, title: '❌ Cancelar Cita' },
+          { id: `reagendar_cita_${r.id}`, title: '📅 Cambiar Fecha' },
+        ];
       } else {
         mensaje =
           `🔔 *RECORDATORIO DE TU RESERVA MAÑANA*\n\n` +
@@ -89,10 +101,26 @@ export class ReminderService {
           `🏟️ *Espacio / Recurso:* ${cancha.nombre}\n` +
           `📅 *Fecha:* ${fechaCita}\n` +
           `⏰ *Hora:* ${horaInicio}\n\n` +
-          `¡Te esperamos puntualmente! Si tienes dudas, contáctanos por este medio.`;
+          `Por favor responde o selecciona:\n` +
+          `1️⃣ Confirmar cita\n` +
+          `2️⃣ Cancelar cita\n` +
+          `3️⃣ Cambiar fecha\n\n` +
+          `¡Te esperamos puntualmente!`;
+
+        botonesOpciones = [
+          { id: `confirmar_cita_${r.id}`, title: '✅ Confirmar Cita' },
+          { id: `cancelar_cita_${r.id}`, title: '❌ Cancelar Cita' },
+          { id: `reagendar_cita_${r.id}`, title: '📅 Cambiar Fecha' },
+        ];
       }
 
-      await this.enviarWhatsApp(telefono, mensaje, complejo?.whatsapp_token, complejo?.whatsapp_phone_number_id);
+      await this.enviarWhatsApp(
+        telefono,
+        mensaje,
+        complejo?.whatsapp_token,
+        complejo?.whatsapp_phone_number_id,
+        botonesOpciones
+      );
 
       await supabase
         .from('reservas')
@@ -164,7 +192,13 @@ export class ReminderService {
     return { enviados };
   }
 
-  private static async enviarWhatsApp(to: string, message: string, tokenOverride?: string, phoneIdOverride?: string) {
+  private static async enviarWhatsApp(
+    to: string,
+    message: string,
+    tokenOverride?: string,
+    phoneIdOverride?: string,
+    botones?: Array<{ id: string; title: string }>
+  ) {
     let cleanPhone = to.replace(/\D/g, '');
     if (cleanPhone.length === 10 && cleanPhone.startsWith('3')) {
       cleanPhone = `57${cleanPhone}`;
@@ -175,9 +209,53 @@ export class ReminderService {
 
     if (!token || !phoneId) {
       console.log(`[RECORDATORIO AUTOMÁTICO WHATSAPP a ${cleanPhone}]:\n${message}`);
+      if (botones && botones.length > 0) {
+        console.log(`[BOTONES DE RESPUESTA]:`, botones);
+      }
       return;
     }
 
+    // 1. Si hay botones interactivos disponibles, intentar enviar formato interactivo
+    if (botones && botones.length > 0) {
+      try {
+        const payloadInteractivo = {
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: cleanPhone,
+          type: 'interactive',
+          interactive: {
+            type: 'button',
+            body: { text: message },
+            action: {
+              buttons: botones.map((b) => ({
+                type: 'reply',
+                reply: {
+                  id: String(b.id || '').slice(0, 200),
+                  title: String(b.title || '').slice(0, 20),
+                },
+              })),
+            },
+          },
+        };
+
+        const res = await axios.post(
+          `https://graph.facebook.com/v21.0/${phoneId}/messages`,
+          payloadInteractivo,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+        console.log(`✅ [RECORDATORIO INTERACTIVO WHATSAPP ENVIADO a ${cleanPhone}]: ID ${res.data?.messages?.[0]?.id}`);
+        return;
+      } catch (errInteractivo: any) {
+        console.warn(`⚠️ Error enviando botones interactivos de WhatsApp (${errInteractivo.message}), recurriendo a mensaje de texto estándar...`);
+      }
+    }
+
+    // 2. Envío en texto estándar como fallback
     try {
       const res = await axios.post(
         `https://graph.facebook.com/v21.0/${phoneId}/messages`,

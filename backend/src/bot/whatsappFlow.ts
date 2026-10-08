@@ -80,6 +80,12 @@ export class WhatsAppFlow {
 
       const input = texto.trim().toLowerCase();
 
+      // Detección de respuesta al menú de recordatorio (Confirmar, Cancelar o Reagendar)
+      const resRecordatorio = await this.manejarRespuestaRecordatorio(telefono, texto, input, complejo, session);
+      if (resRecordatorio) {
+        return resRecordatorio;
+      }
+
       if (input === 'reiniciar' || input === 'menu' || input === 'cancelar' || (input === 'hola' && session.paso !== 'INICIO' && session.paso !== 'ESPERA_PAGO')) {
         session.paso = 'INICIO';
       }
@@ -1356,5 +1362,209 @@ export class WhatsAppFlow {
       fecha: fechaMatch,
       hora: horaMatch,
     };
+  }
+
+  /**
+   * Procesa respuestas al recordatorio de 1 día antes:
+   * 1. Confirmar cita
+   * 2. Cancelar cita
+   * 3. Cambiar fecha (Reagendar con enlace web y preservación de cita anterior)
+   */
+  private static async manejarRespuestaRecordatorio(
+    telefono: string,
+    texto: string,
+    input: string,
+    complejo: Complejo,
+    session: UserSession
+  ): Promise<BotResponse | null> {
+    const matchId = texto.match(/(?:confirmar|cancelar|reagendar|cambiar_fecha)_cita_([a-zA-Z0-9-]+)/i);
+    const idDirecto = matchId ? matchId[1] : null;
+
+    const esConfirmar =
+      (idDirecto !== null && texto.includes('confirmar_cita_')) ||
+      input === '1' ||
+      input === 'confirmar' ||
+      input === 'confirmar cita' ||
+      input === 'confirmo' ||
+      input.includes('confirmar cita');
+
+    const esCancelar =
+      (idDirecto !== null && texto.includes('cancelar_cita_')) ||
+      input === '2' ||
+      input === 'cancelar cita' ||
+      input === 'cancelo' ||
+      input.includes('cancelar cita');
+
+    const esReagendar =
+      (idDirecto !== null && (texto.includes('reagendar_cita_') || texto.includes('cambiar_fecha_'))) ||
+      input === '3' ||
+      input === 'cambiar fecha' ||
+      input === 'reagendar' ||
+      input === 'reprogramar' ||
+      input === 'cambio de fecha' ||
+      input.includes('cambiar fecha') ||
+      input.includes('reagendar');
+
+    if (!esConfirmar && !esCancelar && !esReagendar) {
+      return null;
+    }
+
+    if (!idDirecto && session.paso !== 'INICIO') {
+      return null;
+    }
+
+    let reserva: any = null;
+
+    if (idDirecto) {
+      const { data } = await supabase
+        .from('reservas')
+        .select('*, canchas!inner(*, complejos!inner(*)), clientes(*)')
+        .eq('id', idDirecto)
+        .maybeSingle();
+      reserva = data;
+    }
+
+    if (!reserva) {
+      const cleanTel = telefono.replace(/\D/g, '');
+      const telVariaciones = [
+        telefono,
+        cleanTel,
+        cleanTel.startsWith('57') ? cleanTel.slice(2) : `57${cleanTel}`,
+      ];
+
+      const { data: clientes } = await supabase
+        .from('clientes')
+        .select('id')
+        .in('telefono_wa', telVariaciones);
+
+      const clienteIds = (clientes || []).map((c) => c.id);
+
+      if (clienteIds.length > 0) {
+        const { data: proxReservas } = await supabase
+          .from('reservas')
+          .select('*, canchas!inner(*, complejos!inner(*)), clientes(*)')
+          .in('cliente_id', clienteIds)
+          .eq('estado', 'confirmada')
+          .gte('fecha_inicio', new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString())
+          .order('fecha_inicio', { ascending: true })
+          .limit(1);
+
+        if (proxReservas && proxReservas.length > 0) {
+          reserva = proxReservas[0];
+        }
+      }
+    }
+
+    if (!reserva) {
+      if (idDirecto || input.includes('cita')) {
+        return {
+          texto: `Hola, no encontramos una cita activa para confirmar o modificar en este momento. Si deseas programar una nueva cita, escribe *MENU*. 🌸`,
+        };
+      }
+      return null;
+    }
+
+    const cancha = reserva.canchas as any;
+    const complejoRes = cancha?.complejos as any || complejo;
+    const esSpa = complejoRes?.slug === 'mimate-nails' || complejoRes?.tipo_negocio === 'belleza_unas';
+
+    const fechaCita = new Date(reserva.fecha_inicio).toLocaleDateString('es-CO', {
+      timeZone: 'America/Bogota',
+      weekday: 'long',
+      day: '2-digit',
+      month: '2-digit',
+    });
+    const horaInicio = new Date(reserva.fecha_inicio).toLocaleTimeString('es-CO', {
+      timeZone: 'America/Bogota',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+
+    // CASO 1: CONFIRMAR CITA
+    if (esConfirmar) {
+      const notasActuales = reserva.notas || '';
+      if (!notasActuales.includes('[CONFIRMADA_POR_CLIENTA]')) {
+        await supabase
+          .from('reservas')
+          .update({ notas: `${notasActuales} [CONFIRMADA_POR_CLIENTA]`.trim() })
+          .eq('id', reserva.id);
+      }
+
+      if (esSpa) {
+        return {
+          texto:
+            `🌸✨ *¡CITA CONFIRMADA EXITOSAMENTE!* ✨🌸\n\n` +
+            `¡Muchísimas gracias reina! Tu asistencia para el *${fechaCita}* a las *${horaInicio}* con *${cancha.nombre}* está 100% confirmada.\n\n` +
+            `📍 Te esperamos con todo el amor en nuestro spa (Pereira, Cuba - Calle 66 bis #26-57).\n` +
+            `¡Nos vemos mañana para consentirte y dejarte hermosa! 💕💅`,
+        };
+      } else {
+        return {
+          texto:
+            `✅ *¡RESERVA CONFIRMADA EXITOSAMENTE!*\n\n` +
+            `Muchas gracias. Tu reserva para el *${fechaCita}* a las *${horaInicio}* en *${cancha.nombre}* está confirmada.\n\n` +
+            `¡Te esperamos puntualmente! 🏟️`,
+        };
+      }
+    }
+
+    // CASO 2: CANCELAR CITA
+    if (esCancelar) {
+      const notasActuales = reserva.notas || '';
+      await supabase
+        .from('reservas')
+        .update({
+          estado: 'cancelada',
+          notas: `${notasActuales} [CANCELADA_POR_CLIENTA]`.trim(),
+        })
+        .eq('id', reserva.id);
+
+      if (esSpa) {
+        return {
+          texto:
+            `🌸 *CITA CANCELADA*\n\n` +
+            `Hemos cancelado tu cita del *${fechaCita}* a las *${horaInicio}* con *${cancha.nombre}* y liberado el cupo en la agenda.\n\n` +
+            `Lamentamos que no puedas acompañarnos esta vez. Cuando desees volver a consentirte, puedes agendar en cualquier momento escribiendo *MENU* o desde nuestra web. ¡Que tengas un lindo día! 💕`,
+        };
+      } else {
+        return {
+          texto:
+            `❌ *RESERVA CANCELADA*\n\n` +
+            `Tu reserva del *${fechaCita}* a las *${horaInicio}* ha sido cancelada y el espacio ha sido liberado.\n\n` +
+            `Esperamos verte pronto en una próxima ocasión. 🏟️`,
+        };
+      }
+    }
+
+    // CASO 3: REAGENDAR (CAMBIAR FECHA)
+    if (esReagendar) {
+      const baseUrl = process.env.FRONTEND_URL || 'https://mimate-nails-spa.vercel.app';
+      const linkReagendar = `${baseUrl}/?reagendar=${reserva.id}`;
+
+      if (esSpa) {
+        return {
+          texto:
+            `📅✨ *REAGENDAR CITA - JL MÍMATE NAILS* ✨🌸\n\n` +
+            `¡Claro que sí reina! Para elegir una nueva fecha y horario disponible, ingresa a este enlace:\n\n` +
+            `👉 *${linkReagendar}*\n\n` +
+            `💡 *Ten presente:*\n` +
+            `• Tu cita actual (*${fechaCita}* a las *${horaInicio}*) *permanece guardada* hasta que confirmes la nueva fecha en el enlace.\n` +
+            `• Si completas la nueva reserva en la página, tu cita anterior se cancelará automáticamente y quedará vigente la nueva.\n` +
+            `• Si no reagendas, tu cita original seguirá tal cual como la tienes programada.\n\n` +
+            `¡Haz clic en el enlace para elegir tu nuevo horario! 💕💅`,
+        };
+      } else {
+        return {
+          texto:
+            `📅 *CAMBIAR FECHA DE RESERVA*\n\n` +
+            `Puedes elegir una nueva fecha y horario ingresando al siguiente enlace:\n\n` +
+            `👉 *${linkReagendar}*\n\n` +
+            `Nota: Tu reserva actual se mantendrá activa hasta que confirmes la nueva en el enlace.`,
+        };
+      }
+    }
+
+    return null;
   }
 }

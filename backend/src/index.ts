@@ -488,6 +488,24 @@ app.patch('/api/reservas/:id/estado', async (req: Request, res: Response) => {
   res.json(data);
 });
 
+// Obtener detalles de una reserva por ID
+app.get('/api/reservas/:id', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  try {
+    const { data: reserva, error } = await supabase
+      .from('reservas')
+      .select('*, canchas(*), clientes(*)')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error) return res.status(500).json({ error: error.message });
+    if (!reserva) return res.status(404).json({ error: 'Reserva no encontrada' });
+    res.json(reserva);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Eliminar una reserva (Cancelar y remover del sistema)
 app.delete('/api/reservas/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
@@ -994,7 +1012,8 @@ app.post('/api/spa/reservar', async (req: Request, res: Response) => {
     hora,
     cancha_id,
     cliente_nombre,
-    cliente_telefono
+    cliente_telefono,
+    reagendar_reserva_id
   } = req.body;
 
   if (!fecha || !hora || !cliente_telefono || !cliente_nombre) {
@@ -1029,7 +1048,7 @@ app.post('/api/spa/reservar', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'No puedes reservar un horario que ya pasó.' });
     }
 
-    // 2. Buscar reservas activas solapadas en esta franja para evitar duplicados
+    // 2. Buscar reservas activas solapadas en esta franja para evitar duplicados (excluyendo cita anterior si es reagendamiento)
     const { data: reservasSolapadas } = await supabase
       .from('reservas')
       .select('id, cancha_id, fecha_inicio, fecha_fin')
@@ -1038,7 +1057,9 @@ app.post('/api/spa/reservar', async (req: Request, res: Response) => {
       .lt('fecha_inicio', dFin.toISOString())
       .gt('fecha_fin', dInicio.toISOString());
 
-    const ocupadasIds = (reservasSolapadas || []).map(r => r.cancha_id);
+    const ocupadasIds = (reservasSolapadas || [])
+      .filter(r => !reagendar_reserva_id || r.id !== reagendar_reserva_id)
+      .map(r => r.cancha_id);
 
     let empleadaAsignada: any;
 
@@ -1090,6 +1111,19 @@ app.post('/api/spa/reservar', async (req: Request, res: Response) => {
 
     if (errRes) throw errRes;
 
+    // Si la reserva proviene de un flujo de reagendamiento, eliminar la reserva anterior para liberar el cupo previo
+    if (reagendar_reserva_id) {
+      try {
+        console.log(`[REAGENDAMIENTO] Eliminando cita anterior ID: ${reagendar_reserva_id} tras confirmar nueva cita`);
+        await supabase
+          .from('reservas')
+          .delete()
+          .eq('id', reagendar_reserva_id);
+      } catch (delErr: any) {
+        console.warn(`[REAGENDAMIENTO] Error eliminando cita previa ${reagendar_reserva_id}:`, delErr.message);
+      }
+    }
+
     // Formatear precio en pesos colombianos ($25.000)
     const numPrecio = Number(precio || 0);
     const precioFmt = '$' + numPrecio.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
@@ -1101,6 +1135,10 @@ app.post('/api/spa/reservar', async (req: Request, res: Response) => {
       month: '2-digit',
       year: 'numeric',
     });
+
+    const avisoReagendado = reagendar_reserva_id
+      ? `🔄 *Cita reagendada con éxito:* Tu cita anterior fue cancelada y actualizada a este nuevo horario.\n\n`
+      : '';
 
     const voucherWhatsApp =
       `🌸 *JL MÍMATE NAILS* 🌸\n` +
@@ -1116,6 +1154,7 @@ app.post('/api/spa/reservar', async (req: Request, res: Response) => {
       `📍 *Dirección:* Pereira, Cuba (Calle 66 bis #26-57)\n` +
       `🏢 *Lugar:* JL Mímate Nails - Spa de Uñas\n\n` +
       `───────────────\n` +
+      avisoReagendado +
       `Si necesitas reprogramar o tienes alguna duda, puedes responder directamente a este mensaje.\n` +
       `¡Nos vemos pronto para consentirte reina! 💕🌸`;
 

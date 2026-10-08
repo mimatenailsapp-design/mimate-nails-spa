@@ -156,7 +156,16 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
     telefono: string;
   } | null>(null);
 
-  // Cargar info del spa desde el backend si está disponible
+  // Parámetro de reagendamiento desde recordatorio WhatsApp (?reagendar=<id>)
+  const [reagendarId, setReagendarId] = useState<string | null>(null);
+  const [citaPreviaInfo, setCitaPreviaInfo] = useState<{
+    fecha?: string;
+    hora?: string;
+    servicio?: string;
+    manicurista?: string;
+  } | null>(null);
+
+  // Cargar info del spa y detectar parámetro de reagendamiento
   useEffect(() => {
     fetch('/api/spa/info')
       .then((r) => r.json())
@@ -166,6 +175,46 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
         }
       })
       .catch(() => {});
+
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const rId = params.get('reagendar');
+      if (rId) {
+        setReagendarId(rId);
+        fetch(`/api/reservas/${rId}`)
+          .then((r) => r.json())
+          .then((data) => {
+            if (data && !data.error) {
+              const cliente = data.clientes;
+              if (cliente?.nombre) setNombre(cliente.nombre);
+              if (cliente?.telefono_wa) {
+                const telRaw = cliente.telefono_wa.replace(/^57/, '');
+                setTelefono(telRaw);
+              }
+              const cancha = data.canchas;
+              const fInicio = new Date(data.fecha_inicio);
+              const fStr = fInicio.toLocaleDateString('es-CO', {
+                timeZone: 'America/Bogota',
+                weekday: 'short',
+                day: 'numeric',
+                month: 'short',
+              });
+              const hStr = fInicio.toLocaleTimeString('es-CO', {
+                timeZone: 'America/Bogota',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false,
+              });
+              setCitaPreviaInfo({
+                fecha: fStr,
+                hora: hStr,
+                manicurista: cancha?.nombre,
+              });
+            }
+          })
+          .catch(() => {});
+      }
+    } catch {}
   }, []);
 
   const cargarSlots = (f = fecha, emp = empleadaId) => {
@@ -237,6 +286,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
           cancha_id: empleadaId || undefined,
           cliente_nombre: nombre.trim(),
           cliente_telefono: telefono.trim(),
+          reagendar_reserva_id: reagendarId || undefined,
         }),
       });
 
@@ -324,6 +374,31 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
 
       {/* CONTENEDOR PRINCIPAL */}
       <main className="max-w-3xl mx-auto px-4 pb-20 -mt-6 relative z-20 space-y-8">
+        {/* BANNER INFORMATIVO SI VIENE DESDE WHATSAPP PARA REAGENDAR */}
+        {reagendarId && (
+          <div className="bg-gradient-to-r from-[#8C243B] via-[#A82B47] to-[#C74B66] text-white p-4 sm:p-5 rounded-2xl shadow-md border border-[#F2C4D2] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0 text-xl backdrop-blur-xs">
+                🔄
+              </div>
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <p className="font-extrabold text-sm sm:text-base">Modo Reagendamiento</p>
+                  <span className="bg-white/25 text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full font-bold">
+                    Paso Activo
+                  </span>
+                </div>
+                <p className="text-xs text-pink-100 leading-relaxed">
+                  {citaPreviaInfo
+                    ? `Cita previa: ${citaPreviaInfo.fecha} a las ${citaPreviaInfo.hora} con ${citaPreviaInfo.manicurista || 'especialista'}. `
+                    : ''}
+                  Elige tu nuevo horario o servicio abajo. Tu cita anterior seguirá activa y guardada hasta que confirmes la nueva fecha.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* FILA DE 3 TARJETAS FLOTANTES DE INFORMACIÓN */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="bg-white border border-[#F2C4D2] rounded-2xl p-4 text-center shadow-xs space-y-1">
@@ -685,6 +760,15 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                       </p>
                     </div>
 
+                    {reagendarId && (
+                      <div className="bg-[#FFF0F4] border border-[#F2C4D2] rounded-xl p-3 flex items-start gap-2 text-xs text-[#8C243B]">
+                        <span className="text-base shrink-0">🔄</span>
+                        <p className="leading-snug">
+                          <strong>Reagendamiento:</strong> Al confirmar esta nueva cita, tu cita previa se cancelará automáticamente y quedará vigente este nuevo horario.
+                        </p>
+                      </div>
+                    )}
+
                     {/* Botones volver y confirmar */}
                     <div className="flex items-center gap-2 pt-2">
                       <button
@@ -728,6 +812,13 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                         <strong className="text-[#8C243B]">{reservaConfirmada.telefono}</strong>.
                       </p>
                     </div>
+
+                    {reagendarId && (
+                      <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl p-3 text-xs flex items-center justify-center gap-2 font-medium">
+                        <span>✓</span>
+                        <span>Tu cita previa fue cancelada y reemplazada con éxito por este nuevo turno.</span>
+                      </div>
+                    )}
 
                     {/* Tarjeta de recordatorio automático 1 día antes */}
                     <div className="bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl p-3 text-left flex items-start gap-2.5 text-xs">
