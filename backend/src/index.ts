@@ -116,6 +116,62 @@ app.get('/api/debug/phone-info', async (req: Request, res: Response) => {
   }
 });
 
+app.get('/api/debug/subscribe-waba', async (req: Request, res: Response) => {
+  const token = (process.env.WHATSAPP_TOKEN || '').trim();
+  const phoneId = (process.env.WHATSAPP_PHONE_NUMBER_ID || '').trim();
+
+  if (!token || !phoneId) {
+    return res.status(500).json({ error: 'Faltan credenciales en Render' });
+  }
+
+  try {
+    // 1. Obtener la WABA (WhatsApp Business Account) vinculada a este número
+    const phoneRes = await axios.get(
+      `https://graph.facebook.com/v21.0/${phoneId}?fields=whatsapp_business_account`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    const wabaId = phoneRes.data?.whatsapp_business_account?.id;
+
+    if (!wabaId) {
+      return res.status(400).json({
+        error: 'No se pudo obtener el WABA ID',
+        phone_response: phoneRes.data,
+      });
+    }
+
+    // 2. Suscribir la app a la WABA (Esencial para que Meta dispare los webhooks de mensajes reales)
+    const subRes = await axios.post(
+      `https://graph.facebook.com/v21.0/${wabaId}/subscribed_apps`,
+      {},
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+
+    // 3. Consultar las apps suscritas actualmente
+    const checkRes = await axios.get(
+      `https://graph.facebook.com/v21.0/${wabaId}/subscribed_apps`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+
+    return res.json({
+      success: true,
+      waba_id: wabaId,
+      subscripcion_result: subRes.data,
+      apps_suscritas: checkRes.data,
+    });
+  } catch (err: any) {
+    return res.status(err.response?.status || 500).json({
+      success: false,
+      error: err.response?.data || err.message,
+    });
+  }
+});
+
 app.post('/api/debug/test-send', async (req: Request, res: Response) => {
   const { to, text } = req.body;
   if (!to) {
