@@ -41,17 +41,23 @@ app.get('/webhook', (req: Request, res: Response) => {
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
 
-  const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN || 'token_secreto_para_webhook_12345';
+  const configuredToken = (process.env.WHATSAPP_VERIFY_TOKEN || '').trim().replace(/^["']|["']$/g, '');
+  const defaultToken = 'token_secreto_para_webhook_12345';
+  const cleanIncoming = String(token || '').trim().replace(/^["']|["']$/g, '');
 
   if (mode && token) {
-    if (mode === 'subscribe' && token === VERIFY_TOKEN) {
+    if (
+      mode === 'subscribe' &&
+      (cleanIncoming === defaultToken || (configuredToken && cleanIncoming === configuredToken))
+    ) {
       console.log('✅ Webhook de WhatsApp verificado con éxito');
-      res.status(200).send(challenge);
+      return res.status(200).send(challenge);
     } else {
-      res.sendStatus(403);
+      console.warn(`❌ Intento de verificación fallido. Esperado: '${configuredToken || defaultToken}', recibido: '${cleanIncoming}'`);
+      return res.sendStatus(403);
     }
   } else {
-    res.sendStatus(400);
+    return res.sendStatus(400);
   }
 });
 
