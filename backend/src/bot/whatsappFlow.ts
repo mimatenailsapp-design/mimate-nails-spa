@@ -441,7 +441,6 @@ export class WhatsAppFlow {
         `🌸✨ *¡HOLA${saludoNombre ? saludoNombre.toUpperCase() : ' REINA'}! BIENVENIDA A JL MÍMATE NAILS* ✨🌸\n\n` +
         `Nos alegra mucho saludarte. Para agendar tu cita, ver nuestros servicios y elegir tu manicurista preferida, abre nuestra agenda tocando el botón a continuación:\n\n` +
         `📍 Pereira, Cuba (Calle 66 bis #26-57)\n` +
-        `🗺️ Maps: https://maps.app.goo.gl/KdSvqi1b2iAe5xgg8\n` +
         `💅 Sin cobros anticipados (pagas en el spa).\n\n` +
         `¡Te esperamos con amor para consentirte! 💕`;
 
