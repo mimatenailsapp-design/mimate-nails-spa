@@ -3,17 +3,11 @@ import { Complejo, Cancha } from './bookingService.js';
 
 export interface ContextoExtraido {
   esContextual: boolean;
-  intencion: 'RESERVA' | 'PEDIDO' | 'CONSULTA' | 'ASESOR' | 'OTRO';
+  intencion: 'RESERVA' | 'CONSULTA' | 'ASESOR' | 'OTRO';
   cancha?: Cancha;
   fecha?: string; // YYYY-MM-DD
   hora?: string; // HH:MM (ej. "16:00", "09:00")
   duracionHoras: number;
-  // Para pedidos (Graniza2KL)
-  esPedido?: boolean;
-  pedidoDetalle?: string;
-  pedidoTotal?: number;
-  pedidoDireccion?: string;
-  pedidoItems?: string[];
   confianza: number;
 }
 
@@ -159,7 +153,7 @@ export class NLUIntentService {
 
   /**
    * Extrae la hora exacta (HH:MM) a partir de lenguaje natural sin confundirse
-   * con números de canchas ("futbol 5"), fechas ("2026-10-07") o direcciones ("calle 15").
+   * con identificadores de manicurista, fechas ("2026-10-07") o direcciones.
    */
   public static interpretarHora(texto: string): string | null {
     const t = texto.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -230,48 +224,33 @@ export class NLUIntentService {
 
     const t = texto.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
-    // 1. Búsqueda por deporte específico
-    const deportesKeywords: Record<string, string[]> = {
-      futbol: ['futbol', 'sintetica', 'microfutbol', 'balon', 'grama', 'soccer', 'cancha 1'],
-      padel: ['padel', 'cristal', 'panoramica', 'palas', 'cancha 2'],
-      tenis: ['tenis', 'ladrillo', 'polvo', 'raqueta', 'cancha 3'],
-      barberia: ['corte', 'barba', 'fade', 'barbero', 'cabello', 'peinado'],
-      belleza_unas: ['uñas', 'unas', 'acrilicas', 'semipermanente', 'pedicure', 'manicure', 'spa'],
+    // 1. Búsqueda por servicios de spa y uñas
+    const spaKeywords: Record<string, string[]> = {
+      belleza_unas: ['uñas', 'unas', 'acrilicas', 'semipermanente', 'pedicure', 'manicure', 'spa', 'ruber', 'polygel', 'dipping', 'esculpido'],
     };
 
-    // 2. Coincidencia directa por nombres de profesionales o nombres de canchas
+    // 2. Coincidencia directa por nombres de manicuristas
     for (const c of canchas) {
       const nombreCancha = c.nombre.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      const deporteCancha = (c.deporte || '').toLowerCase();
 
-      // Coincidencia con palabras clave del nombre (ej. "Camilo", "Mateo", "Valentina", "Sintética", "Cristal", "Ladrillo")
-      const palabras = nombreCancha.split(/[\s\-(),/]+/).filter((p) => p.length >= 4);
+      // Coincidencia con palabras clave del nombre (ej. "Manicurista 1", "Jenny", "Natha", etc.)
+      const palabras = nombreCancha.split(/[\s\-(),/]+/).filter((p) => p.length >= 3);
       for (const p of palabras) {
         if (t.includes(p)) {
           return c;
         }
       }
-
-      // Coincidencia si el deporte de la cancha está en el texto
-      if (deporteCancha && (t.includes(deporteCancha) || deporteCancha.split('_').some((sub) => sub.length >= 4 && t.includes(sub)))) {
-        return c;
-      }
     }
 
-    // 3. Coincidencia por deporte genérico según el diccionario
-    for (const [dep, palabras] of Object.entries(deportesKeywords)) {
+    // 3. Coincidencia por servicio genérico según el diccionario
+    for (const [, palabras] of Object.entries(spaKeywords)) {
       if (palabras.some((p) => t.includes(p))) {
-        const encontrada = canchas.find((c) => {
-          const d = (c.deporte || '').toLowerCase();
-          const n = c.nombre.toLowerCase();
-          return d.includes(dep) || palabras.some((p) => n.includes(p));
-        });
-        if (encontrada) return encontrada;
+        return canchas[0];
       }
     }
 
-    // 4. Si el usuario dijo "cita", "turno", "cancha" y el negocio es monotemático o hay una cancha principal
-    if (t.includes('cita') || t.includes('cancha') || t.includes('turno') || t.includes('jugar') || t.includes('reservar')) {
+    // 4. Si el usuario dijo "cita", "turno", "agendar", "reservar"
+    if (t.includes('cita') || t.includes('turno') || t.includes('agendar') || t.includes('reservar') || t.includes('uñas') || t.includes('unas')) {
       return canchas[0];
     }
 
@@ -299,23 +278,7 @@ export class NLUIntentService {
       };
     }
 
-    // Caso A: Negocio de Granizados / Pedidos a Domicilio (Graniza2KL)
-    if (complejo.tipo_negocio === 'pedidos' || complejo.slug === 'graniza2kl') {
-      const pedido = this.extraerPedidoGranizados(texto);
-      return {
-        esContextual: pedido.esPedido || !!pedido.direccion,
-        intencion: 'PEDIDO',
-        duracionHoras: 1,
-        esPedido: pedido.esPedido,
-        pedidoDetalle: pedido.resumen,
-        pedidoTotal: pedido.total,
-        pedidoDireccion: pedido.direccion,
-        pedidoItems: pedido.items,
-        confianza: pedido.esPedido ? 0.95 : 0.5,
-      };
-    }
-
-    // Caso B: Negocio de Reservas / Citas (Deportes, Barbería, Spa)
+    // Negocio de Reservas / Citas (JL Mímate Nails Spa)
     // 1. Extracción con motor local de reglas de alto rendimiento
     const fecha = this.interpretarFecha(texto) || undefined;
     const hora = this.interpretarHora(texto) || undefined;
@@ -328,7 +291,7 @@ export class NLUIntentService {
 
     const palabrasIntencion = [
       'reservar', 'reserva', 'apartar', 'aparta', 'separar', 'separa',
-      'cita', 'turno', 'jugar', 'cancha', 'corte', 'barba', 'partido',
+      'cita', 'turno', 'uñas', 'unas', 'manicure', 'pedicure', 'semipermanente', 'acrilico',
       'horario', 'espacio', 'cupo', 'quiero', 'necesito', 'tienes', 'disponible',
     ];
     const tieneIntencionReserva = palabrasIntencion.some((p) => t.includes(p)) || !!fecha || !!hora || !!cancha;
@@ -367,96 +330,6 @@ export class NLUIntentService {
   }
 
   /**
-   * Parser inteligente de Graniza2KL (Sabores con licor + Tamaños + Dirección)
-   */
-  public static extraerPedidoGranizados(texto: string): {
-    esPedido: boolean;
-    items: string[];
-    resumen: string;
-    total: number;
-    direccion?: string;
-  } {
-    const t = texto.toLowerCase();
-    const saboresDisponibles = [
-      { clave: 'maracuya', nombre: 'Maracuyá con Vodka (+18)' },
-      { clave: 'maracuyá', nombre: 'Maracuyá con Vodka (+18)' },
-      { clave: 'vodka', nombre: 'Maracuyá con Vodka (+18)' },
-      { clave: 'mango', nombre: 'Mango Biche Tequilero (+18)' },
-      { clave: 'biche', nombre: 'Mango Biche Tequilero (+18)' },
-      { clave: 'tequila', nombre: 'Mango Biche Tequilero (+18)' },
-      { clave: 'frutos rojos', nombre: 'Frutos Rojos con Ron (+18)' },
-      { clave: 'ron', nombre: 'Frutos Rojos con Ron (+18)' },
-      { clave: 'mora', nombre: 'Frutos Rojos con Ron (+18)' },
-      { clave: 'baileys', nombre: 'Café Baileys Frappé (+18)' },
-      { clave: 'cafe', nombre: 'Café Baileys Frappé (+18)' },
-      { clave: 'café', nombre: 'Café Baileys Frappé (+18)' },
-      { clave: 'tamarindo', nombre: 'Tamarindo Tequilero con Chamoy (+18)' },
-      { clave: 'chamoy', nombre: 'Tamarindo Tequilero con Chamoy (+18)' },
-      { clave: 'coco', nombre: 'Coco Loco con Ron (+18)' },
-      { clave: 'guaro', nombre: 'Granizado Antioqueño con Maracuyá (+18)' },
-      { clave: 'aguardiente', nombre: 'Granizado Antioqueño con Maracuyá (+18)' },
-    ];
-
-    let precioUnitario = 12000;
-    let tamanoStr = 'Clásico con Licor (16oz)';
-    if (t.includes('mega') || t.includes('24oz') || t.includes('grande')) {
-      precioUnitario = 17000;
-      tamanoStr = 'Mega Cóctel (24oz)';
-    } else if (t.includes('personal') || t.includes('12oz') || t.includes('pequeñ') || t.includes('pequen')) {
-      precioUnitario = 9000;
-      tamanoStr = 'Personal con Licor (12oz)';
-    }
-
-    let cantidadGlobal = 1;
-    const numMatch = t.match(/(\d+)\s*(?:granizado|vaso|coctel|cóctel|mega|clasico|personal|de)/i);
-    if (numMatch && parseInt(numMatch[1], 10) > 0) {
-      cantidadGlobal = parseInt(numMatch[1], 10);
-    } else if (t.includes('dos ') || t.includes('2 ')) {
-      cantidadGlobal = 2;
-    } else if (t.includes('tres ') || t.includes('3 ')) {
-      cantidadGlobal = 3;
-    } else if (t.includes('cuatro ') || t.includes('4 ')) {
-      cantidadGlobal = 4;
-    }
-
-    const itemsEncontrados: string[] = [];
-    const saboresProcesados = new Set<string>();
-
-    for (const s of saboresDisponibles) {
-      if (t.includes(s.clave) && !saboresProcesados.has(s.nombre)) {
-        saboresProcesados.add(s.nombre);
-        itemsEncontrados.push(`${cantidadGlobal}x Granizado ${tamanoStr} de ${s.nombre}`);
-      }
-    }
-
-    if (itemsEncontrados.length === 0 && (t.includes('granizado') || t.includes('granizados') || t.includes('coctel') || t.includes('licor'))) {
-      itemsEncontrados.push(`${cantidadGlobal}x Granizado ${tamanoStr} Especial (+18)`);
-    }
-
-    let direccion: string | undefined;
-    const dirRegex = /(?:calle|cra|carrera|cll|kr|av|avenida|diagonal|transversal|manzana|mz|barrio|conjunto|urbanizacion|pinares|álamos|alamos|centro)[^,\n.]+/i;
-    const dirMatch = texto.match(dirRegex);
-    if (dirMatch) {
-      direccion = dirMatch[0].trim();
-    } else {
-      const paraLa = texto.match(/(?:para|hacia|en)\s+(?:la\s+|el\s+)?([a-zA-Z0-9\s#\-_]{7,})/i);
-      if (paraLa && paraLa[1]) {
-        direccion = paraLa[1].trim();
-      }
-    }
-
-    const total = (itemsEncontrados.length || 1) * cantidadGlobal * precioUnitario;
-
-    return {
-      esPedido: itemsEncontrados.length > 0,
-      items: itemsEncontrados,
-      resumen: itemsEncontrados.join(' + '),
-      total,
-      direccion,
-    };
-  }
-
-  /**
    * Consulta a Gemini para parsing de intención y entidades complejas
    */
   private static async extraerConGemini(
@@ -466,12 +339,12 @@ export class NLUIntentService {
     apiKey: string
   ): Promise<ContextoExtraido | null> {
     const hoyStr = this.formatearIso(this.getFechaHoraColombia());
-    const listaCanchasStr = canchas.map((c) => `- ID: "${c.id}", Nombre: "${c.nombre}", Deporte: "${c.deporte}"`).join('\n');
+    const listaCanchasStr = canchas.map((c) => `- ID: "${c.id}", Especialista: "${c.nombre}"`).join('\n');
 
-    const prompt = `Actúa como un extractor NLU de reservas para un negocio en Colombia.
+    const prompt = `Actúa como un extractor NLU de citas para el spa de uñas JL Mímate Nails Spa en Colombia.
 Fecha de hoy en Colombia (UTC-5): ${hoyStr}.
-Establecimiento: "${complejo.nombre}" (${complejo.tipo_negocio || 'deportes'}).
-Canchas / Servicios disponibles:
+Establecimiento: "${complejo.nombre}".
+Manicuristas / Especialistas disponibles:
 ${listaCanchasStr}
 
 Mensaje del cliente:
@@ -480,8 +353,8 @@ Mensaje del cliente:
 Devuelve ÚNICAMENTE un objeto JSON válido con este formato:
 {
   "esContextual": true | false,
-  "intencion": "RESERVA" | "PEDIDO" | "CONSULTA" | "OTRO",
-  "canchaId": "ID de la cancha que mejor coincide o null",
+  "intencion": "RESERVA" | "CONSULTA" | "OTRO",
+  "canchaId": "ID de la manicurista que mejor coincide o null",
   "fecha": "YYYY-MM-DD o null si no se menciona",
   "hora": "HH:00 o null si no se menciona",
   "duracionHoras": 1 o 2

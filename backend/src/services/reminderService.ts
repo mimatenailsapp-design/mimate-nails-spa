@@ -6,7 +6,6 @@ export class ReminderService {
    * Ejecuta la rutina periódica de recordatorios:
    * 1. Recordatorio 1 día antes de la cita
    * 2. Recordatorio el mismo día de la cita
-   * 3. Recordatorio próximo de 2 a 3 horas para partidos deportivos
    */
   static async procesarRecordatoriosProximos() {
     const resDiaAntes = await this.procesarRecordatoriosDiaAntes();
@@ -69,50 +68,30 @@ export class ReminderService {
 
       let botonesOpciones: Array<{ id: string; title: string }> | undefined;
 
-      if (complejo?.slug === 'mimate-nails' || complejo?.tipo_negocio === 'belleza_unas') {
-        let servicio = 'tu servicio de uñas';
-        const matchSvc = notas.match(/Servicio:\s*([^|[\n]+)/i);
-        if (matchSvc && matchSvc[1]) servicio = matchSvc[1].trim();
+      let servicio = 'tu servicio de uñas';
+      const matchSvc = notas.match(/Servicio:\s*([^|[\n]+)/i);
+      if (matchSvc && matchSvc[1]) servicio = matchSvc[1].trim();
 
-        mensaje =
-          `💅✨ *RECORDATORIO DE TU CITA MAÑANA - JL MÍMATE NAILS* 🌸\n\n` +
-          `¡Hola *${nombreCliente}*! Te recordamos con mucho cariño tu cita programada para *mañana*:\n\n` +
-          `💅 *Servicio:* ${servicio}\n` +
-          `👩‍🎨 *Especialista:* ${cancha.nombre}\n` +
-          `📅 *Fecha:* ${fechaCita}\n` +
-          `⏰ *Hora:* ${horaInicio}\n\n` +
-          `📍 *Lugar:* Pereira, Cuba (Calle 66 bis #26-57)\n` +
-          `✨ *Nota:* Recuerda que cancelas el valor en el spa (sin cobros anticipados).\n\n` +
-          `Por favor, confirma tu asistencia seleccionando una opción o respondiendo:\n` +
-          `1️⃣ *Confirmar cita*\n` +
-          `2️⃣ *Cancelar cita*\n` +
-          `3️⃣ *Cambiar fecha (Reagendar)*\n\n` +
-          `¡Nos vemos mañana para consentirte reina! 💕`;
+      mensaje =
+        `💅✨ *RECORDATORIO DE TU CITA MAÑANA - JL MÍMATE NAILS* 🌸\n\n` +
+        `¡Hola *${nombreCliente}*! Te recordamos con mucho cariño tu cita programada para *mañana*:\n\n` +
+        `💅 *Servicio:* ${servicio}\n` +
+        `👩‍🎨 *Especialista:* ${cancha.nombre}\n` +
+        `📅 *Fecha:* ${fechaCita}\n` +
+        `⏰ *Hora:* ${horaInicio}\n\n` +
+        `📍 *Lugar:* Pereira, Cuba (Calle 66 bis #26-57)\n` +
+        `✨ *Nota:* Recuerda que cancelas el valor en el spa (sin cobros anticipados).\n\n` +
+        `Por favor, confirma tu asistencia seleccionando una opción o respondiendo:\n` +
+        `1️⃣ *Confirmar cita*\n` +
+        `2️⃣ *Cancelar cita*\n` +
+        `3️⃣ *Cambiar fecha (Reagendar)*\n\n` +
+        `¡Nos vemos mañana para consentirte reina! 💕`;
 
-        botonesOpciones = [
-          { id: `confirmar_cita_${r.id}`, title: '✅ Confirmar Cita' },
-          { id: `cancelar_cita_${r.id}`, title: '❌ Cancelar Cita' },
-          { id: `reagendar_cita_${r.id}`, title: '📅 Cambiar Fecha' },
-        ];
-      } else {
-        mensaje =
-          `🔔 *RECORDATORIO DE TU RESERVA MAÑANA*\n\n` +
-          `¡Hola *${nombreCliente}*! Te recordamos tu cita programada para mañana en *${complejo.nombre}*:\n\n` +
-          `🏟️ *Espacio / Recurso:* ${cancha.nombre}\n` +
-          `📅 *Fecha:* ${fechaCita}\n` +
-          `⏰ *Hora:* ${horaInicio}\n\n` +
-          `Por favor responde o selecciona:\n` +
-          `1️⃣ Confirmar cita\n` +
-          `2️⃣ Cancelar cita\n` +
-          `3️⃣ Cambiar fecha\n\n` +
-          `¡Te esperamos puntualmente!`;
-
-        botonesOpciones = [
-          { id: `confirmar_cita_${r.id}`, title: '✅ Confirmar Cita' },
-          { id: `cancelar_cita_${r.id}`, title: '❌ Cancelar Cita' },
-          { id: `reagendar_cita_${r.id}`, title: '📅 Cambiar Fecha' },
-        ];
-      }
+      botonesOpciones = [
+        { id: `confirmar_cita_${r.id}`, title: '✅ Confirmar Cita' },
+        { id: `cancelar_cita_${r.id}`, title: '❌ Cancelar Cita' },
+        { id: `reagendar_cita_${r.id}`, title: '📅 Cambiar Fecha' },
+      ];
 
       await this.enviarWhatsApp(
         telefono,

@@ -161,10 +161,6 @@ export class WhatsAppFlow {
         }
       }
 
-      // 1. FLUJO ESPECIAL PARA NEGOCIOS DE PEDIDOS Y DOMICILIOS (GRANIZA2KL)
-      if (complejo.tipo_negocio === 'pedidos' || complejo.slug === 'graniza2kl') {
-        return await this.manejarFlujoPedidos(telefono, texto, input, session, complejo, nombrePush, mediaId, mediaType);
-      }
 
       // 2. COMPRENSIÓN NATURAL DE CONTEXTO GLOBAL (Primer mensaje, segundo mensaje o en cualquier paso)
       const esComandoSistema = input.startsWith('cancha_') ||
@@ -403,12 +399,12 @@ export class WhatsAppFlow {
 
     if (canchas.length === 0) {
       return {
-        texto: `👋 ¡Hola ${nombrePush || ''}! Bienvenido a las reservas 24/7 de *${complejo.nombre}*.\n\n⚠️ Este complejo aún no tiene canchas activas registradas.`,
+        texto: `👋 ¡Hola ${nombrePush || ''}! Bienvenido a las reservas 24/7 de *${complejo.nombre}*.\n\n⚠️ Este spa aún no tiene manicuristas activas registradas.`,
       };
     }
 
-    // COMPRENSIÓN DE CONTEXTO INICIAL: Si el cliente escribió directamente lo que busca
-    // Ejemplos: "Hola quiero padel hoy a las 7pm", "Cita con Camilo mañana a las 3"
+    // COMPRENSIÓN DE CONTEXTO INICIAL: Si la clienta escribió directamente lo que busca
+    // Ejemplos: "Hola quiero manicura hoy a las 3pm", "Cita con Manicurista 1 mañana a las 11"
     if (textoMensaje && textoMensaje.trim().length > 3) {
       const inputLimpio = textoMensaje.trim().toLowerCase();
       const esSoloSaludo = ['hola', 'buenas', 'buen dia', 'buenos dias', 'buenas tardes', 'menu', 'reiniciar'].includes(inputLimpio);
@@ -528,7 +524,7 @@ export class WhatsAppFlow {
 
     if (!canchaEncontrada) {
       return {
-        texto: '⚠️ Por favor selecciona una opción válida del menú desplegable de canchas.',
+        texto: '⚠️ Por favor selecciona una opción válida del menú desplegable de manicuristas.',
       };
     }
 
@@ -580,11 +576,11 @@ export class WhatsAppFlow {
       { title: 'Otras Opciones'.slice(0, 24), rows: filasPersonalizadas },
     ];
 
-    const texto = `🏟️ Cancha elegida: *${session.canchaSeleccionada.nombre}*\n\n` +
-      `¿Para qué fecha deseas tu partido o cita?\n` +
+    const texto = `💅 Especialista: *${session.canchaSeleccionada.nombre}*\n\n` +
+      `¿Para qué fecha deseas tu cita?\n` +
       `• Despliega el menú tocando *[Elegir Fecha]*.\n` +
       `• O puedes **escribir directamente la fecha que quieras** (ej: *"18 de octubre"*, *"el viernes"*).\n` +
-      `• O escribe *ASESOR* en cualquier momento para hablar con un encargado.`;
+      `• O escribe *ASESOR* en cualquier momento para hablar con una encargada.`;
 
     return {
       texto,
@@ -757,7 +753,7 @@ export class WhatsAppFlow {
     // Si el usuario tocó "✏️ Escribir otra fecha" en el menú desplegable
     if (inputLimpio === 'fecha_personalizada' || inputLimpio.includes('otra fecha') || inputLimpio === 'otra') {
       return {
-        texto: `📅 *Escribe la fecha que deseas para tu partido:*\n\nPuedes escribirla con total libertad como prefieras:\n` +
+        texto: `📅 *Escribe la fecha que deseas para tu cita:*\n\nPuedes escribirla con total libertad como prefieras:\n` +
           `• Por nombre del mes: *"18 de octubre"*, *"5 de noviembre"*\n` +
           `• Por números: *"18/10"*, *"25/11/2026"*\n` +
           `• Por día relativo: *"el próximo viernes"*, *"el otro sábado"*\n\n` +
@@ -972,15 +968,15 @@ export class WhatsAppFlow {
         }
 
         return {
-          texto: `🎉 *¡RESERVA 100% CONFIRMADA!*\n\n` +
-            `🏢 Establecimiento: *${complejo.nombre}*\n` +
-            `🏟️ Cancha: *${session.canchaSeleccionada!.nombre}*\n` +
+          texto: `🌸✨ *¡CITA 100% CONFIRMADA EN JL MÍMATE NAILS!* ✨🌸\n\n` +
+            `🏢 Spa: *${complejo.nombre}*\n` +
+            `💅 Manicurista: *${session.canchaSeleccionada!.nombre}*\n` +
             `📅 Fecha: *${session.fechaSeleccionada}*\n` +
-            `⏰ Horario: *${horaIniNorm} - ${horaFinNorm}* (${duracionHoras === 2 ? '2 Horas seguidas' : '1 Hora'})\n` +
-            `💰 Total a pagar: *${totalFmt}*\n\n` +
-            `✅ *En este escenario no requieres abono previo.*\n` +
-            `El valor total de tu turno lo pagas en efectivo o transferencia al llegar a la recepción del complejo.\n\n` +
-            `🔔 Te recordaremos tu partido antes de la hora fijada. ¡Nos vemos en la cancha! ⚽🎾`,
+            `⏰ Horario: *${horaIniNorm} - ${horaFinNorm}*\n` +
+            `💰 Valor: *${totalFmt}*\n\n` +
+            `📍 Te esperamos con todo el amor en nuestro spa (Pereira, Cuba - Calle 66 bis #26-57).\n` +
+            `✨ El pago lo realizas directamente en el spa al recibir tu atención (sin cobro anticipado).\n\n` +
+            `🔔 Te enviaremos un recordatorio 1 día antes con opciones para gestionar tu cita. ¡Nos vemos para consentirte reina! 💕💅`,
         };
       }
 
@@ -994,11 +990,11 @@ export class WhatsAppFlow {
       const daviplata = complejo.daviplata_numero || nequi;
 
       return {
-        texto: `🔒 *¡Turno apartado temporalmente por 15 minutos!*\n\n` +
-          `🏢 Establecimiento: *${complejo.nombre}*\n` +
-          `🏟️ Cancha: *${session.canchaSeleccionada!.nombre}*\n` +
+        texto: `🔒 *¡Cita apartada temporalmente por 15 minutos!*\n\n` +
+          `🏢 Spa: *${complejo.nombre}*\n` +
+          `💅 Manicurista: *${session.canchaSeleccionada!.nombre}*\n` +
           `📅 Fecha: *${session.fechaSeleccionada}*\n` +
-          `⏰ Horario: *${horaIniNorm} - ${horaFinNorm}* (${duracionHoras === 2 ? '2 Horas seguidas' : '1 Hora'})\n` +
+          `⏰ Horario: *${horaIniNorm} - ${horaFinNorm}*\n` +
           `💰 Total: *${totalFmt}*\n` +
           `💵 Anticipo requerido: *${anticipoFmt}* (${porcentaje}%)\n\n` +
           `📲 *Cuentas Oficiales de Recaudo:*\n` +
@@ -1006,8 +1002,8 @@ export class WhatsAppFlow {
           `• Titular: *${titular}*\n\n` +
           `📸 *¿Cómo confirmar?*\n` +
           `Realiza la transferencia y *envía aquí la foto o captura del comprobante*.\n` +
-          `🤖 Nuestro sistema con Inteligencia Artificial lo auditará al instante para confirmar tu reserva, o será validado por la administración.\n\n` +
-          `💬 _¿Tienes alguna duda con el pago o tu reserva? Escribe *ASESOR* en cualquier momento para hablar con un encargado._`,
+          `🤖 Nuestro sistema con Inteligencia Artificial lo auditará al instante para confirmar tu cita, o será validado por la administración.\n\n` +
+          `💬 _¿Tienes alguna duda con el pago o tu cita? Escribe *ASESOR* en cualquier momento para hablar con un encargado._`,
       };
     } catch (err: any) {
       console.error('Error al apartar turno en reserva:', err);
@@ -1035,11 +1031,11 @@ export class WhatsAppFlow {
       );
     }
 
-    // 2. Mantenimiento o cancha bloqueada
+    // 2. Mantenimiento o especialista bloqueada
     if (raw.includes('bloquead') || raw.includes('mantenimiento') || raw.includes('inactiva')) {
       return (
         '⚠️ *Horario no disponible*\n\n' +
-        'Esta cancha se encuentra temporalmente fuera de servicio en ese rango horario.\n' +
+        'Esta especialista se encuentra temporalmente fuera de servicio en ese rango horario.\n' +
         'Por favor selecciona otro horario o escribe *MENU*.'
       );
     }
@@ -1129,12 +1125,12 @@ export class WhatsAppFlow {
               `• Referencia: *#${analisis.referencia_detectada}*\n` +
               `• Monto: *${montoFmt}*\n` +
               `• Destino: *${analisis.destinatario_detectado || complejo.nombre}*\n\n` +
-              `🎉 *¡RESERVA 100% CONFIRMADA!*\n` +
-              `🏢 *${complejo.nombre}*\n` +
-              `🏟️ Cancha: *${session.canchaSeleccionada?.nombre}*\n` +
+              `🌸✨ *¡CITA 100% CONFIRMADA EN JL MÍMATE NAILS!* ✨🌸\n` +
+              `🏢 Spa: *${complejo.nombre}*\n` +
+              `💅 Manicurista: *${session.canchaSeleccionada?.nombre}*\n` +
               `📅 Fecha: *${session.fechaSeleccionada}*\n` +
               `⏰ Horario: *${session.horarioSeleccionado?.hora_inicio.slice(0, 5)} - ${session.horarioSeleccionado?.hora_fin.slice(0, 5)}*\n\n` +
-              `🔔 Te enviaremos un recordatorio 2 horas antes de tu juego. ¡Nos vemos en la cancha!`,
+              `🔔 Te enviaremos un recordatorio previo a tu cita. ¡Nos vemos para consentirte reina! 💕💅`,
           };
         }
 
@@ -1167,256 +1163,6 @@ export class WhatsAppFlow {
     };
   }
 
-  /**
-   * Flujo exclusivo para pedidos de comida/bebidas 100% a domicilio (Graniza2KL)
-   */
-  private static async manejarFlujoPedidos(
-    telefono: string,
-    texto: string,
-    input: string,
-    session: UserSession,
-    complejo: Complejo,
-    nombrePush?: string,
-    mediaId?: string,
-    mediaType?: string
-  ): Promise<BotResponse> {
-    const cliente = await BookingService.getOrCreateCliente(telefono, nombrePush);
-
-    // 1. Si está esperando comprobante de pago y envió una imagen
-    if (session.paso === 'ESPERA_PAGO' && mediaId) {
-      const resPago = await this.manejarEsperaPago(input, session, complejo, mediaId, mediaType);
-      if (resPago.texto.includes('¡PAGO AUDITADO') || resPago.texto.includes('APROBADO POR IA')) {
-        const direccion = session.pedidoInfo?.direccion || 'tu dirección';
-        return {
-          texto: `🍧 *¡PAGO VERIFICADO EXITOSAMENTE POR IA!* ✅\n\n` +
-            `¡Muchísimas gracias ${nombrePush || ''}! Tu pago ha sido confirmado con éxito.\n\n` +
-            `Tu pedido ha entrado inmediatamente a preparación en la cocina de *${complejo.nombre}* y te avisaremos en cuanto el repartidor salga hacia tu dirección: *${direccion}* 🛵💨\n\n` +
-            `¡Que disfrutes tus granizados artesanales! 🍧✨`,
-        };
-      }
-      return resPago;
-    }
-
-    // 2. Si el cliente estaba pendiente de ingresar la dirección
-    if (session.paso === 'PEDIDO_ESPERA_DIRECCION' && session.pedidoInfo) {
-      const direccion = texto.trim();
-      session.pedidoInfo.direccion = direccion;
-
-      const canchas = await BookingService.getCanchas(complejo.id);
-      const estacionId = canchas[0]?.id;
-
-      if (!estacionId) {
-        return { texto: '⚠️ Error temporal en la estación de despacho. Por favor intenta en unos minutos.' };
-      }
-
-      const ahoraIso = new Date().toISOString();
-      const finIso = new Date(Date.now() + 30 * 60 * 1000).toISOString();
-      const detalleCompleto = `🍧 ${session.pedidoInfo.detalle} 📍 Domicilio: ${direccion} [ESPERANDO_PAGO]`;
-
-      const preOrden = await BookingService.crearPreReserva({
-        canchaId: estacionId,
-        clienteId: cliente.id,
-        fechaInicio: ahoraIso,
-        fechaFin: finIso,
-        valorTotal: session.pedidoInfo.total,
-        porcentajeAnticipo: 100,
-      });
-
-      await supabase.from('reservas').update({ notas: detalleCompleto }).eq('id', preOrden.id);
-      session.reservaId = preOrden.id;
-      session.paso = 'ESPERA_PAGO';
-
-      const totalFmt = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(session.pedidoInfo.total);
-
-      return {
-        texto: `🍧 *¡PEDIDO REGISTRADO EN GRANIZA2KL!* 🛵\n\n` +
-          `📋 *Detalle de tu orden:*\n${session.pedidoInfo.detalle}\n\n` +
-          `📍 *Dirección de Entrega:* ${direccion}\n` +
-          `💰 *Total a Transferir:* ${totalFmt} COP (100% anticipado)\n\n` +
-          `📲 *Datos para Transferencia Inmediata:*\n` +
-          `• Nequi / Daviplata: *${complejo.nequi_numero || '3105551234'}*\n` +
-          `• Titular: *${complejo.titular_cuenta || 'Graniza2KL Artesanales'}*\n\n` +
-          `📸 *Por favor envíanos la foto o captura del comprobante por aquí* para verificar con IA, comenzar a licuar tus granizados y despachar de inmediato 🛵✨`,
-      };
-    }
-
-    // 3. Extracción contextual de pedidos desde el mensaje entrante
-    const pedidoDetectado = this.extraerPedidoGranizados(texto);
-
-    if (pedidoDetectado.esPedido && pedidoDetectado.items.length > 0) {
-      session.pedidoInfo = {
-        detalle: pedidoDetectado.resumen,
-        total: pedidoDetectado.total,
-        direccion: pedidoDetectado.direccion,
-        items: pedidoDetectado.items,
-      };
-
-      // Si el cliente dio los productos Y la dirección en el mismo mensaje inicial
-      if (pedidoDetectado.direccion) {
-        const canchas = await BookingService.getCanchas(complejo.id);
-        const estacionId = canchas[0]?.id;
-
-        if (estacionId) {
-          const ahoraIso = new Date().toISOString();
-          const finIso = new Date(Date.now() + 30 * 60 * 1000).toISOString();
-          const detalleCompleto = `🍧 ${pedidoDetectado.resumen} 📍 Domicilio: ${pedidoDetectado.direccion} [ESPERANDO_PAGO]`;
-
-          const preOrden = await BookingService.crearPreReserva({
-            canchaId: estacionId,
-            clienteId: cliente.id,
-            fechaInicio: ahoraIso,
-            fechaFin: finIso,
-            valorTotal: pedidoDetectado.total,
-            porcentajeAnticipo: 100,
-          });
-
-          await supabase.from('reservas').update({ notas: detalleCompleto }).eq('id', preOrden.id);
-          session.reservaId = preOrden.id;
-          session.paso = 'ESPERA_PAGO';
-
-          const totalFmt = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(pedidoDetectado.total);
-
-          return {
-            texto: `🍧 *¡ORDEN DETECTADA Y REGISTRADA EN GRANIZA2KL!* 🛵\n\n` +
-              `¡Entendido ${nombrePush || ''}! He tomado todos los datos de tu pedido:\n` +
-              `📋 *Productos:* ${pedidoDetectado.resumen}\n` +
-              `📍 *Dirección de Entrega:* ${pedidoDetectado.direccion}\n` +
-              `💰 *Total a Transferir:* ${totalFmt} COP\n\n` +
-              `📲 *Datos para Transferir (Nequi / Daviplata):*\n` +
-              `• Número: *${complejo.nequi_numero || '3105551234'}*\n` +
-              `• Titular: *${complejo.titular_cuenta || 'Graniza2KL'}*\n\n` +
-              `📸 Envíanos la captura de tu comprobante por este chat para verificar con IA, licuar tus granizados y despachar al repartidor de inmediato 🛵✨`,
-          };
-        }
-      }
-
-      // Si especificó sabores pero aún no tenemos dirección
-      session.paso = 'PEDIDO_ESPERA_DIRECCION';
-      const totalFmt = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(pedidoDetectado.total);
-
-      return {
-        texto: `¡Con mucho gusto ${nombrePush || ''}! 🍧✨\n\n` +
-          `📋 *He preparado tu orden:*\n` +
-          `• ${pedidoDetectado.resumen}\n` +
-          `💰 *Total:* ${totalFmt} COP\n\n` +
-          `🛵 *Recuerda que en Graniza2KL el servicio es 100% a domicilio.*\n\n` +
-          `👉 *¿A qué dirección y barrio te lo llevamos?*\n` +
-          `_(Ejemplo: Calle 15 # 4-20, Álamos / Pereira)_`,
-      };
-    }
-
-    // 4. Si es solo saludo o consulta general, mostrar la carta exclusiva con licor a domicilio
-    return {
-      texto: `👋 ¡Hola ${nombrePush || ''}! Bienvenido a *Graniza2KL - Granizados con Licor* 🍸🍧\n` +
-        `Especialistas en cócteles frappé y granizados artesanales con licor (+18).\n` +
-        `🛵 *Servicio 100% Exclusivo a Domicilio en Pereira y Dosquebradas.*\n\n` +
-        `*🍸 NUESTRA CARTA DE CÓCTELES GRANIZADOS (+18):*\n` +
-        `1️⃣ *Clásico con Licor (16oz):* $12.000 COP\n` +
-        `2️⃣ *Mega Cóctel Frappé (24oz):* $17.000 COP  *(Para rumbear o compartir)*\n\n` +
-        `*🍹 Sabores & Combinaciones con Licor:*\n` +
-        `• *Maracuyá con Vodka Smirnoff* (con lecherita)\n` +
-        `• *Mango Biche Tequilero* (con Tequila, sal, limón y tajín)\n` +
-        `• *Frutos Rojos con Ron* (silvestres con toque de ron)\n` +
-        `• *Café Baileys Frappé* (con crema de whisky)\n` +
-        `• *Tamarindo Tequilero* (con Chamoy y Tajín)\n` +
-        `• *Coco Loco Frappé* (con Ron Blanco)\n\n` +
-        `✨ *Toppings gratis a elección:* Lecherita, Chamoy, Tajín o Sal y Limón.\n\n` +
-        `🛵 *¿Cómo pedir?*\n` +
-        `Escríbenos directamente lo que deseas y tu dirección.\n` +
-        `👉 *Ejemplo:* _"Quiero 2 clásicos de maracuyá con vodka para la Calle 15 # 4-20 Álamos"_\n` +
-        `• _(O escribe *ASESOR* en cualquier momento para hablar con un encargado de cocina o despacho)_ 🍸💨`,
-    };
-  }
-
-  /**
-   * Extrae sabores, licores, cantidades, tamaños y dirección de un texto libre para Graniza2KL
-   */
-  private static extraerPedidoGranizados(texto: string): {
-    esPedido: boolean;
-    items: string[];
-    resumen: string;
-    total: number;
-    direccion?: string;
-  } {
-    const t = texto.toLowerCase();
-    const saboresDisponibles = [
-      { clave: 'maracuya', nombre: 'Maracuyá con Vodka (+18)' },
-      { clave: 'maracuyá', nombre: 'Maracuyá con Vodka (+18)' },
-      { clave: 'vodka', nombre: 'Maracuyá con Vodka (+18)' },
-      { clave: 'mango', nombre: 'Mango Biche Tequilero (+18)' },
-      { clave: 'biche', nombre: 'Mango Biche Tequilero (+18)' },
-      { clave: 'tequila', nombre: 'Mango Biche Tequilero (+18)' },
-      { clave: 'frutos rojos', nombre: 'Frutos Rojos con Ron (+18)' },
-      { clave: 'ron', nombre: 'Frutos Rojos con Ron (+18)' },
-      { clave: 'mora', nombre: 'Frutos Rojos con Ron (+18)' },
-      { clave: 'baileys', nombre: 'Café Baileys Frappé (+18)' },
-      { clave: 'cafe', nombre: 'Café Baileys Frappé (+18)' },
-      { clave: 'café', nombre: 'Café Baileys Frappé (+18)' },
-      { clave: 'tamarindo', nombre: 'Tamarindo Tequilero con Chamoy (+18)' },
-      { clave: 'chamoy', nombre: 'Tamarindo Tequilero con Chamoy (+18)' },
-      { clave: 'coco', nombre: 'Coco Loco con Ron (+18)' },
-      { clave: 'guaro', nombre: 'Granizado Antioqueño con Maracuyá (+18)' },
-      { clave: 'aguardiente', nombre: 'Granizado Antioqueño con Maracuyá (+18)' },
-    ];
-
-    let precioUnitario = 12000;
-    let tamanoStr = 'Clásico con Licor (16oz)';
-    if (t.includes('mega') || t.includes('24oz') || t.includes('grande')) {
-      precioUnitario = 17000;
-      tamanoStr = 'Mega Cóctel (24oz)';
-    } else if (t.includes('personal') || t.includes('12oz') || t.includes('pequeñ') || t.includes('pequen')) {
-      precioUnitario = 9000;
-      tamanoStr = 'Personal con Licor (12oz)';
-    }
-
-    let cantidadGlobal = 1;
-    const numMatch = t.match(/(\d+)\s*(?:granizado|vaso|coctel|cóctel|mega|clasico|personal|de)/i);
-    if (numMatch && parseInt(numMatch[1], 10) > 0) {
-      cantidadGlobal = parseInt(numMatch[1], 10);
-    } else if (t.includes('dos ') || t.includes('2 ')) {
-      cantidadGlobal = 2;
-    } else if (t.includes('tres ') || t.includes('3 ')) {
-      cantidadGlobal = 3;
-    } else if (t.includes('cuatro ') || t.includes('4 ')) {
-      cantidadGlobal = 4;
-    }
-
-    const itemsEncontrados: string[] = [];
-    const saboresProcesados = new Set<string>();
-
-    for (const s of saboresDisponibles) {
-      if (t.includes(s.clave) && !saboresProcesados.has(s.nombre)) {
-        saboresProcesados.add(s.nombre);
-        itemsEncontrados.push(`${cantidadGlobal}x Granizado ${tamanoStr} de ${s.nombre}`);
-      }
-    }
-
-    if (itemsEncontrados.length === 0 && (t.includes('granizado') || t.includes('granizados') || t.includes('coctel') || t.includes('licor'))) {
-      itemsEncontrados.push(`${cantidadGlobal}x Granizado ${tamanoStr} Especial (+18)`);
-    }
-
-    let direccion: string | undefined;
-    const dirRegex = /(?:calle|cra|carrera|cll|kr|av|avenida|diagonal|transversal|manzana|mz|barrio|conjunto|urbanizacion|pinares|álamos|alamos|centro)[^,\n.]+/i;
-    const dirMatch = texto.match(dirRegex);
-    if (dirMatch) {
-      direccion = dirMatch[0].trim();
-    } else {
-      const paraLa = texto.match(/(?:para|hacia|en)\s+(?:la\s+|el\s+)?([a-zA-Z0-9\s#\-_]{7,})/i);
-      if (paraLa && paraLa[1]) {
-        direccion = paraLa[1].trim();
-      }
-    }
-
-    const total = (itemsEncontrados.length || 1) * cantidadGlobal * precioUnitario;
-
-    return {
-      esPedido: itemsEncontrados.length > 0,
-      items: itemsEncontrados,
-      resumen: itemsEncontrados.join(' + '),
-      total,
-      direccion,
-    };
-  }
 
   /**
    * Extrae cancha, fecha y hora cuando el cliente escribe con contexto natural
@@ -1706,22 +1452,13 @@ export class WhatsAppFlow {
           .eq('id', reserva.id);
       }
 
-      if (esSpa) {
-        return {
-          texto:
-            `🌸✨ *¡CITA CONFIRMADA EXITOSAMENTE!* ✨🌸\n\n` +
-            `¡Muchísimas gracias reina! Tu asistencia para el *${fechaCita}* a las *${horaInicio}* con *${cancha.nombre}* está 100% confirmada.\n\n` +
-            `📍 Te esperamos con todo el amor en nuestro spa (Pereira, Cuba - Calle 66 bis #26-57).\n` +
-            `¡Nos vemos mañana para consentirte y dejarte hermosa! 💕💅`,
-        };
-      } else {
-        return {
-          texto:
-            `✅ *¡RESERVA CONFIRMADA EXITOSAMENTE!*\n\n` +
-            `Muchas gracias. Tu reserva para el *${fechaCita}* a las *${horaInicio}* en *${cancha.nombre}* está confirmada.\n\n` +
-            `¡Te esperamos puntualmente! 🏟️`,
-        };
-      }
+      return {
+        texto:
+          `🌸✨ *¡CITA CONFIRMADA EXITOSAMENTE!* ✨🌸\n\n` +
+          `¡Muchísimas gracias reina! Tu asistencia para el *${fechaCita}* a las *${horaInicio}* con *${cancha.nombre}* está 100% confirmada.\n\n` +
+          `📍 Te esperamos con todo el amor en nuestro spa (Pereira, Cuba - Calle 66 bis #26-57).\n` +
+          `¡Nos vemos mañana para consentirte y dejarte hermosa! 💕💅`,
+      };
     }
 
     // CASO 2: CANCELAR CITA
@@ -1735,21 +1472,12 @@ export class WhatsAppFlow {
         })
         .eq('id', reserva.id);
 
-      if (esSpa) {
-        return {
-          texto:
-            `🌸 *CITA CANCELADA*\n\n` +
-            `Hemos cancelado tu cita del *${fechaCita}* a las *${horaInicio}* con *${cancha.nombre}* y liberado el cupo en la agenda.\n\n` +
-            `Lamentamos que no puedas acompañarnos esta vez. Cuando desees volver a consentirte, puedes agendar en cualquier momento escribiendo *MENU* o desde nuestra web. ¡Que tengas un lindo día! 💕`,
-        };
-      } else {
-        return {
-          texto:
-            `❌ *RESERVA CANCELADA*\n\n` +
-            `Tu reserva del *${fechaCita}* a las *${horaInicio}* ha sido cancelada y el espacio ha sido liberado.\n\n` +
-            `Esperamos verte pronto en una próxima ocasión. 🏟️`,
-        };
-      }
+      return {
+        texto:
+          `🌸 *CITA CANCELADA*\n\n` +
+          `Hemos cancelado tu cita del *${fechaCita}* a las *${horaInicio}* con *${cancha.nombre}* y liberado el cupo en la agenda.\n\n` +
+          `Lamentamos que no puedas acompañarnos esta vez. Cuando desees volver a consentirte, puedes agendar en cualquier momento escribiendo *MENU* o desde nuestra web. ¡Que tengas un lindo día! 💕`,
+      };
     }
 
     // CASO 3: REAGENDAR (CAMBIAR FECHA)

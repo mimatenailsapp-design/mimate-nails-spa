@@ -96,16 +96,12 @@ export class AIReceptionistService {
       'direccion',
       'como llegar',
       'queda',
-      'bebida',
-      'hidratacion',
-      'gatorade',
-      'cerveza',
-      'comida',
-      'cafeteria',
-      'peto',
-      'petos',
-      'balon',
-      'balones',
+      'unas',
+      'uñas',
+      'manicura',
+      'pedicura',
+      'semipermanente',
+      'acrilico',
       'tarjeta',
       'transferencia',
       'efectivo',
@@ -197,10 +193,10 @@ export class AIReceptionistService {
 
     return {
       nombre: complejo.nombre,
-      parqueadero: 'Parqueadero privado y vigilado gratuito para clientes (carros y motos).',
-      calzado: 'Calzado deportivo reglamentario para el tipo de superficie. No se permiten taches de aluminio.',
-      servicios: 'Vestieres, baños y duchas con agua caliente, cafetería con hidratación y snacks, y alquiler de petos y balones.',
-      eventos: 'Organización de torneos y reserva de franjas horarias para eventos.',
+      parqueadero: 'Disponibilidad de parqueadero cercano para clientes en la zona.',
+      calzado: 'Instalaciones cómodas y climatizadas para tu mayor relajación.',
+      servicios: 'Manicura tradicional, pedicure tradicional, semipermanente, base ruber, dipping, press on, acrílico esculpido, polygel y recubrimiento.',
+      eventos: 'Atención personalizada para citas individuales o grupos previa reserva.',
       telefono_admin: complejo.telefono_whatsapp,
     };
   }
@@ -225,31 +221,17 @@ export class AIReceptionistService {
   }
 
   /**
-   * Consulta a Google Gemini Flash con el contexto específico del complejo deportivo
+   * Consulta a Google Gemini Flash con el contexto específico de JL Mímate Nails Spa
    */
   private static async consultarGemini(pregunta: string, complejo: Complejo, apiKey: string): Promise<string | null> {
-    const apertura = complejo.hora_apertura ? complejo.hora_apertura.slice(0, 5) : '07:00';
-    const cierre = complejo.hora_cierre ? complejo.hora_cierre.slice(0, 5) : '23:00';
-    const direccion = complejo.direccion || 'Sede principal';
-    const ciudad = complejo.ciudad || 'Colombia';
+    const apertura = complejo.hora_apertura ? complejo.hora_apertura.slice(0, 5) : '08:00';
+    const cierre = complejo.hora_cierre ? complejo.hora_cierre.slice(0, 5) : '19:00';
+    const direccion = complejo.direccion || 'Pereira, Cuba (Calle 66 bis #26-57)';
+    const ciudad = complejo.ciudad || 'Pereira, Colombia';
     const info = this.getConocimientoComplejo(complejo);
-    const tipo = complejo.tipo_negocio || 'deportes';
-    let entidad = 'del establecimiento deportivo';
-    let invitacionFinal = 'Escribe *HOLA* o *MENU* para ver las canchas y turnos disponibles ⚽🎾.';
-
-    if (tipo === 'pedidos' || complejo.slug === 'graniza2kl') {
-      entidad = 'del negocio de granizados con licor y cócteles frappé 100% a domicilio (+18)';
-      invitacionFinal = 'Escribe los granizados con licor que deseas y tu dirección para enviarte el domicilio 🍸🛵.';
-    } else if (tipo === 'barberia') {
-      entidad = 'de la barbería';
-      invitacionFinal = 'Escribe *HOLA* o *MENU* para ver los barberos y turnos disponibles 💈✂️.';
-    } else if (tipo === 'belleza_unas') {
-      entidad = 'del salón y spa de uñas';
-      invitacionFinal = 'Escribe *HOLA* o *MENU* para ver las especialistas y turnos disponibles 💅✨.';
-    } else if (tipo === 'salud' || tipo === 'consultorio') {
-      entidad = 'del consultorio y centro de salud';
-      invitacionFinal = 'Escribe *HOLA* o *MENU* para ver los profesionales y citas disponibles 🩺📋.';
-    }
+    const entidad = 'del spa y salón de uñas';
+    const baseUrl = process.env.FRONTEND_URL || 'https://mimate-nails-spa.vercel.app';
+    const invitacionFinal = `Para agendar tu cita, abre nuestra agenda directamente en: ${baseUrl} 🌸💅.`;
 
     const prompt = `Eres el asistente virtual amable, cordial y profesional ${entidad} "${complejo.nombre}" en ${ciudad}, Colombia.
 Responde de forma clara, concisa (máximo 2 a 3 oraciones) a la siguiente pregunta del cliente por WhatsApp:
@@ -262,16 +244,15 @@ DATOS Y REGLAS EXCLUSIVAS DE ESTE NEGOCIO:
 - Vestimenta/Calzado: ${info.calzado}
 - Servicios ofrecidos: ${info.servicios}
 - Eventos o planes especiales: ${info.eventos || 'Disponibilidad sujeta a previa reserva.'}
-- Reservas/Pedidos: 100% automáticos las 24 horas a través de este mismo WhatsApp.
+- Reservas: 100% automáticas las 24 horas a través de este mismo WhatsApp o la web.
 
 PREGUNTA DEL CLIENTE:
 "${pregunta}"
 
 INSTRUCCIONES:
-- Responde con tono colombiano amable, respetuoso y profesional.
-- Basado estrictamente en las reglas exclusivas de este negocio.
-- Recuerda que para Graniza2KL los granizados son CON LICOR (+18) y el servicio es 100% EXCLUSIVO A DOMICILIO, no hay atención en local ni recogida.
-- Termina siempre invitando cordialmente a reservar o pedir con: "${invitacionFinal}"`;
+- Responde con tono colombiano amable, cálido, femenino, respetuoso y profesional para un spa de uñas.
+- Basado estrictamente en las reglas exclusivas de este spa.
+- Termina siempre invitando cordialmente a agendar con: "${invitacionFinal}"`;
 
     const modelosDisponibles = [
       process.env.GEMINI_MODEL,
@@ -311,23 +292,8 @@ INSTRUCCIONES:
    * Respuestas estructuradas directas usando la ficha exclusiva de cada complejo
    */
   private static generarRespuestaPorReglas(t: string, complejo: Complejo): string {
-    const tipo = complejo.tipo_negocio || 'deportes';
-    let pie = `\n\n¿Deseas reservar tu turno? Escribe *HOLA* o *MENU* para ver canchas y horarios ⚽🎾.`;
-    let labelEventos = `🏆 *Eventos y Torneos en ${complejo.nombre}:*\n`;
-
-    if (tipo === 'pedidos' || complejo.slug === 'graniza2kl') {
-      pie = `\n\n¿Deseas pedir tu granizado con licor a domicilio? Escribe tu pedido y dirección de entrega 🍸🛵.`;
-      labelEventos = `🍸 *Previas y Eventos en ${complejo.nombre}:*\n`;
-    } else if (tipo === 'barberia') {
-      pie = `\n\n¿Deseas agendar tu cita? Escribe *HOLA* o *MENU* para ver barberos y horarios 💈✂️.`;
-      labelEventos = `💈 *Servicios y Planes en ${complejo.nombre}:*\n`;
-    } else if (tipo === 'belleza_unas') {
-      pie = `\n\n¿Deseas agendar tu cita? Escribe *HOLA* o *MENU* para ver especialistas y horarios 💅✨.`;
-      labelEventos = `💅 *Planes y Eventos en ${complejo.nombre}:*\n`;
-    } else if (tipo === 'salud' || tipo === 'consultorio') {
-      pie = `\n\n¿Deseas agendar tu consulta? Escribe *HOLA* o *MENU* para ver especialistas y citas disponibles 🩺📋.`;
-      labelEventos = `🩺 *Planes y Consultas en ${complejo.nombre}:*\n`;
-    }
+    let pie = `\n\n¿Deseas agendar tu cita en el spa? Escribe *HOLA* o *MENU* para ver manicuristas y horarios 💅✨.`;
+    let labelEventos = `💅 *Planes y Eventos en ${complejo.nombre}:*\n`;
 
     const info = this.getConocimientoComplejo(complejo);
 
@@ -347,18 +313,18 @@ INSTRUCCIONES:
       return `📍 *Ubicación de ${complejo.nombre}:*\nNos encontramos en *${complejo.direccion}*, ${complejo.ciudad}. ¡Te esperamos!` + pie;
     }
 
-    if (t.includes('bebida') || t.includes('hidratacion') || t.includes('comida') || t.includes('cafeteria') || t.includes('peto') || t.includes('balon') || t.includes('pala') || t.includes('raqueta') || t.includes('unas') || t.includes('corte') || t.includes('barba')) {
-      return `✨ *Servicios e Implementos en ${complejo.nombre}:*\n${info.servicios}` + pie;
+    if (t.includes('unas') || t.includes('uñas') || t.includes('manicura') || t.includes('pedicura') || t.includes('acrilico') || t.includes('semipermanente') || t.includes('servicio')) {
+      return `✨ *Servicios en ${complejo.nombre}:*\n${info.servicios}` + pie;
     }
 
-    if (t.includes('torneo') || t.includes('cumpleaños') || t.includes('evento') || t.includes('boda') || t.includes('novio') || t.includes('novia')) {
-      return `${labelEventos}${info.eventos || 'Disponibilidad de atención para eventos previa reserva y coordinación.'}` + pie;
+    if (t.includes('cumpleaños') || t.includes('evento') || t.includes('boda') || t.includes('novia') || t.includes('grado')) {
+      return `${labelEventos}${info.eventos || 'Disponibilidad de atención especial previa cita y coordinación.'}` + pie;
     }
 
-    const apertura = complejo.hora_apertura ? complejo.hora_apertura.slice(0, 5) : '07:00';
-    const cierre = complejo.hora_cierre ? complejo.hora_cierre.slice(0, 5) : '23:00';
-    const direccion = complejo.direccion || 'nuestras instalaciones';
+    const apertura = complejo.hora_apertura ? complejo.hora_apertura.slice(0, 5) : '08:00';
+    const cierre = complejo.hora_cierre ? complejo.hora_cierre.slice(0, 5) : '19:00';
+    const direccion = complejo.direccion || 'Pereira, Cuba (Calle 66 bis #26-57)';
 
-    return `👋 *Información de ${complejo.nombre}*\nEstamos disponibles todos los días de ${apertura} a ${cierre} en ${direccion}.\n\nPara consultar turnos o reservar tu cancha en 30 segundos, escribe *HOLA* ⚽.`;
+    return `🌸 *Información de ${complejo.nombre}*\nAtendemos de lunes a sábado de ${apertura} a ${cierre} en ${direccion}.\n\nPara consultar disponibilidad o agendar tu cita con tu especialista favorita, escribe *HOLA* 💕💅.`;
   }
 }

@@ -1,14 +1,14 @@
 {
-  "name": "reservas-deportivas-backend",
+  "name": "mimate-nails-backend",
   "version": "1.0.0",
-  "description": "API y Webhook de WhatsApp para reservas automáticas de escenarios deportivos",
+  "description": "API y Webhook de WhatsApp para JL Mímate Nails Spa",
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js"
   },
-  "keywords": ["whatsapp", "bot", "reservas", "supabase", "deportes"],
+  "keywords": ["whatsapp", "bot", "citas", "spa", "uñas", "mimate-nails"],
   "author": "",
   "license": "MIT",
   "dependencies": {

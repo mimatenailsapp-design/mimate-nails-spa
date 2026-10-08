@@ -22,9 +22,8 @@ app.use(express.json());
 app.get('/', (req: Request, res: Response) => {
   res.json({
     status: 'online',
-    servicio: 'SIRED - Ecosistema Multi-empresa de Reservas Deportivas & WhatsApp Bot',
+    servicio: 'JL Mímate Nails Spa - API & WhatsApp Bot',
     base_de_datos: 'Supabase PostgreSQL Conectada',
-    modelo: 'Modelo A (Cada complejo con su propio WhatsApp oficial)',
     version: '2.0.0',
     webhook_url: '/webhook',
     simulador_bot: '/api/bot/simulate',
@@ -621,13 +620,13 @@ app.patch('/api/reservas/:id/aprobar-anticipo', async (req: Request, res: Respon
       const saldoPendiente = (Number(reserva.valor_total) - Number(reserva.valor_anticipo_requerido)).toLocaleString('es-CO');
 
       const mensajeConfirmacion =
-        `🎉 *¡ANTICIPO APROBADO CON ÉXITO!*\n\n` +
-        `Hola *${cliente.nombre || 'Jugador'}*, tu comprobante de pago ha sido verificado y aprobado por la administración de *${complejo?.nombre || 'el club'}*.\n\n` +
-        `🏟️ Cancha: *${cancha.nombre}*\n` +
+        `🌸✨ *¡ANTICIPO APROBADO CON ÉXITO!* ✨🌸\n\n` +
+        `Hola *${cliente.nombre || 'Reina'}*, tu comprobante de pago ha sido verificado y aprobado por la administración de *${complejo?.nombre || 'JL Mímate Nails Spa'}*.\n\n` +
+        `💅 Especialista: *${cancha.nombre}*\n` +
         `📅 Fecha: *${fechaFmt}*\n` +
         `⏰ Horario: *${horaInicio} a ${horaFin}*\n` +
-        `💵 Saldo a pagar en cancha: *$${saldoPendiente}*\n\n` +
-        `✅ Tu reserva está 100% CONFIRMADA. Te enviaremos un recordatorio 2 horas antes de tu partido. ¡Nos vemos en la cancha! ⚽🎾`;
+        `💵 Saldo a pagar en el spa: *$${saldoPendiente}*\n\n` +
+        `✅ Tu cita está 100% CONFIRMADA. ¡Te esperamos con todo el amor para consentirte! 💕💅`;
 
       await enviarMensajeWhatsApp(
         cliente.telefono_wa,
@@ -679,8 +678,8 @@ app.patch('/api/reservas/:id/rechazar-anticipo', async (req: Request, res: Respo
     if (cliente?.telefono_wa) {
       const mensajeRechazo =
         `❌ *Comprobante no aprobado:*\n\n` +
-        `Hola *${cliente.nombre || 'Jugador'}*, la administración de *${complejo?.nombre || 'el club'}* no pudo validar tu comprobante de pago (${motivo || 'pago no recibido en la cuenta bancaria'}).\n\n` +
-        `El turno en *${cancha.nombre}* ha sido liberado. Si consideras que se trata de un error, por favor comunícate directamente con la recepción del club.`;
+        `Hola *${cliente.nombre || 'Reina'}*, la administración de *${complejo?.nombre || 'JL Mímate Nails'}* no pudo validar tu comprobante de pago (${motivo || 'pago no recibido en la cuenta bancaria'}).\n\n` +
+        `El turno con *${cancha.nombre}* ha sido liberado. Si consideras que se trata de un error, por favor comunícate directamente con nosotras. 💕`;
 
       await enviarMensajeWhatsApp(
         cliente.telefono_wa,
@@ -693,127 +692,6 @@ app.patch('/api/reservas/:id/rechazar-anticipo', async (req: Request, res: Respo
     res.json({ success: true, reserva: reservaActualizada });
   } catch (error: any) {
     console.error('Error rechazando anticipo:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// 3. Actualizar Estado de Pedido (Kanban Graniza2KL) con Notificación Automática WhatsApp
-app.patch('/api/pedidos/:id/estado', async (req: Request, res: Response) => {
-  const { id } = req.params;
-  const { nuevoEstado, notas } = req.body;
-
-  try {
-    const { data: reserva, error: errRes } = await supabase
-      .from('reservas')
-      .select('*, canchas!inner(*, complejos!inner(*)), clientes(*)')
-      .eq('id', id)
-      .single();
-
-    if (errRes || !reserva) {
-      return res.status(404).json({ error: 'Pedido no encontrado' });
-    }
-
-    let estadoDb = reserva.estado;
-    let tag = '';
-
-    if (nuevoEstado === 'en_preparacion') {
-      estadoDb = 'confirmada';
-      tag = '[EN_PREPARACION]';
-    } else if (nuevoEstado === 'en_camino' || nuevoEstado === 'en_domicilio') {
-      estadoDb = 'confirmada';
-      tag = '[EN_DOMICILIO]';
-    } else if (nuevoEstado === 'entregado' || nuevoEstado === 'completada') {
-      estadoDb = 'completada';
-      tag = '[ENTREGADO]';
-    } else if (nuevoEstado === 'nuevo' || nuevoEstado === 'pendiente_pago') {
-      estadoDb = 'pendiente_pago';
-      tag = '[ESPERANDO_PAGO]';
-    }
-
-    const notaBase = (notas || reserva.notas || '')
-      .replace(/\[EN_PREPARACION\]|\[EN_DOMICILIO\]|\[ENTREGADO\]|\[ESPERANDO_PAGO\]/g, '')
-      .trim();
-
-    const notasFinales = `${notaBase} ${tag}`.trim();
-
-    const { data: reservaActualizada, error: errUpd } = await supabase
-      .from('reservas')
-      .update({
-        estado: estadoDb,
-        notas: notasFinales,
-      })
-      .eq('id', id)
-      .select('*, canchas!inner(*, complejos!inner(*)), clientes(*)')
-      .single();
-
-    if (errUpd) throw errUpd;
-
-    // Extraer datos para la notificación al cliente por WhatsApp
-    const cliente = reserva.clientes as any;
-    const cancha = reserva.canchas as any;
-    const complejo = cancha?.complejos as any;
-    let mensajeEnviado = false;
-
-    if (cliente?.telefono_wa) {
-      let direccion = 'Pereira / Cobertura Domicilio';
-      const dirMatch = (reservaActualizada.notas || '').match(/📍\s*Domicilio:\s*([^.[\n]+)/i);
-      if (dirMatch && dirMatch[1]) direccion = dirMatch[1].trim();
-
-      let detalleProd = 'tus granizados con licor';
-      const prodMatch = (reservaActualizada.notas || '').match(/🍧\s*([^📍[\n]+)/i);
-      if (prodMatch && prodMatch[1]) detalleProd = prodMatch[1].trim();
-
-      const nombreCliente = cliente.nombre || 'Cliente';
-      const totalFmt = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(reservaActualizada.valor_total || 0);
-
-      let mensajeWhatsApp = '';
-
-      if (nuevoEstado === 'en_preparacion') {
-        mensajeWhatsApp =
-          `🍧 *¡Tu orden de Graniza2KL está en preparación!* 🍸\n\n` +
-          `¡Hola *${nombreCliente}*! Tu pedido ya pasó a la barra de preparación.\n` +
-          `Estamos licuando tus frappés con licor bien fríos, pulpa fresca y todos tus toppings listos ❄️✨.\n\n` +
-          `📋 *Detalle:* ${detalleProd}\n` +
-          `📍 *Dirección de entrega:* ${direccion}\n` +
-          `💰 *Total:* ${totalFmt}\n\n` +
-          `Te avisaremos en cuanto salga en camino con el repartidor 🛵💨.`;
-      } else if (nuevoEstado === 'en_camino' || nuevoEstado === 'en_domicilio') {
-        mensajeWhatsApp =
-          `🛵💨 *¡Tu pedido de Graniza2KL va en camino!*\n\n` +
-          `¡Hola *${nombreCliente}*! Tu orden acaba de ser despachada con nuestro repartidor rumbo a tu ubicación:\n` +
-          `📍 *${direccion}*\n\n` +
-          `📋 *Llevamos:* ${detalleProd}\n\n` +
-          `Ten a la mano tu teléfono por si el repartidor te timbra o llama al llegar. ¡A disfrutar de tus granizados con licor (+18) bien helados! 🍸🍧✨`;
-      } else if (nuevoEstado === 'entregado' || nuevoEstado === 'completada') {
-        mensajeWhatsApp =
-          `✅ *¡Pedido Entregado con Éxito!* 🎉\n\n` +
-          `¡Hola *${nombreCliente}*! Tu orden ha sido completada y entregada.\n\n` +
-          `¡Muchísimas gracias por elegir a *Graniza2KL - Granizados con Licor*! Esperamos que disfrutes al máximo tus cócteles frappé (+18) 🍸✨.\n\n` +
-          `👉 Si deseas pedir de nuevo más tarde o para tu próxima fiesta, solo escribe *HOLA* en este chat. ¡Salud! 🥂🍧`;
-      }
-
-      if (mensajeWhatsApp) {
-        try {
-          await enviarMensajeWhatsApp(
-            cliente.telefono_wa,
-            mensajeWhatsApp,
-            complejo?.whatsapp_token,
-            complejo?.whatsapp_phone_number_id
-          );
-          mensajeEnviado = true;
-        } catch (waErr: any) {
-          console.error('Error enviando notificación WhatsApp de pedido:', waErr.message);
-        }
-      }
-    }
-
-    res.json({
-      success: true,
-      reserva: reservaActualizada,
-      mensajeEnviado,
-    });
-  } catch (error: any) {
-    console.error('Error actualizando estado de pedido:', error);
     res.status(500).json({ error: error.message });
   }
 });
