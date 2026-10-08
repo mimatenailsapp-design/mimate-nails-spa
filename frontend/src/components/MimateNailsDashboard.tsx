@@ -20,6 +20,8 @@ import {
   IconChevronRight,
   IconChevronDown,
   IconTrash,
+  IconCalendarEvent,
+  IconCalendarMonth,
 } from '@tabler/icons-react';
 import { supabase } from '../config/supabase';
 
@@ -248,6 +250,15 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   const [tabAdmin, setTabAdmin] = useState<'agenda' | 'metricas'>('agenda');
   const [especialistaSeleccionadaId, setEspecialistaSeleccionadaId] = useState<string>('todas');
 
+  // Estado para la pestaña de Métricas (Por Día vs Por Mes)
+  const [modoMetricas, setModoMetricas] = useState<'dia' | 'mes'>('dia');
+  const [mesSeleccionado, setMesSeleccionado] = useState<string>(() => {
+    const hoy = new Date();
+    const y = hoy.getFullYear();
+    const m = String(hoy.getMonth() + 1).padStart(2, '0');
+    return `${y}-${m}`;
+  });
+
   // Modal Login PIN
   const [modalPinPerfil, setModalPinPerfil] = useState<StaffProfile | null>(null);
   const [pinIngresado, setPinIngresado] = useState('1234');
@@ -453,6 +464,27 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     const diaCapitalizado = diaSemana.charAt(0).toUpperCase() + diaSemana.slice(1).replace('.', '');
     return `${diaCapitalizado}, ${diaMes} ${mes}`;
   }, [fechaSeleccionada, hoyStr]);
+
+  // Cambiar mes hacia atrás o adelante para métricas mensuales
+  const cambiarMes = (offset: number) => {
+    const [y, m] = mesSeleccionado.split('-').map(Number);
+    const fechaObj = new Date(y, m - 1 + offset, 1);
+    const nuevoY = fechaObj.getFullYear();
+    const nuevoM = String(fechaObj.getMonth() + 1).padStart(2, '0');
+    setMesSeleccionado(`${nuevoY}-${nuevoM}`);
+  };
+
+  // Nombre legible del mes en español (ej: "Octubre de 2026")
+  const nombreMesLegible = useMemo(() => {
+    if (!mesSeleccionado) return '';
+    const [y, m] = mesSeleccionado.split('-').map(Number);
+    const fechaObj = new Date(y, m - 1, 1);
+    const nombre = fechaObj.toLocaleDateString('es-CO', {
+      month: 'long',
+      year: 'numeric',
+    });
+    return nombre.charAt(0).toUpperCase() + nombre.slice(1);
+  }, [mesSeleccionado]);
 
   // Manejo de Login con PIN
   const handleIniciarSesion = (perfil: StaffProfile) => {
@@ -745,18 +777,36 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     return reservasDelDia.filter((r) => r.estado === 'bloqueada');
   }, [reservasDelDia]);
 
-  // Métricas financieras calculadas para la Admin
+  // Reservas filtradas según el modo de métricas (Día seleccionado vs Mes seleccionado, excluyendo bloqueos)
+  const reservasFiltradasMetricas = useMemo(() => {
+    return reservas.filter((r) => {
+      if (!r.fecha_inicio) return false;
+      if (r.estado === 'bloqueada') return false;
+      const fechaCita = new Date(r.fecha_inicio).toLocaleDateString('en-CA', {
+        timeZone: 'America/Bogota',
+      }); // formato 'YYYY-MM-DD'
+      if (modoMetricas === 'dia') {
+        return fechaCita === fechaSeleccionada;
+      } else {
+        return fechaCita.startsWith(mesSeleccionado);
+      }
+    });
+  }, [reservas, modoMetricas, fechaSeleccionada, mesSeleccionado]);
+
+  // Métricas financieras calculadas para la Admin según el período seleccionado
   const metricasSpa = useMemo(() => {
-    const total = reservas.filter((r) => r.estado !== 'bloqueada').length;
-    const confirmadas = reservas.filter((r) => r.estado === 'confirmada' || r.estado === 'completada');
-    const completadas = reservas.filter((r) => r.estado === 'completada');
-    const canceladas = reservas.filter((r) => r.estado === 'cancelada');
+    const lista = reservasFiltradasMetricas;
+    const total = lista.length;
+    const confirmadas = lista.filter((r) => r.estado === 'confirmada' || r.estado === 'completada');
+    const completadas = lista.filter((r) => r.estado === 'completada');
+    const canceladas = lista.filter((r) => r.estado === 'cancelada');
+    const pendientes = lista.filter((r) => r.estado === 'pendiente_pago' || r.estado === 'confirmada');
 
     const ingresosTotales = confirmadas.reduce((sum, r) => sum + Number(r.valor_total || 0), 0);
 
-    // Desglose por manicurista
+    // Desglose por manicurista en este período
     const porManicurista = canchas.map((c) => {
-      const citasMani = reservas.filter((r) => r.cancha_id === c.id);
+      const citasMani = lista.filter((r) => r.cancha_id === c.id);
       const confirmadasMani = citasMani.filter((r) => r.estado === 'confirmada' || r.estado === 'completada');
       const completadasMani = citasMani.filter((r) => r.estado === 'completada');
       const recaudado = confirmadasMani.reduce((sum, r) => sum + Number(r.valor_total || 0), 0);
@@ -768,9 +818,9 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       };
     });
 
-    // Desglose por servicio
+    // Desglose por servicio en este período
     const porServicio = servicios.map((s) => {
-      const citasSvc = reservas.filter((r) => (r.notas || '').includes(s.nombre));
+      const citasSvc = lista.filter((r) => (r.notas || '').includes(s.nombre));
       const ingresosSvc = citasSvc
         .filter((r) => r.estado !== 'cancelada')
         .reduce((sum, r) => sum + Number(r.valor_total || s.precio), 0);
@@ -786,11 +836,12 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       confirmadasCount: confirmadas.length,
       completadasCount: completadas.length,
       canceladasCount: canceladas.length,
+      pendientesCount: pendientes.length,
       ingresosTotales,
       porManicurista,
       porServicio,
     };
-  }, [reservas, canchas, servicios]);
+  }, [reservasFiltradasMetricas, canchas, servicios]);
 
   const esAdmin = perfilActual?.rol === 'admin';
 
@@ -1698,82 +1749,226 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
         {/* ==================================================================== */}
         {esAdmin && tabAdmin === 'metricas' && (
           <div className="space-y-6">
-            <h2 className="text-base sm:text-lg font-bold text-[#2D2529] font-serif">
-              Resumen de Rendimiento & Métricas Financieras
-            </h2>
+            {/* PANEL DE CONTROL DE PERÍODO (POR DÍA VS POR MES) */}
+            <div className="bg-white rounded-3xl p-4 sm:p-5 border border-[#F2C4D2] shadow-xs flex flex-wrap items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-[#FCE8EF] text-[#8C243B] flex items-center justify-center font-bold">
+                    <IconChartBar className="w-4 h-4" />
+                  </div>
+                  <h2 className="text-base sm:text-lg font-bold text-[#2D2529] font-serif">
+                    Rendimiento & Métricas Financieras
+                  </h2>
+                </div>
+                <p className="text-xs text-[#7D6870]">
+                  {modoMetricas === 'dia' ? (
+                    <>
+                      Visualizando balance del día:{' '}
+                      <strong className="text-[#8C243B] font-semibold">{fechaLegible}</strong>
+                    </>
+                  ) : (
+                    <>
+                      Visualizando balance mensual consolidado de:{' '}
+                      <strong className="text-[#8C243B] font-semibold">{nombreMesLegible}</strong>
+                    </>
+                  )}
+                </p>
+              </div>
 
-            {/* Tarjetas Principales */}
+              {/* CONTROLES DE CAMBIO DE MODO Y NAVEGACIÓN */}
+              <div className="flex flex-wrap items-center gap-2.5">
+                {/* Switch de modo: Día vs Mes */}
+                <div className="flex items-center bg-[#FCE8EF] p-1 rounded-2xl border border-[#F2C4D2]">
+                  <button
+                    onClick={() => setModoMetricas('dia')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs ${
+                      modoMetricas === 'dia'
+                        ? 'bg-[#8C243B] text-white shadow-xs'
+                        : 'text-[#7D6870] hover:text-[#2D2529]'
+                    }`}
+                  >
+                    <IconCalendarEvent className="w-3.5 h-3.5" />
+                    <span>Métricas por Día</span>
+                  </button>
+                  <button
+                    onClick={() => setModoMetricas('mes')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs ${
+                      modoMetricas === 'mes'
+                        ? 'bg-[#8C243B] text-white shadow-xs'
+                        : 'text-[#7D6870] hover:text-[#2D2529]'
+                    }`}
+                  >
+                    <IconCalendarMonth className="w-3.5 h-3.5" />
+                    <span>Métricas por Mes</span>
+                  </button>
+                </div>
+
+                {/* Si está en modo DÍA: Navegación de Días */}
+                {modoMetricas === 'dia' && (
+                  <div className="flex items-center gap-1 bg-[#FFF5F7] p-1 rounded-2xl border border-[#F2C4D2]">
+                    <button
+                      onClick={() => cambiarDia(-1)}
+                      className="p-1.5 rounded-xl bg-white hover:bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2] transition cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
+                      title="Día anterior"
+                    >
+                      <IconChevronLeft className="w-3.5 h-3.5 stroke-[2.5]" />
+                    </button>
+                    <button
+                      onClick={() => setFechaSeleccionada(hoyStr)}
+                      className="px-2.5 py-1 rounded-xl text-xs font-bold bg-[#8C243B] text-white shadow-2xs cursor-pointer min-w-[65px] text-center"
+                    >
+                      {etiquetaFechaRelativa}
+                    </button>
+                    <button
+                      onClick={() => cambiarDia(1)}
+                      className="p-1.5 rounded-xl bg-white hover:bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2] transition cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
+                      title="Día siguiente"
+                    >
+                      <IconChevronRight className="w-3.5 h-3.5 stroke-[2.5]" />
+                    </button>
+                    <input
+                      type="date"
+                      value={fechaSeleccionada}
+                      onChange={(e) => setFechaSeleccionada(e.target.value)}
+                      className="px-2 py-1 bg-white border border-[#F2C4D2] rounded-xl text-xs font-bold text-[#2D2529] outline-none cursor-pointer hover:border-[#8C243B] transition"
+                    />
+                  </div>
+                )}
+
+                {/* Si está en modo MES: Navegación de Meses */}
+                {modoMetricas === 'mes' && (
+                  <div className="flex items-center gap-1 bg-[#FFF5F7] p-1 rounded-2xl border border-[#F2C4D2]">
+                    <button
+                      onClick={() => cambiarMes(-1)}
+                      className="p-1.5 rounded-xl bg-white hover:bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2] transition cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
+                      title="Mes anterior"
+                    >
+                      <IconChevronLeft className="w-3.5 h-3.5 stroke-[2.5]" />
+                    </button>
+                    <span className="px-3 py-1 rounded-xl text-xs font-bold bg-[#8C243B] text-white shadow-2xs select-none">
+                      {nombreMesLegible}
+                    </span>
+                    <button
+                      onClick={() => cambiarMes(1)}
+                      className="p-1.5 rounded-xl bg-white hover:bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2] transition cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
+                      title="Mes siguiente"
+                    >
+                      <IconChevronRight className="w-3.5 h-3.5 stroke-[2.5]" />
+                    </button>
+                    <input
+                      type="month"
+                      value={mesSeleccionado}
+                      onChange={(e) => setMesSeleccionado(e.target.value)}
+                      className="px-2 py-1 bg-white border border-[#F2C4D2] rounded-xl text-xs font-bold text-[#2D2529] outline-none cursor-pointer hover:border-[#8C243B] transition"
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 4 TARJETAS PRINCIPALES DE RESUMEN */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
               <div className="bg-white rounded-2xl p-4 border border-[#F2C4D2] shadow-xs space-y-1">
-                <span className="text-[11px] font-bold text-[#7D6870] uppercase">Ingresos Estimados</span>
+                <span className="text-[11px] font-bold text-[#7D6870] uppercase">
+                  {modoMetricas === 'dia' ? 'Ingresos del Día' : 'Ingresos del Mes'}
+                </span>
                 <p className="text-xl sm:text-2xl font-black font-mono text-[#8C243B]">
                   ${metricasSpa.ingresosTotales.toLocaleString('es-CO')}
                 </p>
-                <p className="text-[10px] text-[#7D6870]">Reservas confirmadas y completadas</p>
+                <p className="text-[10px] text-[#7D6870]">
+                  {metricasSpa.confirmadasCount} citas confirmadas y atendidas
+                </p>
               </div>
 
               <div className="bg-white rounded-2xl p-4 border border-[#F2C4D2] shadow-xs space-y-1">
-                <span className="text-[11px] font-bold text-[#7D6870] uppercase">Citas Agendadas</span>
+                <span className="text-[11px] font-bold text-[#7D6870] uppercase">
+                  {modoMetricas === 'dia' ? 'Citas Agendadas Hoy' : 'Total Citas del Mes'}
+                </span>
                 <p className="text-xl sm:text-2xl font-black font-mono text-[#2D2529]">
                   {metricasSpa.total}
                 </p>
-                <p className="text-[10px] text-[#7D6870]">Total acumulado en el sistema</p>
+                <p className="text-[10px] text-[#7D6870]">
+                  {modoMetricas === 'dia' ? `Para el ${fechaLegible}` : `En todo ${nombreMesLegible}`}
+                </p>
               </div>
 
               <div className="bg-white rounded-2xl p-4 border border-[#F2C4D2] shadow-xs space-y-1">
-                <span className="text-[11px] font-bold text-[#7D6870] uppercase">Citas Completadas</span>
+                <span className="text-[11px] font-bold text-[#7D6870] uppercase">
+                  Citas Completadas
+                </span>
                 <p className="text-xl sm:text-2xl font-black font-mono text-emerald-600">
                   {metricasSpa.completadasCount}
                 </p>
-                <p className="text-[10px] text-emerald-700">Atendidas satisfactoriamente</p>
+                <p className="text-[10px] text-emerald-700">
+                  {metricasSpa.total > 0
+                    ? `${Math.round((metricasSpa.completadasCount / metricasSpa.total) * 100)}% atendidas con éxito`
+                    : 'Sin citas registradas aún'}
+                </p>
               </div>
 
               <div className="bg-white rounded-2xl p-4 border border-[#F2C4D2] shadow-xs space-y-1">
-                <span className="text-[11px] font-bold text-[#7D6870] uppercase">Citas del Día</span>
+                <span className="text-[11px] font-bold text-[#7D6870] uppercase">
+                  {modoMetricas === 'dia' ? 'Citas Pendientes / Turnos' : 'Efectividad Mensual'}
+                </span>
                 <p className="text-xl sm:text-2xl font-black font-mono text-[#C74B66]">
-                  {reservasDelDia.length}
+                  {modoMetricas === 'dia' ? metricasSpa.pendientesCount : `${metricasSpa.total - metricasSpa.canceladasCount}`}
                 </p>
-                <p className="text-[10px] text-[#7D6870]">Turnos para {fechaLegible}</p>
+                <p className="text-[10px] text-[#7D6870]">
+                  {metricasSpa.canceladasCount > 0
+                    ? `${metricasSpa.canceladasCount} cancelada(s)`
+                    : '0 cancelaciones registradas'}
+                </p>
               </div>
             </div>
 
             {/* TABLA 1: Rendimiento por Manicurista */}
             <div className="bg-white rounded-2xl border border-[#F2C4D2] shadow-xs overflow-hidden space-y-3 p-4">
-              <h3 className="font-bold text-sm text-[#2D2529] font-serif">
-                Rendimiento por Manicurista
-              </h3>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="font-bold text-sm text-[#2D2529] font-serif">
+                  Rendimiento por Manicurista ({modoMetricas === 'dia' ? 'Día' : 'Mes'})
+                </h3>
+                <span className="text-[11px] text-[#7D6870]">
+                  {modoMetricas === 'dia' ? fechaLegible : nombreMesLegible}
+                </span>
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-[#FFF5F7] text-[#7D6870] uppercase text-[10px] border-b border-[#F2C4D2]">
                     <tr>
                       <th className="py-2.5 px-3">Especialista</th>
-                      <th className="py-2.5 px-3">Total Citas</th>
+                      <th className="py-2.5 px-3">Citas en el Período</th>
                       <th className="py-2.5 px-3">Completadas</th>
                       <th className="py-2.5 px-3">Recaudo Estimado</th>
-                      <th className="py-2.5 px-3">Estado</th>
+                      <th className="py-2.5 px-3">% Recaudo</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#FCE8EF]">
-                    {metricasSpa.porManicurista.map((m, i) => (
-                      <tr key={m.cancha.id} className="hover:bg-[#FFF5F7]/50 transition">
-                        <td className="py-3 px-3 font-bold text-[#2D2529] flex items-center gap-2">
-                          <span className="w-6 h-6 rounded-full bg-[#FCE8EF] text-[#8C243B] flex items-center justify-center text-[10px]">
-                            {i === 0 ? '👑' : `M${i + 1}`}
-                          </span>
-                          <span>{m.cancha.nombre}</span>
-                        </td>
-                        <td className="py-3 px-3 font-mono font-semibold">{m.total}</td>
-                        <td className="py-3 px-3 font-mono text-emerald-600 font-bold">{m.completadas}</td>
-                        <td className="py-3 px-3 font-mono font-bold text-[#8C243B]">
-                          ${m.ingresos.toLocaleString('es-CO')}
-                        </td>
-                        <td className="py-3 px-3">
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                            Activa
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
+                    {metricasSpa.porManicurista.map((m, i) => {
+                      const porcentaje =
+                        metricasSpa.ingresosTotales > 0
+                          ? Math.round((m.ingresos / metricasSpa.ingresosTotales) * 100)
+                          : 0;
+                      return (
+                        <tr key={m.cancha.id} className="hover:bg-[#FFF5F7]/50 transition">
+                          <td className="py-3 px-3 font-bold text-[#2D2529] flex items-center gap-2">
+                            <span className="w-6 h-6 rounded-full bg-[#FCE8EF] text-[#8C243B] flex items-center justify-center text-[10px]">
+                              {i === 0 ? '👑' : `M${i + 1}`}
+                            </span>
+                            <span>{m.cancha.nombre}</span>
+                          </td>
+                          <td className="py-3 px-3 font-mono font-semibold">{m.total}</td>
+                          <td className="py-3 px-3 font-mono text-emerald-600 font-bold">{m.completadas}</td>
+                          <td className="py-3 px-3 font-mono font-bold text-[#8C243B]">
+                            ${m.ingresos.toLocaleString('es-CO')}
+                          </td>
+                          <td className="py-3 px-3">
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white text-[#8C243B] border border-[#F2C4D2]">
+                              {porcentaje}%
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1781,9 +1976,14 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
             {/* TABLA 2: Citas por Servicio */}
             <div className="bg-white rounded-2xl border border-[#F2C4D2] shadow-xs overflow-hidden space-y-3 p-4">
-              <h3 className="font-bold text-sm text-[#2D2529] font-serif">
-                Demanda por Servicio de Uñas
-              </h3>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="font-bold text-sm text-[#2D2529] font-serif">
+                  Demanda por Servicio de Uñas ({modoMetricas === 'dia' ? 'Día' : 'Mes'})
+                </h3>
+                <span className="text-[11px] text-[#7D6870]">
+                  {modoMetricas === 'dia' ? fechaLegible : nombreMesLegible}
+                </span>
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-[#FFF5F7] text-[#7D6870] uppercase text-[10px] border-b border-[#F2C4D2]">
