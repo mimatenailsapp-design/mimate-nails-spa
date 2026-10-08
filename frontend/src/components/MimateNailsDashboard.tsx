@@ -141,6 +141,16 @@ function obtenerServicioCita(cita: Reserva): string {
   return 'Servicio de Uñas';
 }
 
+const HORAS_TIMELINE: number[] = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19];
+const ALTURA_HORA_PX = 88;
+
+function formatearHora12(hora24: number): string {
+  if (hora24 === 12) return 'Mediodía';
+  const periodo = hora24 < 12 ? 'a.m.' : 'p.m.';
+  const h12 = hora24 % 12 === 0 ? 12 : hora24 % 12;
+  return `${h12} ${periodo}`;
+}
+
 export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, complejoId }) => {
   const hoyStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
   const [fechaSeleccionada, setFechaSeleccionada] = useState<string>(hoyStr);
@@ -153,11 +163,19 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     }
   });
 
+  // Reloj en tiempo real para la franja de hora actual en el calendario
+  const [ahora, setAhora] = useState<Date>(new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setAhora(new Date()), 15000);
+    return () => clearInterval(timer);
+  }, []);
+
   const [canchas, setCanchas] = useState<Cancha[]>([]);
   const [servicios, setServicios] = useState<Servicio[]>([]);
   const [reservas, setReservas] = useState<Reserva[]>([]);
   const [cargando, setCargando] = useState(false);
   const [tabAdmin, setTabAdmin] = useState<'agenda' | 'metricas'>('agenda');
+  const [especialistaSeleccionadaId, setEspecialistaSeleccionadaId] = useState<string>('todas');
 
   // Modal Login PIN
   const [modalPinPerfil, setModalPinPerfil] = useState<StaffProfile | null>(null);
@@ -331,10 +349,10 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   };
 
   // Abrir modal de Agendar Cita con una manicurista preseleccionada
-  const abrirModalAgendar = (manicuristaId?: string) => {
+  const abrirModalAgendar = (manicuristaId?: string, horaInicial?: string) => {
     setAgendarManicuristaId(manicuristaId || canchas[0]?.id || '');
     setAgendarFecha(fechaSeleccionada);
-    setAgendarHora('09:30');
+    setAgendarHora(horaInicial || '09:30');
     setAgendarNombre('');
     setAgendarTelefono('');
     setErrorAgendar(null);
@@ -628,6 +646,206 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   }
 
   // ============================================================================
+  // RENDERIZADOR: TIMELINE DIARIO POR HORAS (ESTILO GOOGLE / APPLE CALENDAR)
+  // ============================================================================
+  const renderTimelineManicurista = (
+    citasManicurista: Reserva[],
+    nombreManicurista: string,
+    canchaId?: string,
+    puedeAgendar: boolean = false
+  ) => {
+    const esHoy = fechaSeleccionada === hoyStr;
+    const horaActualNum = ahora.getHours();
+    const minutosActuales = ahora.getMinutes();
+    const estaEnHorario = horaActualNum >= 8 && horaActualNum < 20;
+    const minutosDesde8AM = (horaActualNum - 8) * 60 + minutosActuales;
+    const posicionYLinea = (minutosDesde8AM / 60) * ALTURA_HORA_PX;
+    const horaMinutosActualStr = ahora.toLocaleTimeString('es-CO', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: false,
+    });
+
+    return (
+      <div className="bg-white rounded-3xl border border-[#F2C4D2] shadow-xs overflow-hidden">
+        {/* Cabecera del Timeline */}
+        <div className="p-4 bg-gradient-to-r from-[#FFF5F7] to-[#FCE8EF] border-b border-[#F2C4D2] flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-white border border-[#F2C4D2] flex items-center justify-center font-bold text-base text-[#8C243B] shadow-2xs">
+              💅
+            </div>
+            <div>
+              <h3 className="font-bold text-sm sm:text-base text-[#2D2529] font-serif">
+                {nombreManicurista}
+              </h3>
+              <p className="text-xs text-[#7D6870]">
+                {fechaLegible} · <strong className="text-[#8C243B]">{citasManicurista.length} citas</strong> agendadas
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-[#7D6870] hidden sm:inline">
+              Horario: 8:00 a.m. a 7:00 p.m.
+            </span>
+            {esHoy && estaEnHorario && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-red-50 text-red-600 border border-red-200 shadow-2xs">
+                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                Ahora: {horaMinutosActualStr}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Grilla de Tiempo con Horas de 8 a 19 */}
+        <div className="relative p-4 sm:p-6 overflow-x-auto">
+          {/* FRONTAL: Línea roja de la hora actual en tiempo real */}
+          {esHoy && estaEnHorario && (
+            <div
+              className="absolute left-16 sm:left-24 right-4 sm:right-6 z-30 pointer-events-none flex items-center transition-all duration-700"
+              style={{ top: `${posicionYLinea + 24}px` }}
+            >
+              {/* Píldora roja estilo iOS / Google Calendar con la hora exacta */}
+              <span className="absolute -left-14 sm:-left-16 -top-2.5 bg-red-500 text-white text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-full shadow-md flex items-center gap-1 select-none">
+                <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+                {horaMinutosActualStr}
+              </span>
+              {/* Punto circular en el borde izquierdo */}
+              <span className="w-2.5 h-2.5 rounded-full bg-red-500 -ml-1 ring-2 ring-white shadow-xs" />
+              {/* Línea horizontal roja continua */}
+              <div className="flex-1 h-[2px] bg-red-500 shadow-xs" />
+            </div>
+          )}
+
+          {/* Filas de 1 hora de 8 a 19 */}
+          <div className="relative divide-y divide-[#F2C4D2]/60 border-b border-[#F2C4D2]/60">
+            {HORAS_TIMELINE.map((h) => {
+              const citasEnHora = citasManicurista.filter((cita) => {
+                const horaStr = cita.fecha_inicio.split('T')[1]?.slice(0, 5) || '08:00';
+                const hCita = parseInt(horaStr.split(':')[0], 10);
+                return hCita === h;
+              });
+
+              return (
+                <div
+                  key={h}
+                  className="flex relative group transition hover:bg-[#FFF5F7]/30"
+                  style={{ minHeight: `${ALTURA_HORA_PX}px` }}
+                >
+                  {/* Columna de la hora a la izquierda */}
+                  <div className="w-16 sm:w-24 pr-3 -mt-2.5 flex-shrink-0 text-right select-none">
+                    <span className="text-[11px] sm:text-xs font-semibold text-[#7D6870]">
+                      {formatearHora12(h)}
+                    </span>
+                  </div>
+
+                  {/* Espacio del turno a la derecha */}
+                  <div className="flex-1 pl-3 sm:pl-4 py-2 flex flex-col justify-center">
+                    {citasEnHora.length > 0 ? (
+                      <div className="space-y-2">
+                        {citasEnHora.map((cita) => {
+                          const horaInicio = cita.fecha_inicio.split('T')[1]?.slice(0, 5) || '08:00';
+                          const horaFin = cita.fecha_fin.split('T')[1]?.slice(0, 5) || '09:00';
+                          const nombreClienta = obtenerNombreClienta(cita);
+                          const servicioNombre = obtenerServicioCita(cita);
+                          const telLimpio = String(cita.clientes?.telefono_wa || '').replace(/\D/g, '');
+
+                          return (
+                            <div
+                              key={cita.id}
+                              className={`p-3 rounded-2xl border transition shadow-xs flex flex-wrap items-center justify-between gap-3 ${
+                                cita.estado === 'completada'
+                                  ? 'bg-emerald-50/70 border-emerald-300'
+                                  : cita.estado === 'cancelada'
+                                  ? 'bg-slate-50 border-slate-200 opacity-60'
+                                  : 'bg-white border-[#F2C4D2] hover:border-[#8C243B] hover:shadow-sm'
+                              }`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="px-2.5 py-1 rounded-xl bg-[#FFF5F7] border border-[#F2C4D2] text-[#8C243B] font-mono font-bold text-xs flex items-center gap-1 shadow-2xs">
+                                  <IconClock className="w-3.5 h-3.5 text-[#C74B66]" />
+                                  {horaInicio} - {horaFin}
+                                </div>
+                                <div>
+                                  <p className="font-bold text-sm text-[#2D2529]">
+                                    {nombreClienta}
+                                  </p>
+                                  <p className="text-xs text-[#7D6870]">
+                                    💅 {servicioNombre} · <span className="font-bold text-[#8C243B]">${Number(cita.valor_total || 25000).toLocaleString('es-CO')}</span>
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                                    cita.estado === 'completada'
+                                      ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                      : cita.estado === 'cancelada'
+                                      ? 'bg-rose-100 text-rose-800 border-rose-300'
+                                      : 'bg-[#FCE8EF] text-[#8C243B] border-[#F2C4D2]'
+                                  }`}
+                                >
+                                  {cita.estado.toUpperCase()}
+                                </span>
+
+                                {telLimpio && (
+                                  <a
+                                    href={`https://wa.me/${telLimpio}?text=Hola%20${encodeURIComponent(
+                                      nombreClienta
+                                    )},%20te%20saludamos%20de%20JL%20M%C3%ADmate%20Nails%20respecto%20a%20tu%20cita%20de%20las%20${horaInicio}.`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold transition shadow-2xs"
+                                    title="Escribir por WhatsApp"
+                                  >
+                                    <IconBrandWhatsapp className="w-3.5 h-3.5" />
+                                    <span className="hidden sm:inline">WhatsApp</span>
+                                  </a>
+                                )}
+
+                                {cita.estado !== 'completada' && cita.estado !== 'cancelada' && (
+                                  <button
+                                    onClick={() => handleCambiarEstado(cita.id, 'completada')}
+                                    className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-2xs cursor-pointer active:scale-95"
+                                    title="Marcar como atendida"
+                                  >
+                                    <IconCheck className="w-3.5 h-3.5" />
+                                    <span>Completada</span>
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="h-full min-h-[50px] flex items-center justify-between text-xs text-[#7D6870]/60 px-2 rounded-xl transition hover:bg-[#FFF5F7]/50">
+                        <span className="text-[11px] font-medium text-[#7D6870]/50 italic">
+                          Espacio libre
+                        </span>
+                        {puedeAgendar && canchaId && (
+                          <button
+                            onClick={() => abrirModalAgendar(canchaId, `${String(h).padStart(2, '0')}:00`)}
+                            className="opacity-0 group-hover:opacity-100 transition px-2.5 py-1 rounded-xl bg-white border border-[#F2C4D2] text-[#8C243B] text-[11px] font-bold hover:bg-[#FCE8EF] cursor-pointer shadow-2xs active:scale-95 flex items-center gap-1"
+                          >
+                            <IconPlus className="w-3 h-3" />
+                            <span>Agendar turno</span>
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ============================================================================
   // VISTA 2: DASHBOARD PRINCIPAL (ADMIN O MANICURISTA)
   // ============================================================================
   return (
@@ -817,12 +1035,56 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                 Turnos por Especialista · {fechaLegible}
               </h2>
               <span className="text-xs text-[#7D6870]">
-                Horario: 9:30 am a 5:30 pm (Lunes a Sábado)
+                Horario: 8:00 a.m. a 7:00 p.m.
               </span>
             </div>
 
-            {/* TABLAS EN 4 COLUMNAS (1 POR CADA MANICURISTA) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* SELECTOR DE VISTA EN ADMINISTRADORA: 4 Columnas vs Timeline por Especialista */}
+            <div className="flex flex-wrap items-center gap-2 pb-1">
+              <button
+                onClick={() => setEspecialistaSeleccionadaId('todas')}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs flex items-center gap-1.5 ${
+                  especialistaSeleccionadaId === 'todas'
+                    ? 'bg-[#8C243B] text-white shadow-xs'
+                    : 'bg-white text-[#7D6870] hover:text-[#2D2529] border border-[#F2C4D2]'
+                }`}
+              >
+                <span>👑 Resumen 4 Especialistas</span>
+              </button>
+
+              {canchas.map((cancha, i) => (
+                <button
+                  key={cancha.id}
+                  onClick={() => setEspecialistaSeleccionadaId(cancha.id)}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs flex items-center gap-1.5 ${
+                    especialistaSeleccionadaId === cancha.id
+                      ? 'bg-[#8C243B] text-white shadow-xs'
+                      : 'bg-white text-[#7D6870] hover:text-[#2D2529] border border-[#F2C4D2]'
+                  }`}
+                >
+                  <span>{i === 0 ? '👑' : '💅'} {cancha.nombre}</span>
+                  <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-white/20 border border-current">
+                    {reservasDelDia.filter((r) => r.cancha_id === cancha.id).length}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            {/* SI SELECCIONÓ UNA ESPECIALISTA ESPECÍFICA: TIMELINE DIARIO POR HORAS CON LÍNEA ROJA */}
+            {especialistaSeleccionadaId !== 'todas' ? (
+              (() => {
+                const targetCancha = canchas.find((c) => c.id === especialistaSeleccionadaId);
+                const citasTarget = reservasDelDia.filter((r) => r.cancha_id === especialistaSeleccionadaId);
+                return renderTimelineManicurista(
+                  citasTarget,
+                  targetCancha?.nombre || 'Especialista',
+                  targetCancha?.id,
+                  true
+                );
+              })()
+            ) : (
+              /* TABLAS EN 4 COLUMNAS (1 POR CADA MANICURISTA) */
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {canchas.map((cancha, idx) => {
                 const citasCancha = reservasDelDia.filter((r) => r.cancha_id === cancha.id);
                 const esColumnaAdmin = idx === 0;
@@ -957,8 +1219,9 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                 );
               })}
             </div>
-          </div>
-        )}
+          )}
+        </div>
+      )}
 
         {/* ==================================================================== */}
         {/* CASO B: VISTA DE LA ADMINISTRADORA - PESTAÑA MÉTRICAS                 */}
@@ -1107,109 +1370,17 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
               </span>
             </div>
 
-            {/* Lista de citas de esta manicurista */}
+            {/* TIMELINE DIARIO CRONOLÓGICO DE LA MANICURISTA CON LÍNEA ROJA EN TIEMPO REAL */}
             {(() => {
               const misCitas = reservasDelDia.filter(
                 (r) => r.cancha_id === perfilActual.canchaId
               );
 
-              if (misCitas.length === 0) {
-                return (
-                  <div className="bg-white rounded-3xl border border-[#F2C4D2] p-8 text-center space-y-2 shadow-xs">
-                    <div className="w-16 h-16 mx-auto rounded-full bg-[#FFF5F7] text-2xl flex items-center justify-center border border-[#F2C4D2]">
-                      🌸
-                    </div>
-                    <h3 className="font-bold text-sm text-[#2D2529]">
-                      No tienes citas programadas para esta fecha
-                    </h3>
-                    <p className="text-xs text-[#7D6870] max-w-sm mx-auto">
-                      ¡Tómate un descanso o alista tus esmaltes y herramientas! En cuanto una clienta agende contigo, aparecerá aquí al instante.
-                    </p>
-                  </div>
-                );
-              }
-
-              return (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {misCitas.map((cita) => {
-                    const horaInicio = cita.fecha_inicio.split('T')[1]?.slice(0, 5) || '09:30';
-                    const nombreClienta = obtenerNombreClienta(cita);
-                    const servicioNombre = obtenerServicioCita(cita);
-                    const telLimpio = String(cita.clientes?.telefono_wa || '').replace(/\D/g, '');
-
-                    return (
-                      <div
-                        key={cita.id}
-                        className={`bg-white rounded-2xl p-4 border transition shadow-xs space-y-3 ${
-                          cita.estado === 'completada'
-                            ? 'border-emerald-300 bg-emerald-50/40'
-                            : cita.estado === 'cancelada'
-                            ? 'border-slate-200 opacity-60'
-                            : 'border-[#F2C4D2] hover:border-[#8C243B]'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-mono font-bold text-sm text-[#8C243B] flex items-center gap-1.5">
-                            <IconClock className="w-4 h-4 text-[#C74B66]" />
-                            {horaInicio}
-                          </span>
-                          <span
-                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                              cita.estado === 'completada'
-                                ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                                : cita.estado === 'cancelada'
-                                ? 'bg-rose-100 text-rose-800 border-rose-300'
-                                : 'bg-[#FCE8EF] text-[#8C243B] border-[#F2C4D2]'
-                            }`}
-                          >
-                            {cita.estado.toUpperCase()}
-                          </span>
-                        </div>
-
-                        <div>
-                          <p className="font-bold text-sm text-[#2D2529]">
-                            {nombreClienta}
-                          </p>
-                          <p className="text-xs text-[#7D6870] font-medium mt-0.5">
-                            💅 {servicioNombre}
-                          </p>
-                        </div>
-
-                        <div className="pt-2 border-t border-[#FCE8EF] flex items-center justify-between text-xs">
-                          <span className="font-mono font-bold text-[#8C243B]">
-                            ${Number(cita.valor_total || 25000).toLocaleString('es-CO')}
-                          </span>
-
-                          <div className="flex items-center gap-2">
-                            {telLimpio && (
-                              <a
-                                href={`https://wa.me/${telLimpio}?text=Hola%20${encodeURIComponent(
-                                  nombreClienta
-                                )},%20te%20escribe%20tu%20manicurista%20de%20JL%20M%C3%ADmate%20Nails%20respecto%20a%20tu%20cita.`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-[11px] font-bold transition"
-                              >
-                                <IconBrandWhatsapp className="w-3.5 h-3.5" />
-                                <span>WhatsApp</span>
-                              </a>
-                            )}
-
-                            {cita.estado !== 'completada' && cita.estado !== 'cancelada' && (
-                              <button
-                                onClick={() => handleCambiarEstado(cita.id, 'completada')}
-                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold transition shadow-2xs cursor-pointer"
-                              >
-                                <IconCheck className="w-3.5 h-3.5" />
-                                <span>Completada</span>
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+              return renderTimelineManicurista(
+                misCitas,
+                perfilActual.nombre,
+                perfilActual.canchaId,
+                false
               );
             })()}
 
