@@ -125,15 +125,25 @@ app.get('/api/debug/subscribe-waba', async (req: Request, res: Response) => {
   }
 
   try {
-    // 1. Obtener información del token (granular scopes y WABA ID)
-    const tokenInfoRes = await axios.get(
-      `https://graph.facebook.com/debug_token?input_token=${token}&access_token=${token}`
-    );
-    const tokenData = tokenInfoRes.data?.data;
-    const granularScopes = tokenData?.granular_scopes || [];
-    const waScope = granularScopes.find((s: any) => s.scope === 'whatsapp_business_messaging' || s.scope === 'whatsapp_business_management');
-    const targetWabaId = waScope?.target_ids?.[0];
+    // 1. Obtener WABAs del Business ID
+    let wabaList: any[] = [];
+    try {
+      const bRes = await axios.get(
+        `https://graph.facebook.com/v21.0/1069645615979114/owned_whatsapp_business_accounts`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      wabaList = bRes.data?.data || [];
+    } catch (e: any) {
+      try {
+        const cRes = await axios.get(
+          `https://graph.facebook.com/v21.0/1069645615979114/client_whatsapp_business_accounts`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        wabaList = cRes.data?.data || [];
+      } catch (e2) {}
+    }
 
+    const targetWabaId = wabaList[0]?.id;
     let subResult: any = null;
     let appsSuscritas: any = null;
 
@@ -158,8 +168,8 @@ app.get('/api/debug/subscribe-waba', async (req: Request, res: Response) => {
 
     return res.json({
       success: true,
-      waba_id_detectado: targetWabaId || null,
-      granular_scopes: granularScopes,
+      waba_list: wabaList,
+      target_waba_id: targetWabaId || null,
       subscripcion_result: subResult,
       apps_suscritas: appsSuscritas,
     });
