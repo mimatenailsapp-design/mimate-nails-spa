@@ -119,6 +119,20 @@ const CATEGORIAS = [
   'Recubrimiento & Cuidado',
 ];
 
+const DIRECCION_SPA_QUERY = encodeURIComponent('Calle 66 bis #26-57, Pereira, Risaralda');
+
+function obtenerUrlMapaSpa(): string {
+  if (typeof navigator !== 'undefined') {
+    const esApple =
+      /iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent) &&
+      !/Windows|Android/.test(navigator.userAgent);
+    if (esApple) {
+      return `https://maps.apple.com/?q=${DIRECCION_SPA_QUERY}`;
+    }
+  }
+  return `https://www.google.com/maps/search/?api=1&query=${DIRECCION_SPA_QUERY}`;
+}
+
 interface Props {
   onIrAlAdmin?: () => void;
 }
@@ -533,16 +547,25 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
 
         {/* FILA DE 3 TARJETAS FLOTANTES DE INFORMACIÓN */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="bg-white border border-[#F2C4D2] rounded-2xl p-4 text-center shadow-xs space-y-1">
+          <a
+            href={obtenerUrlMapaSpa()}
+            target="_blank"
+            rel="noreferrer"
+            className="bg-white border border-[#F2C4D2] hover:border-[#8C243B] rounded-2xl p-4 text-center shadow-xs space-y-1 block transition group cursor-pointer hover:shadow-sm"
+            title="Toca para abrir la ubicación en Google Maps o Apple Maps"
+          >
             <span className="text-[10px] uppercase font-bold tracking-widest text-[#C74B66] block">
               Dónde
             </span>
-            <p className="text-xs font-bold text-[#2D2529] flex items-center justify-center gap-1">
-              <IconMapPin className="w-3.5 h-3.5 text-[#C74B66] shrink-0" />
-              Pereira, Cuba (Calle 66 bis #26-57)
+            <p className="text-xs font-bold text-[#2D2529] group-hover:text-[#8C243B] flex items-center justify-center gap-1 transition">
+              <IconMapPin className="w-3.5 h-3.5 text-[#C74B66] group-hover:scale-110 transition shrink-0" />
+              Pereira, Cuba (Cl. 66 #26-57)
             </p>
-            <p className="text-[11px] text-[#7D6870]">Spa de Uñas</p>
-          </div>
+            <p className="text-[11px] text-[#8C243B] font-semibold flex items-center justify-center gap-1 group-hover:underline">
+              <span>Abrir en mapas</span>
+              <span className="text-[10px]">📍</span>
+            </p>
+          </a>
 
           <div className="bg-white border border-[#F2C4D2] rounded-2xl p-4 text-center shadow-xs space-y-1">
             <span className="text-[10px] uppercase font-bold tracking-widest text-[#C74B66] block">
@@ -981,9 +1004,20 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                         <span className="text-[#7D6870]">Hora:</span>
                         <span className="font-bold text-[#2D2529]">{reservaConfirmada.hora}</span>
                       </div>
-                      <div className="flex justify-between border-b border-[#FCE8EF] pb-1.5">
-                        <span className="text-[#7D6870]">Lugar:</span>
-                        <span className="font-medium text-[#2D2529]">Pereira, Cuba (Calle 66 bis #26-57)</span>
+                      <div className="flex justify-between items-center border-b border-[#FCE8EF] pb-1.5 gap-2">
+                        <span className="text-[#7D6870] shrink-0">Lugar:</span>
+                        <a
+                          href={obtenerUrlMapaSpa()}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-medium text-[#8C243B] hover:underline flex items-center gap-1 text-right text-xs"
+                          title="Abrir ubicación en el mapa"
+                        >
+                          <span>Pereira, Cuba (Cl. 66 #26-57)</span>
+                          <span className="text-[9px] bg-[#FCE8EF] text-[#8C243B] px-1.5 py-0.5 rounded border border-[#F2C4D2] shrink-0 font-bold">
+                            Ver mapa 📍
+                          </span>
+                        </a>
                       </div>
                       <div className="flex justify-between pt-1">
                         <span className="text-[#7D6870] font-bold">Total a pagar en el spa:</span>
