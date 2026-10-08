@@ -249,6 +249,8 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   const [cargando, setCargando] = useState(false);
   const [tabAdmin, setTabAdmin] = useState<'agenda' | 'metricas'>('agenda');
   const [especialistaSeleccionadaId, setEspecialistaSeleccionadaId] = useState<string>('todas');
+  // Selector de vista de agenda: Día (diario por horas / 4 columnas) vs Semana (planificador de 7 días)
+  const [vistaAgenda, setVistaAgenda] = useState<'dia' | 'semana'>('dia');
 
   // Estado para la pestaña de Métricas (Por Día vs Por Mes)
   const [modoMetricas, setModoMetricas] = useState<'dia' | 'mes'>('dia');
@@ -428,6 +430,70 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     const nuevoD = String(fechaObj.getDate()).padStart(2, '0');
     setFechaSeleccionada(`${nuevoY}-${nuevoM}-${nuevoD}`);
   };
+
+  // Navegar semanas hacia atrás o adelante (desplaza 7 días)
+  const cambiarSemana = (offsetSemanas: number) => {
+    const [y, m, d] = fechaSeleccionada.split('-').map(Number);
+    const fechaObj = new Date(y, m - 1, d);
+    fechaObj.setDate(fechaObj.getDate() + offsetSemanas * 7);
+    const nuevoY = fechaObj.getFullYear();
+    const nuevoM = String(fechaObj.getMonth() + 1).padStart(2, '0');
+    const nuevoD = String(fechaObj.getDate()).padStart(2, '0');
+    setFechaSeleccionada(`${nuevoY}-${nuevoM}-${nuevoD}`);
+  };
+
+  // Cálculo de los 7 días de la semana activa (Lunes a Domingo)
+  const diasDeLaSemana = useMemo(() => {
+    if (!fechaSeleccionada) return [];
+    const [y, m, d] = fechaSeleccionada.split('-').map(Number);
+    const refDate = new Date(y, m - 1, d);
+    const dayOfWeek = refDate.getDay(); // 0 es Domingo, 1 es Lunes...
+    const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    const monday = new Date(refDate);
+    monday.setDate(monday.getDate() + diffToMonday);
+
+    const dias = [];
+    for (let i = 0; i < 7; i++) {
+      const curDate = new Date(monday);
+      curDate.setDate(monday.getDate() + i);
+      const curY = curDate.getFullYear();
+      const curM = String(curDate.getMonth() + 1).padStart(2, '0');
+      const curD = String(curDate.getDate()).padStart(2, '0');
+      const fechaIso = `${curY}-${curM}-${curD}`;
+
+      const nombreDia = curDate.toLocaleDateString('es-CO', { weekday: 'short' }).replace('.', '');
+      const nombreDiaLargo = curDate.toLocaleDateString('es-CO', { weekday: 'long' });
+      const diaNum = curDate.getDate();
+      const mesCorto = curDate.toLocaleDateString('es-CO', { month: 'short' }).replace('.', '');
+
+      dias.push({
+        fechaIso,
+        fechaObj: curDate,
+        nombreCorto: nombreDia.charAt(0).toUpperCase() + nombreDia.slice(1),
+        nombreLargo: nombreDiaLargo.charAt(0).toUpperCase() + nombreDiaLargo.slice(1),
+        diaNum,
+        mesCorto,
+        esHoy: fechaIso === hoyStr,
+        esSeleccionada: fechaIso === fechaSeleccionada,
+      });
+    }
+    return dias;
+  }, [fechaSeleccionada, hoyStr]);
+
+  // Etiqueta legible del rango de la semana (ej: "5 al 11 de octubre de 2026")
+  const etiquetaSemana = useMemo(() => {
+    if (diasDeLaSemana.length < 7) return '';
+    const primerDia = diasDeLaSemana[0];
+    const ultimoDia = diasDeLaSemana[6];
+    const mes1 = primerDia.fechaObj.toLocaleDateString('es-CO', { month: 'long' });
+    const mes2 = ultimoDia.fechaObj.toLocaleDateString('es-CO', { month: 'long' });
+    const anio = primerDia.fechaObj.getFullYear();
+    if (primerDia.fechaObj.getMonth() === ultimoDia.fechaObj.getMonth()) {
+      return `${primerDia.diaNum} al ${ultimoDia.diaNum} de ${mes1} de ${anio}`;
+    } else {
+      return `${primerDia.diaNum} de ${mes1} al ${ultimoDia.diaNum} de ${mes2} de ${anio}`;
+    }
+  }, [diasDeLaSemana]);
 
   // Fecha legible en español
   const fechaLegible = useMemo(() => {
@@ -776,6 +842,27 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   const bloqueosDelDia = useMemo(() => {
     return reservasDelDia.filter((r) => r.estado === 'bloqueada');
   }, [reservasDelDia]);
+
+  // Reservas de toda la semana activa
+  const reservasDeLaSemana = useMemo(() => {
+    if (diasDeLaSemana.length === 0) return [];
+    const fechasSet = new Set(diasDeLaSemana.map((d) => d.fechaIso));
+    return reservas.filter((r) => {
+      if (!r.fecha_inicio) return false;
+      const fechaCita = new Date(r.fecha_inicio).toLocaleDateString('en-CA', {
+        timeZone: 'America/Bogota',
+      });
+      return fechasSet.has(fechaCita);
+    });
+  }, [reservas, diasDeLaSemana]);
+
+  const citasClientesDeLaSemana = useMemo(() => {
+    return reservasDeLaSemana.filter((r) => r.estado !== 'bloqueada' && r.estado !== 'cancelada');
+  }, [reservasDeLaSemana]);
+
+  const bloqueosDeLaSemana = useMemo(() => {
+    return reservasDeLaSemana.filter((r) => r.estado === 'bloqueada');
+  }, [reservasDeLaSemana]);
 
   // Reservas filtradas según el modo de métricas (Día seleccionado vs Mes seleccionado, excluyendo bloqueos)
   const reservasFiltradasMetricas = useMemo(() => {
@@ -1303,6 +1390,327 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   };
 
   // ============================================================================
+  // RENDERIZADO: VISTA SEMANAL (7 DÍAS LUNES A DOMINGO)
+  // ============================================================================
+  const renderVistaSemanal = (
+    citasFiltradas: Reserva[],
+    esVistaAdmin: boolean,
+    especialistaIdActual?: string
+  ) => {
+    return (
+      <div className="space-y-3">
+        {/* Grilla de 7 Días con scroll horizontal suave en pantallas compactas */}
+        <div className="overflow-x-auto pb-4 -mx-2 px-2 sm:mx-0 sm:px-0">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-7 gap-3.5 min-w-[300px] xl:min-w-0">
+            {diasDeLaSemana.map((dia) => {
+              // Citas del día específico
+              const citasDia = citasFiltradas.filter((r) => {
+                if (!r.fecha_inicio) return false;
+                const fCita = new Date(r.fecha_inicio).toLocaleDateString('en-CA', {
+                  timeZone: 'America/Bogota',
+                });
+                return fCita === dia.fechaIso;
+              });
+
+              // Ordenar cronológicamente
+              citasDia.sort(
+                (a, b) => new Date(a.fecha_inicio).getTime() - new Date(b.fecha_inicio).getTime()
+              );
+
+              const citasClientesDia = citasDia.filter(
+                (r) => r.estado !== 'bloqueada' && r.estado !== 'cancelada'
+              );
+
+              return (
+                <div
+                  key={dia.fechaIso}
+                  className={`bg-white rounded-2xl border flex flex-col justify-between overflow-hidden transition-all duration-200 ${
+                    dia.esHoy
+                      ? 'border-[#8C243B] ring-2 ring-[#8C243B]/20 shadow-md'
+                      : 'border-[#F2C4D2] shadow-2xs hover:shadow-xs'
+                  }`}
+                >
+                  {/* Encabezado del Día */}
+                  <div
+                    className={`p-3 border-b transition-colors ${
+                      dia.esHoy
+                        ? 'bg-gradient-to-r from-[#8C243B] to-[#9E2A44] text-white border-[#8C243B]'
+                        : 'bg-gradient-to-r from-[#FFF5F7] to-[#FCE8EF] text-[#2D2529] border-[#F2C4D2]'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span
+                          className={`text-[11px] font-bold uppercase tracking-wider block ${
+                            dia.esHoy ? 'text-white/80' : 'text-[#7D6870]'
+                          }`}
+                        >
+                          {dia.nombreCorto}
+                        </span>
+                        <h4 className="text-base font-extrabold font-serif leading-none mt-0.5">
+                          {dia.diaNum}{' '}
+                          <span className="text-xs font-normal opacity-90">{dia.mesCorto}</span>
+                        </h4>
+                      </div>
+
+                      <div className="flex flex-col items-end gap-1">
+                        {dia.esHoy && (
+                          <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded-full bg-white text-[#8C243B] shadow-2xs tracking-wider">
+                            HOY
+                          </span>
+                        )}
+                        <span
+                          className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${
+                            dia.esHoy
+                              ? 'bg-white/20 text-white border-white/40'
+                              : 'bg-white text-[#8C243B] border-[#F2C4D2]'
+                          }`}
+                        >
+                          {citasClientesDia.length} {citasClientesDia.length === 1 ? 'cita' : 'citas'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Botón rápido para saltar al día en vista horaria detallada */}
+                    <button
+                      onClick={() => {
+                        setFechaSeleccionada(dia.fechaIso);
+                        setVistaAgenda('dia');
+                      }}
+                      className={`w-full mt-2 py-1 px-2 rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
+                        dia.esHoy
+                          ? 'bg-white/15 hover:bg-white/25 text-white'
+                          : 'bg-white hover:bg-[#FFF5F7] text-[#8C243B] border border-[#F2C4D2]'
+                      }`}
+                      title={`Ver vista por horas del ${dia.nombreLargo} ${dia.diaNum}`}
+                    >
+                      <span>Ver día completo</span>
+                      <span>→</span>
+                    </button>
+                  </div>
+
+                  {/* Cuerpo: Lista de citas de este día */}
+                  <div className="p-2.5 space-y-2 flex-1 min-h-[260px] max-h-[560px] overflow-y-auto">
+                    {citasDia.length === 0 ? (
+                      <div className="h-full flex flex-col items-center justify-center text-center p-3 text-[#7D6870] space-y-2 opacity-80 min-h-[160px]">
+                        <div className="w-8 h-8 rounded-full bg-[#FFF5F7] text-[#C74B66] flex items-center justify-center text-sm border border-[#F2C4D2]">
+                          🌸
+                        </div>
+                        <p className="text-[11px] font-medium text-[#7D6870]">
+                          Sin citas programadas
+                        </p>
+                        {esVistaAdmin && (
+                          <button
+                            onClick={() => {
+                              setAgendarFecha(dia.fechaIso);
+                              abrirModalAgendar(
+                                especialistaIdActual !== 'todas' ? especialistaIdActual : undefined
+                              );
+                            }}
+                            className="text-[10px] font-bold text-[#8C243B] hover:underline cursor-pointer pt-1"
+                          >
+                            + Agendar cita
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      citasDia.map((cita) => {
+                        const horaInicio = obtenerHoraMinutosBogota(cita.fecha_inicio);
+                        const horaFin = cita.fecha_fin ? obtenerHoraMinutosBogota(cita.fecha_fin) : '';
+                        const esBloqueada = cita.estado === 'bloqueada';
+                        const { motivo: motivoBloqueo, por: bloqueadoPor } = obtenerDetalleBloqueo(cita);
+                        const nombreClienta = obtenerNombreClienta(cita);
+                        const servicioNombre = obtenerServicioCita(cita);
+                        const telLimpio = String(cita.clientes?.telefono_wa || '').replace(/\D/g, '');
+                        const canchaCita = canchas.find((c) => c.id === cita.cancha_id);
+                        const puedeDesbloquear =
+                          esVistaAdmin || (perfilActual?.canchaId === cita.cancha_id);
+
+                        return (
+                          <div
+                            key={cita.id}
+                            className={`p-2 rounded-xl border text-xs space-y-1.5 transition ${
+                              esBloqueada
+                                ? 'bg-amber-50/70 border-amber-300'
+                                : cita.estado === 'completada'
+                                ? 'bg-emerald-50/60 border-emerald-200'
+                                : cita.estado === 'cancelada'
+                                ? 'bg-slate-50 border-slate-200 opacity-60'
+                                : 'bg-white border-[#F2C4D2] shadow-2xs hover:border-[#8C243B]'
+                            }`}
+                          >
+                            {/* Fila superior: Hora y Estado */}
+                            <div className="flex items-center justify-between gap-1">
+                              <span
+                                className={`font-mono font-bold text-[10px] flex items-center gap-1 ${
+                                  esBloqueada ? 'text-amber-900' : 'text-[#8C243B]'
+                                }`}
+                              >
+                                {esBloqueada ? (
+                                  <IconLock className="w-2.5 h-2.5 text-amber-700" />
+                                ) : (
+                                  <IconClock className="w-2.5 h-2.5 text-[#C74B66]" />
+                                )}
+                                {horaInicio} {horaFin && `- ${horaFin}`}
+                              </span>
+                              <span
+                                className={`text-[8px] font-extrabold px-1.5 py-0.2 rounded-full border ${
+                                  esBloqueada
+                                    ? 'bg-amber-200/80 text-amber-900 border-amber-300'
+                                    : cita.estado === 'completada'
+                                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                    : cita.estado === 'cancelada'
+                                    ? 'bg-rose-100 text-rose-800 border-rose-300'
+                                    : 'bg-[#FCE8EF] text-[#8C243B] border-[#F2C4D2]'
+                                }`}
+                              >
+                                {esBloqueada ? 'BLOQUEO' : cita.estado.toUpperCase()}
+                              </span>
+                            </div>
+
+                            {/* Clienta o Bloqueo */}
+                            <div>
+                              <p
+                                className={`font-bold text-[11px] leading-tight truncate ${
+                                  esBloqueada ? 'text-amber-950' : 'text-[#2D2529]'
+                                }`}
+                              >
+                                {esBloqueada ? `🔒 ${motivoBloqueo}` : nombreClienta}
+                              </p>
+                              <p className="text-[10px] text-[#7D6870] truncate">
+                                {esBloqueada ? `Por: ${bloqueadoPor}` : servicioNombre}
+                              </p>
+                            </div>
+
+                            {/* Especialista Asignada (si se ven todas) */}
+                            {esVistaAdmin && (especialistaIdActual === 'todas' || !especialistaIdActual) && canchaCita && (
+                              <div className="pt-0.5">
+                                <span className="inline-flex items-center gap-1 text-[9px] font-bold text-[#8C243B] bg-[#FFF5F7] px-1.5 py-0.5 rounded-md border border-[#F2C4D2]">
+                                  <span>💅</span>
+                                  <span className="truncate max-w-[120px]">{canchaCita.nombre}</span>
+                                </span>
+                              </div>
+                            )}
+
+                            {/* Fila de valor y acciones */}
+                            <div className="flex items-center justify-between pt-1 border-t border-[#FCE8EF] text-[9px]">
+                              <span className="font-mono font-bold text-[#2D2529]">
+                                {esBloqueada
+                                  ? 'Bloqueado'
+                                  : `$${Number(cita.valor_total || 25000).toLocaleString('es-CO')}`}
+                              </span>
+
+                              <div className="flex items-center gap-1">
+                                {esBloqueada ? (
+                                  puedeDesbloquear && (
+                                    <button
+                                      onClick={() => handleDesbloquearHorario(cita.id, horaInicio)}
+                                      className="px-1.5 py-0.5 rounded bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 text-[9px] font-bold transition cursor-pointer"
+                                      title="Desbloquear este horario"
+                                    >
+                                      Desbloquear
+                                    </button>
+                                  )
+                                ) : (
+                                  <>
+                                    {telLimpio && (
+                                      <a
+                                        href={`https://wa.me/${telLimpio}?text=Hola%20${encodeURIComponent(
+                                          nombreClienta
+                                        )},%20te%20escribimos%20de%20JL%20M%C3%ADmate%20Nails%20respecto%20a%20tu%20cita%20del%20${encodeURIComponent(
+                                          dia.nombreLargo
+                                        )}%20a%20las%20${horaInicio}.`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="p-1 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition"
+                                        title="Enviar WhatsApp"
+                                      >
+                                        <IconBrandWhatsapp className="w-3 h-3" />
+                                      </a>
+                                    )}
+
+                                    {esVistaAdmin && cita.estado !== 'completada' && (
+                                      <button
+                                        onClick={() => handleCambiarEstado(cita.id, 'completada')}
+                                        className="p-1 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition cursor-pointer"
+                                        title="Marcar como Completada"
+                                      >
+                                        <IconCheck className="w-3 h-3" />
+                                      </button>
+                                    )}
+
+                                    {esVistaAdmin && (
+                                      <button
+                                        onClick={() => handleEliminarCita(cita.id, nombreClienta)}
+                                        className="p-1 rounded bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 transition cursor-pointer"
+                                        title="Eliminar cita definitivamente"
+                                      >
+                                        <IconTrash className="w-3 h-3" />
+                                      </button>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  {/* Pie de Columna: Acciones rápidas de ese día */}
+                  <div className="p-2 bg-[#FFF5F7] border-t border-[#F2C4D2] flex items-center justify-between gap-1.5">
+                    {esVistaAdmin ? (
+                      <>
+                        <button
+                          onClick={() => {
+                            setAgendarFecha(dia.fechaIso);
+                            abrirModalAgendar(
+                              especialistaIdActual !== 'todas' ? especialistaIdActual : undefined
+                            );
+                          }}
+                          className="flex-1 py-1 px-1.5 bg-white hover:bg-[#8C243B] hover:text-white text-[#8C243B] border border-[#F2C4D2] text-[10px] font-bold rounded-lg transition text-center cursor-pointer shadow-2xs"
+                          title={`Agendar cita para el ${dia.nombreCorto} ${dia.diaNum}`}
+                        >
+                          + Agendar
+                        </button>
+                        <button
+                          onClick={() => {
+                            setBloquearFecha(dia.fechaIso);
+                            abrirModalBloquear(
+                              especialistaIdActual !== 'todas' ? especialistaIdActual : undefined
+                            );
+                          }}
+                          className="py-1 px-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-[10px] font-bold rounded-lg transition flex items-center justify-center cursor-pointer shadow-2xs"
+                          title={`Bloquear horario el ${dia.nombreCorto} ${dia.diaNum}`}
+                        >
+                          <IconLock className="w-3 h-3 text-amber-700" />
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setBloquearFecha(dia.fechaIso);
+                          abrirModalBloquear(perfilActual?.canchaId);
+                        }}
+                        className="w-full py-1 px-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-[10px] font-bold rounded-lg transition flex items-center justify-center gap-1 cursor-pointer shadow-2xs"
+                        title={`Bloquear horario el ${dia.nombreCorto} ${dia.diaNum}`}
+                      >
+                        <IconLock className="w-3 h-3 text-amber-700" />
+                        <span>Bloquear Mi Horario</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ============================================================================
   // VISTA 2: DASHBOARD PRINCIPAL (ADMIN O MANICURISTA)
   // ============================================================================
   return (
@@ -1442,63 +1850,160 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                     : `Mi Agenda Personal (${perfilActual.nombre})`}
                 </p>
                 <p className="text-[11px] text-[#7D6870]">
-                  {fechaLegible} · <strong className="text-[#8C243B]">{citasClientesDelDia.length} citas</strong>
-                  {bloqueosDelDia.length > 0 && (
-                    <span className="ml-1 text-amber-700 font-semibold">
-                      · {bloqueosDelDia.length} {bloqueosDelDia.length === 1 ? 'bloqueo' : 'bloqueos'}
-                    </span>
-                  )}{' '}
-                  programadas
+                  {vistaAgenda === 'dia' ? (
+                    <>
+                      {fechaLegible} · <strong className="text-[#8C243B]">{citasClientesDelDia.length} citas</strong>
+                      {bloqueosDelDia.length > 0 && (
+                        <span className="ml-1 text-amber-700 font-semibold">
+                          · {bloqueosDelDia.length} {bloqueosDelDia.length === 1 ? 'bloqueo' : 'bloqueos'}
+                        </span>
+                      )}{' '}
+                      programadas
+                    </>
+                  ) : (
+                    <>
+                      Semana del {etiquetaSemana} ·{' '}
+                      <strong className="text-[#8C243B]">{citasClientesDeLaSemana.length} citas</strong>
+                      {bloqueosDeLaSemana.length > 0 && (
+                        <span className="ml-1 text-amber-700 font-semibold">
+                          · {bloqueosDeLaSemana.length} {bloqueosDeLaSemana.length === 1 ? 'bloqueo' : 'bloqueos'}
+                        </span>
+                      )}{' '}
+                      programadas
+                    </>
+                  )}
                 </p>
               </div>
             </div>
 
-            {/* CONTROLES DE FECHA CON FLECHAS */}
-            <div className="flex items-center gap-1.5 bg-[#FFF5F7] p-1.5 rounded-2xl border border-[#F2C4D2]">
-              {/* ACCESO RÁPIDO: Volver a Hoy a la izquierda */}
-              {fechaSeleccionada !== hoyStr && (
+            {/* CONTROLES DE VISTA Y FECHA */}
+            <div className="flex flex-wrap items-center gap-2.5">
+              {/* SELECTOR DE VISTA: DÍA VS SEMANA */}
+              <div className="flex items-center bg-[#FCE8EF] p-1 rounded-2xl border border-[#F2C4D2]">
                 <button
-                  onClick={() => setFechaSeleccionada(hoyStr)}
-                  className="px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-white text-[#8C243B] hover:bg-[#FCE8EF] border border-[#F2C4D2] transition cursor-pointer shadow-2xs animate-in fade-in"
-                  title="Volver a la fecha actual"
+                  onClick={() => setVistaAgenda('dia')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs ${
+                    vistaAgenda === 'dia'
+                      ? 'bg-[#8C243B] text-white shadow-xs'
+                      : 'text-[#7D6870] hover:text-[#2D2529]'
+                  }`}
+                  title="Ver agenda detallada por día"
                 >
-                  Ir a Hoy
+                  <IconCalendarEvent className="w-3.5 h-3.5" />
+                  <span>Día</span>
                 </button>
-              )}
-
-              <button
-                onClick={() => cambiarDia(-1)}
-                className="p-2 rounded-xl bg-white hover:bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2] transition cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
-                title="Día anterior"
-              >
-                <IconChevronLeft className="w-4 h-4 stroke-[2.5]" />
-              </button>
-
-              {/* BOTÓN/ETIQUETA DINÁMICA: Hoy, Mañana, Ayer o Sáb, 10 oct */}
-              <button
-                onClick={() => setFechaSeleccionada(hoyStr)}
-                title={fechaSeleccionada === hoyStr ? 'Estás en el día de hoy' : 'Clic para volver al día de hoy'}
-                className="px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs bg-[#8C243B] text-white min-w-[70px] text-center hover:opacity-95 active:scale-95"
-              >
-                {etiquetaFechaRelativa}
-              </button>
-
-              <button
-                onClick={() => cambiarDia(1)}
-                className="p-2 rounded-xl bg-white hover:bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2] transition cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
-                title="Día siguiente"
-              >
-                <IconChevronRight className="w-4 h-4 stroke-[2.5]" />
-              </button>
-
-              <div className="relative pl-1">
-                <input
-                  type="date"
-                  value={fechaSeleccionada}
-                  onChange={(e) => setFechaSeleccionada(e.target.value)}
-                  className="px-3 py-1.5 bg-white border border-[#F2C4D2] rounded-xl text-xs font-bold text-[#2D2529] outline-none cursor-pointer hover:border-[#8C243B] transition shadow-2xs"
-                />
+                <button
+                  onClick={() => setVistaAgenda('semana')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs ${
+                    vistaAgenda === 'semana'
+                      ? 'bg-[#8C243B] text-white shadow-xs'
+                      : 'text-[#7D6870] hover:text-[#2D2529]'
+                  }`}
+                  title="Ver planificación de toda la semana"
+                >
+                  <IconCalendarMonth className="w-3.5 h-3.5" />
+                  <span>Semana</span>
+                </button>
               </div>
+
+              {/* CONTROLES DE FECHA SEGÚN MODO DÍA O SEMANA */}
+              {vistaAgenda === 'dia' ? (
+                <div className="flex items-center gap-1.5 bg-[#FFF5F7] p-1.5 rounded-2xl border border-[#F2C4D2]">
+                  {/* ACCESO RÁPIDO: Volver a Hoy a la izquierda */}
+                  {fechaSeleccionada !== hoyStr && (
+                    <button
+                      onClick={() => setFechaSeleccionada(hoyStr)}
+                      className="px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-white text-[#8C243B] hover:bg-[#FCE8EF] border border-[#F2C4D2] transition cursor-pointer shadow-2xs animate-in fade-in"
+                      title="Volver a la fecha actual"
+                    >
+                      Ir a Hoy
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => cambiarDia(-1)}
+                    className="p-2 rounded-xl bg-white hover:bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2] transition cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
+                    title="Día anterior"
+                  >
+                    <IconChevronLeft className="w-4 h-4 stroke-[2.5]" />
+                  </button>
+
+                  {/* BOTÓN/ETIQUETA DINÁMICA: Hoy, Mañana, Ayer o Sáb, 10 oct */}
+                  <button
+                    onClick={() => setFechaSeleccionada(hoyStr)}
+                    title={fechaSeleccionada === hoyStr ? 'Estás en el día de hoy' : 'Clic para volver al día de hoy'}
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs bg-[#8C243B] text-white min-w-[70px] text-center hover:opacity-95 active:scale-95"
+                  >
+                    {etiquetaFechaRelativa}
+                  </button>
+
+                  <button
+                    onClick={() => cambiarDia(1)}
+                    className="p-2 rounded-xl bg-white hover:bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2] transition cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
+                    title="Día siguiente"
+                  >
+                    <IconChevronRight className="w-4 h-4 stroke-[2.5]" />
+                  </button>
+
+                  <div className="relative pl-1">
+                    <input
+                      type="date"
+                      value={fechaSeleccionada}
+                      onChange={(e) => setFechaSeleccionada(e.target.value)}
+                      className="px-3 py-1.5 bg-white border border-[#F2C4D2] rounded-xl text-xs font-bold text-[#2D2529] outline-none cursor-pointer hover:border-[#8C243B] transition shadow-2xs"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 bg-[#FFF5F7] p-1.5 rounded-2xl border border-[#F2C4D2]">
+                  {/* ACCESO RÁPIDO: Volver a la Semana Actual */}
+                  {!diasDeLaSemana.some((d) => d.esHoy) && (
+                    <button
+                      onClick={() => setFechaSeleccionada(hoyStr)}
+                      className="px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-white text-[#8C243B] hover:bg-[#FCE8EF] border border-[#F2C4D2] transition cursor-pointer shadow-2xs animate-in fade-in"
+                      title="Volver a la semana actual"
+                    >
+                      Esta Semana
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => cambiarSemana(-1)}
+                    className="p-2 rounded-xl bg-white hover:bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2] transition cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
+                    title="Semana anterior"
+                  >
+                    <IconChevronLeft className="w-4 h-4 stroke-[2.5]" />
+                  </button>
+
+                  <button
+                    onClick={() => setFechaSeleccionada(hoyStr)}
+                    title="Semana activa. Clic para volver a la actual"
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs bg-[#8C243B] text-white min-w-[100px] text-center hover:opacity-95 active:scale-95"
+                  >
+                    {diasDeLaSemana.some((d) => d.esHoy)
+                      ? 'Semana Actual'
+                      : `Semana ${diasDeLaSemana[0]?.diaNum} - ${diasDeLaSemana[6]?.diaNum}`}
+                  </button>
+
+                  <button
+                    onClick={() => cambiarSemana(1)}
+                    className="p-2 rounded-xl bg-white hover:bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2] transition cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
+                    title="Semana siguiente"
+                  >
+                    <IconChevronRight className="w-4 h-4 stroke-[2.5]" />
+                  </button>
+
+                  <div className="relative pl-1">
+                    <input
+                      type="date"
+                      value={fechaSeleccionada}
+                      onChange={(e) => setFechaSeleccionada(e.target.value)}
+                      className="px-3 py-1.5 bg-white border border-[#F2C4D2] rounded-xl text-xs font-bold text-[#2D2529] outline-none cursor-pointer hover:border-[#8C243B] transition shadow-2xs"
+                      title="Selecciona cualquier fecha para ver su semana"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -1510,7 +2015,9 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-base sm:text-lg font-bold text-[#2D2529] font-serif">
-                Turnos por Especialista · {fechaLegible}
+                {vistaAgenda === 'dia'
+                  ? `Turnos por Especialista · ${fechaLegible}`
+                  : `Planificación Semanal · ${etiquetaSemana}`}
               </h2>
               <span className="text-xs text-[#7D6870]">
                 Horario: 8:00 a.m. a 7:00 p.m.
@@ -1527,29 +2034,47 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                     : 'bg-white text-[#7D6870] hover:text-[#2D2529] border border-[#F2C4D2]'
                 }`}
               >
-                <span>👑 Resumen 4 Especialistas</span>
+                <span>👑 {vistaAgenda === 'dia' ? 'Resumen 4 Especialistas' : 'Todas las Especialistas'}</span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-white/20 border border-current">
+                  {vistaAgenda === 'dia' ? citasClientesDelDia.length : citasClientesDeLaSemana.length}
+                </span>
               </button>
 
-              {canchas.map((cancha, i) => (
-                <button
-                  key={cancha.id}
-                  onClick={() => setEspecialistaSeleccionadaId(cancha.id)}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs flex items-center gap-1.5 ${
-                    especialistaSeleccionadaId === cancha.id
-                      ? 'bg-[#8C243B] text-white shadow-xs'
-                      : 'bg-white text-[#7D6870] hover:text-[#2D2529] border border-[#F2C4D2]'
-                  }`}
-                >
-                  <span>{i === 0 ? '👑' : '💅'} {cancha.nombre}</span>
-                  <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-white/20 border border-current">
-                    {reservasDelDia.filter((r) => r.cancha_id === cancha.id).length}
-                  </span>
-                </button>
-              ))}
+              {canchas.map((cancha, i) => {
+                const totalCitas =
+                  vistaAgenda === 'dia'
+                    ? reservasDelDia.filter((r) => r.cancha_id === cancha.id && r.estado !== 'cancelada').length
+                    : citasClientesDeLaSemana.filter((r) => r.cancha_id === cancha.id).length;
+
+                return (
+                  <button
+                    key={cancha.id}
+                    onClick={() => setEspecialistaSeleccionadaId(cancha.id)}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs flex items-center gap-1.5 ${
+                      especialistaSeleccionadaId === cancha.id
+                        ? 'bg-[#8C243B] text-white shadow-xs'
+                        : 'bg-white text-[#7D6870] hover:text-[#2D2529] border border-[#F2C4D2]'
+                    }`}
+                  >
+                    <span>{i === 0 ? '👑' : '💅'} {cancha.nombre}</span>
+                    <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-white/20 border border-current">
+                      {totalCitas}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
 
-            {/* SI SELECCIONÓ UNA ESPECIALISTA ESPECÍFICA: TIMELINE DIARIO POR HORAS CON LÍNEA ROJA */}
-            {especialistaSeleccionadaId !== 'todas' ? (
+            {/* VISTA SEMANAL (7 DÍAS) VS VISTAS DIARIAS */}
+            {vistaAgenda === 'semana' ? (
+              renderVistaSemanal(
+                especialistaSeleccionadaId === 'todas'
+                  ? reservasDeLaSemana
+                  : reservasDeLaSemana.filter((r) => r.cancha_id === especialistaSeleccionadaId),
+                true,
+                especialistaSeleccionadaId
+              )
+            ) : especialistaSeleccionadaId !== 'todas' ? (
               (() => {
                 const targetCancha = canchas.find((c) => c.id === especialistaSeleccionadaId);
                 const citasTarget = reservasDelDia.filter((r) => r.cancha_id === especialistaSeleccionadaId);
@@ -2040,7 +2565,9 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                   ¡Hola, {perfilActual.nombre}! 💅
                 </h2>
                 <p className="text-xs text-[#7D6870]">
-                  Turnos asignados a tu puesto para el {fechaLegible}.
+                  {vistaAgenda === 'dia'
+                    ? `Turnos asignados a tu puesto para el ${fechaLegible}.`
+                    : `Planificación semanal de tus turnos del ${etiquetaSemana}.`}
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -2053,29 +2580,51 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                   <span>Bloquear Mi Horario</span>
                 </button>
                 <span className="text-xs font-bold text-[#8C243B] bg-white px-3 py-2 rounded-xl border border-[#F2C4D2] shadow-2xs">
-                  {citasClientesDelDia.filter((r) => r.cancha_id === perfilActual.canchaId).length} citas hoy
-                  {bloqueosDelDia.filter((r) => r.cancha_id === perfilActual.canchaId).length > 0 && (
-                    <span className="ml-1 text-amber-700 font-semibold">
-                      ({bloqueosDelDia.filter((r) => r.cancha_id === perfilActual.canchaId).length} bloq)
-                    </span>
+                  {vistaAgenda === 'dia' ? (
+                    <>
+                      {citasClientesDelDia.filter((r) => r.cancha_id === perfilActual.canchaId).length} citas hoy
+                      {bloqueosDelDia.filter((r) => r.cancha_id === perfilActual.canchaId).length > 0 && (
+                        <span className="ml-1 text-amber-700 font-semibold">
+                          ({bloqueosDelDia.filter((r) => r.cancha_id === perfilActual.canchaId).length} bloq)
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      {citasClientesDeLaSemana.filter((r) => r.cancha_id === perfilActual.canchaId).length} citas esta semana
+                      {bloqueosDeLaSemana.filter((r) => r.cancha_id === perfilActual.canchaId).length > 0 && (
+                        <span className="ml-1 text-amber-700 font-semibold">
+                          ({bloqueosDeLaSemana.filter((r) => r.cancha_id === perfilActual.canchaId).length} bloq)
+                        </span>
+                      )}
+                    </>
                   )}
                 </span>
               </div>
             </div>
 
-            {/* TIMELINE DIARIO CRONOLÓGICO DE LA MANICURISTA CON LÍNEA ROJA EN TIEMPO REAL */}
-            {(() => {
-              const misCitas = reservasDelDia.filter(
-                (r) => r.cancha_id === perfilActual.canchaId
-              );
+            {/* VISTA SEGÚN MODO DÍA O SEMANA */}
+            {vistaAgenda === 'semana' ? (
+              renderVistaSemanal(
+                reservasDeLaSemana.filter((r) => r.cancha_id === perfilActual.canchaId),
+                false,
+                perfilActual.canchaId
+              )
+            ) : (
+              /* TIMELINE DIARIO CRONOLÓGICO DE LA MANICURISTA CON LÍNEA ROJA EN TIEMPO REAL */
+              (() => {
+                const misCitas = reservasDelDia.filter(
+                  (r) => r.cancha_id === perfilActual.canchaId
+                );
 
-              return renderTimelineManicurista(
-                misCitas,
-                perfilActual.nombre,
-                perfilActual.canchaId,
-                false
-              );
-            })()}
+                return renderTimelineManicurista(
+                  misCitas,
+                  perfilActual.nombre,
+                  perfilActual.canchaId,
+                  false
+                );
+              })()
+            )}
 
             {/* Aviso de permisos */}
             <div className="bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl p-3 text-xs text-[#7D6870] text-center">
