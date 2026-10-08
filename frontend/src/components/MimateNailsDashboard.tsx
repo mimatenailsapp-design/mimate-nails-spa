@@ -206,19 +206,109 @@ function obtenerHoraMinutosBogota(isoStr: string): string {
   }
 }
 
-function obtenerHoraEnteraBogota(isoStr: string): number {
+
+
+// Minutos desde las 8:00 AM en Colombia (0 = 8:00 AM, 60 = 9:00 AM, 90 = 9:30 AM, etc.)
+function obtenerMinutosDesde8AMBogota(isoStr: string): number {
   try {
     const d = new Date(isoStr);
-    if (isNaN(d.getTime())) return 8;
-    const hStr = d.toLocaleTimeString('en-US', {
+    if (isNaN(d.getTime())) return 0;
+    const horaStr = d.toLocaleTimeString('es-CO', {
       timeZone: 'America/Bogota',
-      hour: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
       hour12: false,
     });
-    return parseInt(hStr, 10);
+    const [h, m] = horaStr.split(':').map((n) => parseInt(n, 10));
+    return (h - 8) * 60 + m;
   } catch {
-    return 8;
+    return 0;
   }
+}
+
+// Duración en minutos calculada a partir de fecha_inicio y fecha_fin (por defecto 45)
+function obtenerDuracionMinutosCita(inicioIso: string, finIso?: string): number {
+  if (!finIso) return 45;
+  try {
+    const tIni = new Date(inicioIso).getTime();
+    const tFin = new Date(finIso).getTime();
+    if (isNaN(tIni) || isNaN(tFin) || tFin <= tIni) return 45;
+    return Math.max(15, Math.round((tFin - tIni) / 60000));
+  } catch {
+    return 45;
+  }
+}
+
+interface CitaPosicionada {
+  cita: Reserva;
+  top: number;
+  height: number;
+  colIndex: number;
+  totalCols: number;
+}
+
+function calcularPosicionesCitas(citas: Reserva[]): CitaPosicionada[] {
+  if (!citas || citas.length === 0) return [];
+
+  const items = citas.map((c) => {
+    const minInicio = Math.max(0, obtenerMinutosDesde8AMBogota(c.fecha_inicio));
+    const durMin = obtenerDuracionMinutosCita(c.fecha_inicio, c.fecha_fin);
+    const minFin = minInicio + durMin;
+    const top = (minInicio / 60) * ALTURA_HORA_PX;
+    const height = Math.max(42, (durMin / 60) * ALTURA_HORA_PX - 4);
+    return {
+      cita: c,
+      minInicio,
+      minFin,
+      top,
+      height,
+      colIndex: 0,
+      totalCols: 1,
+    };
+  });
+
+  items.sort((a, b) => a.minInicio - b.minInicio || b.minFin - a.minFin);
+
+  const grupos: typeof items[] = [];
+  let grupoActual: typeof items = [];
+  let maxFinGrupo = -1;
+
+  for (const item of items) {
+    if (grupoActual.length === 0 || item.minInicio < maxFinGrupo) {
+      grupoActual.push(item);
+      maxFinGrupo = Math.max(maxFinGrupo, item.minFin);
+    } else {
+      grupos.push(grupoActual);
+      grupoActual = [item];
+      maxFinGrupo = item.minFin;
+    }
+  }
+  if (grupoActual.length > 0) grupos.push(grupoActual);
+
+  for (const grupo of grupos) {
+    const colsFin: number[] = [];
+    for (const it of grupo) {
+      let colAsignada = -1;
+      for (let c = 0; c < colsFin.length; c++) {
+        if (colsFin[c] <= it.minInicio) {
+          colAsignada = c;
+          colsFin[c] = it.minFin;
+          break;
+        }
+      }
+      if (colAsignada === -1) {
+        colAsignada = colsFin.length;
+        colsFin.push(it.minFin);
+      }
+      it.colIndex = colAsignada;
+    }
+    const numCols = colsFin.length;
+    for (const it of grupo) {
+      it.totalCols = numCols;
+    }
+  }
+
+  return items;
 }
 
 export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, complejoId }) => {
@@ -293,40 +383,97 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   const [errorBloquear, setErrorBloquear] = useState<string | null>(null);
   const [menuBloquearManiAbierto, setMenuBloquearManiAbierto] = useState(false);
 
-  // Horas libres para el modal de Agendar Cita (dejan de aparecer las horas que ya tienen cita o bloqueo)
+
+
+  // Objeto de la manicurista actualmente seleccionada en el formulario
+  const manicuristaSeleccionadaForm = useMemo(() => {
+    return canchas.find((c) => c.id === agendarManicuristaId) || canchas[0];
+  }, [canchas, agendarManicuristaId]);
+
+  // Objeto del servicio actualmente seleccionado en el formulario
+  const servicioSeleccionadoForm = useMemo(() => {
+    return servicios.find((s) => s.id === Number(agendarServicioId)) || servicios[0];
+  }, [servicios, agendarServicioId]);
+
+  // Horas libres para el modal de Agendar Cita con cálculo dinámico por duración y fin de citas previas
   const horasDisponiblesAgendarAdmin = useMemo(() => {
     if (!agendarFecha || !agendarManicuristaId) return HORAS_JORNADA;
 
-    const horasOcupadas = new Set<string>();
+    const duracionMinutos = servicioSeleccionadoForm?.duracion || 45;
+    const horaCierreMs = new Date(`${agendarFecha}T19:00:00-05:00`).getTime();
 
-    for (const h of HORAS_JORNADA) {
+    // Horas base cada 30 minutos desde las 8:00 hasta las 18:30
+    const horasBaseAdmin = [
+      '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
+      '11:00', '11:30', '12:00', '12:30', '13:00', '13:30',
+      '14:00', '14:30', '15:00', '15:30', '16:00', '16:30',
+      '17:00', '17:30', '18:00', '18:30'
+    ];
+
+    const candidatosSet = new Set<string>(horasBaseAdmin);
+
+    // Reservas activas de la manicurista seleccionada en esta fecha
+    const reservasMani = reservas.filter((r) => {
+      if (r.estado === 'cancelada') return false;
+      if (r.cancha_id !== agendarManicuristaId) return false;
+      if (!r.fecha_inicio) return false;
+      const fCita = new Date(r.fecha_inicio).toLocaleDateString('en-CA', {
+        timeZone: 'America/Bogota',
+      });
+      return fCita === agendarFecha;
+    });
+
+    // Añadir puntos de inicio candidatos donde terminan citas previas de esa manicurista
+    for (const r of reservasMani) {
+      if (r.fecha_fin) {
+        try {
+          const hhmmFin = obtenerHoraMinutosBogota(r.fecha_fin);
+          const finMs = new Date(`${agendarFecha}T${hhmmFin}:00-05:00`).getTime();
+          const aperturaMs = new Date(`${agendarFecha}T08:00:00-05:00`).getTime();
+          if (finMs >= aperturaMs && finMs < horaCierreMs) {
+            candidatosSet.add(hhmmFin);
+          }
+        } catch {
+          // Ignorar
+        }
+      }
+    }
+
+    const candidatosOrdenados = Array.from(candidatosSet).sort();
+    const libres: string[] = [];
+
+    for (const h of candidatosOrdenados) {
       const slotStartMs = new Date(`${agendarFecha}T${h}:00-05:00`).getTime();
-      const slotEndMs = slotStartMs + 60 * 60 * 1000;
+      const slotEndMs = slotStartMs + duracionMinutos * 60 * 1000;
 
-      const estaOcupada = reservas.some((r) => {
-        if (r.estado === 'cancelada') return false;
-        if (r.cancha_id !== agendarManicuristaId) return false;
+      // Si sobrepasa la hora de cierre del spa, no se puede agendar
+      if (slotEndMs > horaCierreMs) {
+        continue;
+      }
+
+      // Validar si solapa con alguna reserva existente de esta manicurista
+      const colisiona = reservasMani.some((r) => {
         const rStart = new Date(r.fecha_inicio).getTime();
         const rEnd = new Date(r.fecha_fin).getTime();
         return rStart < slotEndMs && rEnd > slotStartMs;
       });
 
-      if (estaOcupada) {
-        horasOcupadas.add(h);
+      if (!colisiona) {
+        libres.push(h);
       }
     }
 
-    return HORAS_JORNADA.filter((h) => !horasOcupadas.has(h));
-  }, [reservas, agendarFecha, agendarManicuristaId]);
+    return libres;
+  }, [reservas, agendarFecha, agendarManicuristaId, servicioSeleccionadoForm?.duracion]);
 
-  // Si cambia la manicurista o fecha en el modal de agendar, ajustar a una hora disponible
+  // Si cambia la manicurista, el servicio o la fecha en el modal de agendar, ajustar a una hora disponible
   useEffect(() => {
     if (modalAgendarAbierto && horasDisponiblesAgendarAdmin.length > 0) {
       if (!horasDisponiblesAgendarAdmin.includes(agendarHora)) {
         setAgendarHora(horasDisponiblesAgendarAdmin[0]);
       }
     }
-  }, [modalAgendarAbierto, agendarFecha, agendarManicuristaId, horasDisponiblesAgendarAdmin]);
+  }, [modalAgendarAbierto, agendarFecha, agendarManicuristaId, servicioSeleccionadoForm?.duracion, horasDisponiblesAgendarAdmin]);
 
   // Horas ya ocupadas o bloqueadas para el modal de Bloquear Horario
   const horasYaOcupadasBloqueo = useMemo(() => {
@@ -932,16 +1079,6 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
   const esAdmin = perfilActual?.rol === 'admin';
 
-  // Objeto de la manicurista actualmente seleccionada en el formulario
-  const manicuristaSeleccionadaForm = useMemo(() => {
-    return canchas.find((c) => c.id === agendarManicuristaId) || canchas[0];
-  }, [canchas, agendarManicuristaId]);
-
-  // Objeto del servicio actualmente seleccionado en el formulario
-  const servicioSeleccionadoForm = useMemo(() => {
-    return servicios.find((s) => s.id === Number(agendarServicioId)) || servicios[0];
-  }, [servicios, agendarServicioId]);
-
   // ============================================================================
   // VISTA 1: PANTALLA DE LOGIN CON LOS 4 PERFILES
   // ============================================================================
@@ -1136,6 +1273,9 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       hour12: false,
     });
 
+    const ALTURA_TOTAL_TIMELINE = HORAS_TIMELINE.length * ALTURA_HORA_PX;
+    const citasPosicionadas = calcularPosicionesCitas(citasManicurista);
+
     return (
       <div className="bg-white rounded-3xl border border-[#F2C4D2] shadow-xs overflow-hidden">
         {/* Cabecera del Timeline */}
@@ -1167,234 +1307,251 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
           </div>
         </div>
 
-        {/* Grilla de Tiempo con Horas de 8 a 19 */}
+        {/* Grilla de Tiempo Continua y Fiel a los Minutos */}
         <div className="relative p-4 sm:p-6 overflow-x-auto">
-          {/* FRONTAL: Línea roja de la hora actual en tiempo real */}
-          {esHoy && estaEnHorario && (
-            <div
-              className="absolute left-16 sm:left-24 right-4 sm:right-6 z-30 pointer-events-none flex items-center transition-all duration-700"
-              style={{ top: `${posicionYLinea + 24}px` }}
-            >
-              {/* Píldora roja estilo iOS / Google Calendar con la hora exacta */}
-              <span className="absolute -left-14 sm:-left-16 -top-2.5 bg-red-500 text-white text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-full shadow-md flex items-center gap-1 select-none">
-                <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
-                {horaMinutosActualStr}
-              </span>
-              {/* Punto circular en el borde izquierdo */}
-              <span className="w-2.5 h-2.5 rounded-full bg-red-500 -ml-1 ring-2 ring-white shadow-xs" />
-              {/* Línea horizontal roja continua */}
-              <div className="flex-1 h-[2px] bg-red-500 shadow-xs" />
-            </div>
-          )}
-
-          {/* Filas de 1 hora de 8 a 19 */}
-          <div className="relative divide-y divide-[#F2C4D2]/60 border-b border-[#F2C4D2]/60">
-            {HORAS_TIMELINE.map((h) => {
-              const citasEnHora = citasManicurista.filter((cita) => {
-                const hCita = obtenerHoraEnteraBogota(cita.fecha_inicio);
-                return hCita === h;
-              });
-
-              return (
-                <div
-                  key={h}
-                  className="flex relative group transition hover:bg-[#FFF5F7]/30"
-                  style={{ minHeight: `${ALTURA_HORA_PX}px` }}
-                >
-                  {/* Columna de la hora a la izquierda */}
-                  <div className="w-16 sm:w-24 pr-3 -mt-2.5 flex-shrink-0 text-right select-none">
+          <div className="min-w-[650px] relative">
+            <div className="flex relative" style={{ height: `${ALTURA_TOTAL_TIMELINE}px` }}>
+              {/* Columna de Horas a la izquierda (8 a 19) */}
+              <div className="w-16 sm:w-24 pr-3 flex-shrink-0 relative select-none">
+                {HORAS_TIMELINE.map((h, index) => (
+                  <div
+                    key={h}
+                    className="absolute right-3 -mt-2.5 text-right"
+                    style={{ top: `${index * ALTURA_HORA_PX}px` }}
+                  >
                     <span className="text-[11px] sm:text-xs font-semibold text-[#7D6870]">
                       {formatearHora12(h)}
                     </span>
                   </div>
+                ))}
+              </div>
 
-                  {/* Espacio del turno a la derecha */}
-                    {/* Espacio del turno a la derecha */}
-                    <div className="flex-1 pl-3 sm:pl-4 py-2 flex flex-col justify-center">
-                      {citasEnHora.length > 0 ? (
-                        <div className="space-y-2">
-                          {citasEnHora.map((cita) => {
-                            const horaInicio = obtenerHoraMinutosBogota(cita.fecha_inicio);
-                            const horaFin = cita.fecha_fin ? obtenerHoraMinutosBogota(cita.fecha_fin) : '';
-                            const esBloqueada = cita.estado === 'bloqueada';
-                            const { motivo: motivoBloqueo, por: bloqueadoPor } = obtenerDetalleBloqueo(cita);
-                            const nombreClienta = obtenerNombreClienta(cita);
-                            const servicioNombre = obtenerServicioCita(cita);
-                            const telLimpio = String(cita.clientes?.telefono_wa || '').replace(/\D/g, '');
-                            const puedeDesbloquear = esAdmin || (perfilActual?.canchaId === cita.cancha_id);
+              {/* Lienzo del Timeline a la derecha */}
+              <div className="flex-1 relative border-l border-[#F2C4D2]/60">
+                {/* FRONTAL: Línea roja de la hora actual en tiempo real */}
+                {esHoy && estaEnHorario && (
+                  <div
+                    className="absolute left-0 right-0 z-30 pointer-events-none flex items-center transition-all duration-700"
+                    style={{ top: `${posicionYLinea}px` }}
+                  >
+                    <span className="absolute -left-14 sm:-left-16 -top-2.5 bg-red-500 text-white text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-full shadow-md flex items-center gap-1 select-none">
+                      <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+                      {horaMinutosActualStr}
+                    </span>
+                    <span className="w-2.5 h-2.5 rounded-full bg-red-500 -ml-1 ring-2 ring-white shadow-xs" />
+                    <div className="flex-1 h-[2px] bg-red-500 shadow-xs" />
+                  </div>
+                )}
 
-                            return (
-                              <div
-                                key={cita.id}
-                                className={`p-3 rounded-2xl border transition shadow-xs flex flex-wrap items-center justify-between gap-3 ${
-                                  esBloqueada
-                                    ? 'bg-gradient-to-r from-amber-50 to-orange-50/70 border-amber-300 shadow-amber-100/50'
-                                    : cita.estado === 'completada'
-                                    ? 'bg-emerald-50/70 border-emerald-300'
-                                    : cita.estado === 'cancelada'
-                                    ? 'bg-slate-50 border-slate-200 opacity-60'
-                                    : 'bg-white border-[#F2C4D2] hover:border-[#8C243B] hover:shadow-sm'
-                                }`}
-                              >
-                                <div className="flex items-center gap-3">
-                                  <div
-                                    className={`px-2.5 py-1 rounded-xl border font-mono font-bold text-xs flex items-center gap-1 shadow-2xs ${
-                                      esBloqueada
-                                        ? 'bg-amber-100/80 border-amber-300 text-amber-900'
-                                        : 'bg-[#FFF5F7] border-[#F2C4D2] text-[#8C243B]'
-                                    }`}
-                                  >
-                                    {esBloqueada ? (
-                                      <IconLock className="w-3.5 h-3.5 text-amber-700" />
-                                    ) : (
-                                      <IconClock className="w-3.5 h-3.5 text-[#C74B66]" />
-                                    )}
-                                    {horaInicio} - {horaFin}
-                                  </div>
-                                  <div>
-                                    <div className="flex items-center gap-2">
-                                      <p
-                                        className={`font-bold text-sm ${
-                                          esBloqueada ? 'text-amber-950 font-serif' : 'text-[#2D2529]'
-                                        }`}
-                                      >
-                                        {esBloqueada ? `🔒 ${motivoBloqueo}` : nombreClienta}
-                                      </p>
-                                      {esBloqueada && (
-                                        <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-amber-200/90 text-amber-900 border border-amber-300">
-                                          BLOQUEADO
-                                        </span>
-                                      )}
-                                    </div>
-                                    <p className="text-xs text-[#7D6870]">
-                                      {esBloqueada
-                                        ? `Horario bloqueado · Bloqueado por: ${bloqueadoPor}`
-                                        : `💅 ${servicioNombre} · `}
-                                      {!esBloqueada && (
-                                        <span className="font-bold text-[#8C243B]">
-                                          ${Number(cita.valor_total || 25000).toLocaleString('es-CO')}
-                                        </span>
-                                      )}
-                                      {(!canchaId || canchaId === 'todas') && (() => {
-                                        const espCancha = canchas.find((c) => c.id === cita.cancha_id);
-                                        return espCancha ? (
-                                          <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-bold text-[#8C243B] bg-[#FFF5F7] px-2 py-0.5 rounded-full border border-[#F2C4D2]">
-                                            💅 {espCancha.nombre}
-                                          </span>
-                                        ) : null;
-                                      })()}
-                                    </p>
-                                  </div>
-                                </div>
+                {/* Filas de fondo con guías horarias completas y de media hora */}
+                <div className="absolute inset-0 flex flex-col pointer-events-none">
+                  {HORAS_TIMELINE.map((h) => {
+                    const hStr = `${String(h).padStart(2, '0')}:00`;
+                    return (
+                      <div
+                        key={h}
+                        className="relative group transition border-b border-[#F2C4D2]/60 hover:bg-[#FFF5F7]/30"
+                        style={{ height: `${ALTURA_HORA_PX}px` }}
+                      >
+                        {/* Línea punteada a la media hora (:30) para referencia visual exacta */}
+                        <div className="absolute left-0 right-0 top-1/2 border-b border-dashed border-[#F2C4D2]/35 pointer-events-none" />
 
-                                <div className="flex items-center gap-2">
-                                  {esBloqueada ? (
-                                    puedeDesbloquear && (
-                                      <button
-                                        onClick={() => handleDesbloquearHorario(cita.id, horaInicio)}
-                                        className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold transition shadow-2xs cursor-pointer active:scale-95"
-                                        title="Desbloquear este horario para volver a habilitar reservas"
-                                      >
-                                        <IconLockOpen className="w-3.5 h-3.5 text-amber-700" />
-                                        <span>Desbloquear</span>
-                                      </button>
-                                    )
-                                  ) : (
-                                    <>
-                                      <span
-                                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                                          cita.estado === 'completada'
-                                            ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                                            : cita.estado === 'cancelada'
-                                            ? 'bg-rose-100 text-rose-800 border-rose-300'
-                                            : 'bg-[#FCE8EF] text-[#8C243B] border-[#F2C4D2]'
-                                        }`}
-                                      >
-                                        {cita.estado.toUpperCase()}
-                                      </span>
-
-                                      {telLimpio && (
-                                        <a
-                                          href={`https://wa.me/${telLimpio}?text=Hola%20${encodeURIComponent(
-                                            nombreClienta
-                                          )},%20te%20saludamos%20de%20JL%20M%C3%ADmate%20Nails%20respecto%20a%20tu%20cita%20de%20las%20${horaInicio}.`}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                          className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold transition shadow-2xs"
-                                          title="Escribir por WhatsApp"
-                                        >
-                                          <IconBrandWhatsapp className="w-3.5 h-3.5" />
-                                          <span className="hidden sm:inline">WhatsApp</span>
-                                        </a>
-                                      )}
-
-                                      {cita.estado !== 'completada' && cita.estado !== 'cancelada' && (
-                                        <button
-                                          onClick={() => handleCambiarEstado(cita.id, 'completada')}
-                                          className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-2xs cursor-pointer active:scale-95"
-                                          title="Marcar como atendida"
-                                        >
-                                          <IconCheck className="w-3.5 h-3.5" />
-                                          <span>Completada</span>
-                                        </button>
-                                      )}
-
-                                      {esAdmin && (
-                                        <button
-                                          onClick={() => handleEliminarCita(cita.id, nombreClienta)}
-                                          className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold transition shadow-2xs cursor-pointer active:scale-95"
-                                          title="Eliminar cita definitivamente"
-                                        >
-                                          <IconTrash className="w-3.5 h-3.5" />
-                                          <span className="hidden sm:inline">Eliminar</span>
-                                        </button>
-                                      )}
-                                    </>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
+                        {/* Botones de acción rápida al pasar el cursor */}
+                        <div className="absolute right-3 top-2 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition z-10 pointer-events-auto">
+                          {canchaId && (
+                            <button
+                              onClick={() => abrirModalBloquear(canchaId, hStr, fechaActualTimeline)}
+                              className="px-2 py-0.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-bold hover:bg-amber-100 cursor-pointer shadow-2xs active:scale-95 flex items-center gap-1"
+                              title="Bloquear este horario"
+                            >
+                              <IconLock className="w-3 h-3 text-amber-700" />
+                              <span>Bloquear</span>
+                            </button>
+                          )}
+                          {puedeAgendar && (
+                            <button
+                              onClick={() => abrirModalAgendar(canchaId || undefined, hStr, fechaActualTimeline)}
+                              className="px-2 py-0.5 rounded-lg bg-white border border-[#F2C4D2] text-[#8C243B] text-[10px] font-bold hover:bg-[#FCE8EF] cursor-pointer shadow-2xs active:scale-95 flex items-center gap-1"
+                            >
+                              <IconPlus className="w-3 h-3" />
+                              <span>Agendar turno</span>
+                            </button>
+                          )}
                         </div>
-                      ) : (
-                        <div className="h-full min-h-[50px] flex items-center justify-between text-xs text-[#7D6870]/60 px-2 rounded-xl transition hover:bg-[#FFF5F7]/50">
-                          <span className="text-[11px] font-medium text-[#7D6870]/50 italic">
-                            Espacio libre
-                          </span>
-                          <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition">
-                            {/* Botón Bloquear Hora (Disponible para Admin y Manicurista) */}
-                            {canchaId && (
-                              <button
-                                onClick={() =>
-                                  abrirModalBloquear(canchaId, `${String(h).padStart(2, '0')}:00`, fechaActualTimeline)
-                                }
-                                className="px-2.5 py-1 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-bold hover:bg-amber-100 cursor-pointer shadow-2xs active:scale-95 flex items-center gap-1"
-                                title="Bloquear este horario para que nadie reserve"
-                              >
-                                <IconLock className="w-3 h-3 text-amber-700" />
-                                <span>Bloquear</span>
-                              </button>
-                            )}
+                      </div>
+                    );
+                  })}
+                </div>
 
-                            {/* Botón Agendar Cita (Solo Admin) */}
-                            {puedeAgendar && (
-                              <button
-                                onClick={() =>
-                                  abrirModalAgendar(canchaId || undefined, `${String(h).padStart(2, '0')}:00`, fechaActualTimeline)
-                                }
-                                className="px-2.5 py-1 rounded-xl bg-white border border-[#F2C4D2] text-[#8C243B] text-[11px] font-bold hover:bg-[#FCE8EF] cursor-pointer shadow-2xs active:scale-95 flex items-center gap-1"
+                {/* CAPA DE CITAS POSICIONADAS EXACTAMENTE SEGÚN SUS MINUTOS Y DURACIÓN */}
+                <div className="absolute inset-0 pointer-events-none">
+                  {citasPosicionadas.map((pos) => {
+                    const { cita, top, height, colIndex, totalCols } = pos;
+                    const horaInicio = obtenerHoraMinutosBogota(cita.fecha_inicio);
+                    const horaFin = cita.fecha_fin ? obtenerHoraMinutosBogota(cita.fecha_fin) : '';
+                    const esBloqueada = cita.estado === 'bloqueada';
+                    const { motivo: motivoBloqueo, por: bloqueadoPor } = obtenerDetalleBloqueo(cita);
+                    const nombreClienta = obtenerNombreClienta(cita);
+                    const servicioNombre = obtenerServicioCita(cita);
+                    const telLimpio = String(cita.clientes?.telefono_wa || '').replace(/\D/g, '');
+                    const puedeDesbloquear = esAdmin || (perfilActual?.canchaId === cita.cancha_id);
+
+                    const leftPercent = (colIndex / totalCols) * 100;
+                    const widthPercent = (1 / totalCols) * 100;
+
+                    return (
+                      <div
+                        key={cita.id}
+                        style={{
+                          top: `${top}px`,
+                          height: `${height}px`,
+                          left: `calc(${leftPercent}% + 4px)`,
+                          width: `calc(${widthPercent}% - 8px)`,
+                        }}
+                        className={`absolute z-20 pointer-events-auto rounded-2xl border transition shadow-xs flex flex-col justify-between overflow-hidden p-2.5 sm:p-3 ${
+                          esBloqueada
+                            ? 'bg-gradient-to-r from-amber-50 to-orange-50/80 border-amber-300 shadow-amber-100/50'
+                            : cita.estado === 'completada'
+                            ? 'bg-emerald-50/80 border-emerald-300'
+                            : cita.estado === 'cancelada'
+                            ? 'bg-slate-50 border-slate-200 opacity-60'
+                            : 'bg-white border-[#F2C4D2] hover:border-[#8C243B] hover:shadow-md'
+                        }`}
+                      >
+                        {/* Cabecera de la Cita */}
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div
+                              className={`px-2 py-0.5 rounded-lg border font-mono font-bold text-xs flex items-center gap-1 shadow-2xs shrink-0 ${
+                                esBloqueada
+                                  ? 'bg-amber-100/80 border-amber-300 text-amber-900'
+                                  : 'bg-[#FFF5F7] border-[#F2C4D2] text-[#8C243B]'
+                              }`}
+                            >
+                              {esBloqueada ? (
+                                <IconLock className="w-3.5 h-3.5 text-amber-700" />
+                              ) : (
+                                <IconClock className="w-3.5 h-3.5 text-[#C74B66]" />
+                              )}
+                              <span>{horaInicio}{horaFin ? ` - ${horaFin}` : ''}</span>
+                            </div>
+
+                            <div className="min-w-0 flex items-center gap-1.5 truncate">
+                              <p
+                                className={`font-bold text-xs sm:text-sm truncate ${
+                                  esBloqueada ? 'text-amber-950 font-serif' : 'text-[#2D2529]'
+                                }`}
+                                title={esBloqueada ? motivoBloqueo : nombreClienta}
                               >
-                                <IconPlus className="w-3 h-3" />
-                                <span>Agendar turno</span>
-                              </button>
+                                {esBloqueada ? `🔒 ${motivoBloqueo}` : nombreClienta}
+                              </p>
+                              {esBloqueada && (
+                                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-amber-200 text-amber-900 border border-amber-300 shrink-0">
+                                  BLOQUEADO
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Acciones principales */}
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {esBloqueada ? (
+                              puedeDesbloquear && (
+                                <button
+                                  onClick={() => handleDesbloquearHorario(cita.id, horaInicio)}
+                                  className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 text-[11px] font-bold transition shadow-2xs cursor-pointer active:scale-95"
+                                  title="Desbloquear este horario para volver a habilitar reservas"
+                                >
+                                  <IconLockOpen className="w-3 h-3 text-amber-700" />
+                                  <span>Desbloquear</span>
+                                </button>
+                              )
+                            ) : (
+                              <>
+                                <span
+                                  className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${
+                                    cita.estado === 'completada'
+                                      ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                      : cita.estado === 'cancelada'
+                                      ? 'bg-rose-100 text-rose-800 border-rose-300'
+                                      : 'bg-[#FCE8EF] text-[#8C243B] border-[#F2C4D2]'
+                                  }`}
+                                >
+                                  {cita.estado.toUpperCase()}
+                                </span>
+
+                                {telLimpio && (
+                                  <a
+                                    href={`https://wa.me/${telLimpio}?text=Hola%20${encodeURIComponent(
+                                      nombreClienta
+                                    )},%20te%20saludamos%20de%20JL%20M%C3%ADmate%20Nails%20respecto%20a%20tu%20cita%20de%20las%20${horaInicio}.`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="flex items-center gap-1 px-2 py-1 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[11px] font-bold transition shadow-2xs"
+                                    title="Escribir por WhatsApp"
+                                  >
+                                    <IconBrandWhatsapp className="w-3 h-3" />
+                                    <span className="hidden sm:inline">WhatsApp</span>
+                                  </a>
+                                )}
+
+                                {cita.estado !== 'completada' && cita.estado !== 'cancelada' && (
+                                  <button
+                                    onClick={() => handleCambiarEstado(cita.id, 'completada')}
+                                    className="flex items-center gap-1 px-2 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold transition shadow-2xs cursor-pointer active:scale-95"
+                                    title="Marcar como atendida"
+                                  >
+                                    <IconCheck className="w-3 h-3" />
+                                    <span className="hidden sm:inline">Completada</span>
+                                  </button>
+                                )}
+
+                                {esAdmin && (
+                                  <button
+                                    onClick={() => handleEliminarCita(cita.id, nombreClienta)}
+                                    className="flex items-center gap-1 px-2 py-1 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-[11px] font-bold transition shadow-2xs cursor-pointer active:scale-95"
+                                    title="Eliminar cita definitivamente"
+                                  >
+                                    <IconTrash className="w-3 h-3" />
+                                    <span className="hidden sm:inline">Eliminar</span>
+                                  </button>
+                                )}
+                              </>
                             )}
                           </div>
                         </div>
-                      )}
-                    </div>
+
+                        {/* Detalle de servicio y precio */}
+                        {height >= 52 && (
+                          <div className="flex items-center justify-between text-xs text-[#7D6870] pt-1 border-t border-[#FCE8EF]/70">
+                            <div className="truncate">
+                              {esBloqueada ? (
+                                <span className="text-[11px]">Bloqueado por: {bloqueadoPor}</span>
+                              ) : (
+                                <>
+                                  <span className="font-medium">💅 {servicioNombre}</span>
+                                  <span className="ml-2 font-bold text-[#8C243B]">
+                                    ${Number(cita.valor_total || 25000).toLocaleString('es-CO')}
+                                  </span>
+                                </>
+                              )}
+                              {(!canchaId || canchaId === 'todas') && (() => {
+                                const espCancha = canchas.find((c) => c.id === cita.cancha_id);
+                                return espCancha ? (
+                                  <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-bold text-[#8C243B] bg-[#FFF5F7] px-2 py-0.5 rounded-full border border-[#F2C4D2]">
+                                    💅 {espCancha.nombre}
+                                  </span>
+                                ) : null;
+                              })()}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-              );
-            })}
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1432,10 +1589,11 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       hour12: false,
     });
     const esSemanaActual = diasDeLaSemana.some((d) => d.esHoy);
+    const ALTURA_TOTAL_TIMELINE = HORAS_TIMELINE.length * ALTURA_HORA_PX;
 
     return (
       <div className="bg-white rounded-3xl border border-[#F2C4D2] shadow-xs overflow-hidden">
-        {/* Cabecera del Timeline Semanal (Exacta a la vista diaria) */}
+        {/* Cabecera del Timeline Semanal */}
         <div className="p-4 bg-gradient-to-r from-[#FFF5F7] to-[#FCE8EF] border-b border-[#F2C4D2] flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-white border border-[#F2C4D2] flex items-center justify-center font-bold text-base text-[#8C243B] shadow-2xs">
@@ -1467,16 +1625,14 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
         {/* Grilla Semanal dividida en 7 días y con horas de 8 a 19 */}
         <div className="relative p-4 sm:p-6 overflow-x-auto">
           <div className="min-w-[1050px]">
-            {/* ENCABEZADOS DE LOS 7 DÍAS (Alineados con las 7 columnas) */}
+            {/* ENCABEZADOS DE LOS 7 DÍAS */}
             <div className="flex border-b border-[#F2C4D2] pb-3 mb-1">
-              {/* Espacio para la columna de horas */}
               <div className="w-16 sm:w-24 pr-3 flex-shrink-0 text-right select-none">
                 <span className="text-[11px] font-extrabold text-[#8C243B] uppercase tracking-wider">
                   HORA
                 </span>
               </div>
 
-              {/* Las 7 columnas: Lunes a Domingo */}
               <div className="flex-1 grid grid-cols-7 divide-x divide-[#F2C4D2]/60">
                 {diasDeLaSemana.map((d) => {
                   const citasDelDia = citasFiltradas.filter((r) => {
@@ -1530,272 +1686,240 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
               </div>
             </div>
 
-            {/* CUERPO DEL TIMELINE CON LAS FILAS DE HORAS */}
-            <div className="relative divide-y divide-[#F2C4D2]/60 border-b border-[#F2C4D2]/60">
-              {/* FRONTAL: Línea roja de la hora actual en tiempo real si esta semana incluye hoy */}
-              {esSemanaActual && estaEnHorario && (
-                <div
-                  className="absolute left-16 sm:left-24 right-0 z-30 pointer-events-none flex items-center transition-all duration-700"
-                  style={{ top: `${posicionYLinea}px` }}
-                >
-                  {/* Píldora roja estilo iOS / Google Calendar con la hora exacta */}
-                  <span className="absolute -left-14 sm:-left-16 -top-2.5 bg-red-500 text-white text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-full shadow-md flex items-center gap-1 select-none">
-                    <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
-                    {horaMinutosActualStr}
-                  </span>
-                  {/* Punto circular en el borde izquierdo */}
-                  <span className="w-2.5 h-2.5 rounded-full bg-red-500 -ml-1 ring-2 ring-white shadow-xs" />
-                  {/* Línea horizontal roja continua */}
-                  <div className="flex-1 h-[2px] bg-red-500 shadow-xs" />
-                </div>
-              )}
-
-              {/* Filas de 1 hora de 8 a 19 */}
-              {HORAS_TIMELINE.map((h) => {
-                return (
+            {/* CUERPO DEL TIMELINE CONTINUO POR COLUMNAS DE DÍAS (LUNES A DOMINGO) */}
+            <div className="flex relative" style={{ height: `${ALTURA_TOTAL_TIMELINE}px` }}>
+              {/* Columna de Horas a la izquierda */}
+              <div className="w-16 sm:w-24 pr-3 flex-shrink-0 relative select-none">
+                {HORAS_TIMELINE.map((h, index) => (
                   <div
                     key={h}
-                    className="flex relative group transition hover:bg-[#FFF5F7]/15"
-                    style={{ minHeight: `${ALTURA_HORA_PX}px` }}
+                    className="absolute right-3 -mt-2.5 text-right"
+                    style={{ top: `${index * ALTURA_HORA_PX}px` }}
                   >
-                    {/* Columna de la hora a la izquierda (idéntica a la vista diaria) */}
-                    <div className="w-16 sm:w-24 pr-3 -mt-2.5 flex-shrink-0 text-right select-none">
-                      <span className="text-[11px] sm:text-xs font-semibold text-[#7D6870]">
-                        {formatearHora12(h)}
-                      </span>
-                    </div>
+                    <span className="text-[11px] sm:text-xs font-semibold text-[#7D6870]">
+                      {formatearHora12(h)}
+                    </span>
+                  </div>
+                ))}
+              </div>
 
-                    {/* 7 Columnas de los Días (Lunes a Domingo) */}
-                    <div className="flex-1 grid grid-cols-7 divide-x divide-[#F2C4D2]/60">
-                      {diasDeLaSemana.map((d) => {
-                        const citasEnCelda = citasFiltradas.filter((r) => {
-                          if (!r.fecha_inicio) return false;
-                          const fCita = new Date(r.fecha_inicio).toLocaleDateString('en-CA', {
-                            timeZone: 'America/Bogota',
-                          });
-                          if (fCita !== d.fechaIso) return false;
-                          const hCita = obtenerHoraEnteraBogota(r.fecha_inicio);
-                          return hCita === h;
-                        });
+              {/* 7 Columnas de los Días a la derecha */}
+              <div className="flex-1 grid grid-cols-7 divide-x divide-[#F2C4D2]/60 relative border-l border-[#F2C4D2]/60">
+                {/* FRONTAL: Línea roja de la hora actual en tiempo real si esta semana incluye hoy */}
+                {esSemanaActual && estaEnHorario && (
+                  <div
+                    className="absolute left-0 right-0 z-30 pointer-events-none flex items-center transition-all duration-700"
+                    style={{ top: `${posicionYLinea}px` }}
+                  >
+                    <span className="absolute -left-14 sm:-left-16 -top-2.5 bg-red-500 text-white text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-full shadow-md flex items-center gap-1 select-none">
+                      <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+                      {horaMinutosActualStr}
+                    </span>
+                    <span className="w-2.5 h-2.5 rounded-full bg-red-500 -ml-1 ring-2 ring-white shadow-xs" />
+                    <div className="flex-1 h-[2px] bg-red-500 shadow-xs" />
+                  </div>
+                )}
 
-                        const esCeldaHoyHoraActual = d.esHoy && ahora.getHours() === h;
+                {/* Las 7 Columnas de días */}
+                {diasDeLaSemana.map((d) => {
+                  const citasDelDia = citasFiltradas.filter((r) => {
+                    if (!r.fecha_inicio) return false;
+                    const fCita = new Date(r.fecha_inicio).toLocaleDateString('en-CA', {
+                      timeZone: 'America/Bogota',
+                    });
+                    return fCita === d.fechaIso && r.estado !== 'cancelada';
+                  });
 
-                        return (
+                  const posicionesDia = calcularPosicionesCitas(citasDelDia);
+
+                  return (
+                    <div
+                      key={d.fechaIso}
+                      className={`relative h-full ${d.esHoy ? 'bg-rose-50/10' : ''}`}
+                    >
+                      {/* Filas de fondo con guías horarias completas y de media hora */}
+                      <div className="absolute inset-0 flex flex-col pointer-events-none">
+                        {HORAS_TIMELINE.map((h) => (
                           <div
-                            key={d.fechaIso}
-                            className={`px-1.5 py-1.5 flex flex-col justify-center relative group/celda transition min-h-[78px] ${
-                              esCeldaHoyHoraActual
-                                ? 'bg-rose-50/30'
-                                : d.esHoy
-                                ? 'bg-rose-50/10'
-                                : ''
-                            }`}
+                            key={h}
+                            className="relative border-b border-[#F2C4D2]/60"
+                            style={{ height: `${ALTURA_HORA_PX}px` }}
                           >
-                            {citasEnCelda.length > 0 ? (
-                              <div className="space-y-1.5 w-full">
-                                {citasEnCelda.map((cita) => {
-                                  const horaInicio = obtenerHoraMinutosBogota(cita.fecha_inicio);
-                                  const horaFin = cita.fecha_fin ? obtenerHoraMinutosBogota(cita.fecha_fin) : '';
-                                  const esBloqueada = cita.estado === 'bloqueada';
-                                  const { motivo: motivoBloqueo, por: bloqueadoPor } = obtenerDetalleBloqueo(cita);
-                                  const nombreClienta = obtenerNombreClienta(cita);
-                                  const servicioNombre = obtenerServicioCita(cita);
-                                  const telLimpio = String(cita.clientes?.telefono_wa || '').replace(/\D/g, '');
-                                  const canchaCita = canchas.find((c) => c.id === cita.cancha_id);
-                                  const puedeDesbloquear =
-                                    esVistaAdmin || (perfilActual?.canchaId === cita.cancha_id);
+                            <div className="absolute left-0 right-0 top-1/2 border-b border-dashed border-[#F2C4D2]/35" />
+                          </div>
+                        ))}
+                      </div>
 
-                                  return (
-                                    <div
-                                      key={cita.id}
-                                      className={`p-2 rounded-xl border text-xs space-y-1 transition shadow-2xs ${
-                                        esBloqueada
-                                          ? 'bg-gradient-to-r from-amber-50 to-orange-50/70 border-amber-300 shadow-amber-100/50'
-                                          : cita.estado === 'completada'
-                                          ? 'bg-emerald-50/70 border-emerald-300'
-                                          : cita.estado === 'cancelada'
-                                          ? 'bg-slate-50 border-slate-200 opacity-60'
-                                          : 'bg-white border-[#F2C4D2] hover:border-[#8C243B] hover:shadow-xs'
-                                      }`}
-                                    >
-                                      {/* Fila 1: Hora y Estado */}
-                                      <div className="flex items-center justify-between gap-1 leading-none">
-                                        <div
-                                          className={`px-1.5 py-0.5 rounded-lg border font-mono font-bold text-[10px] flex items-center gap-1 shadow-2xs ${
-                                            esBloqueada
-                                              ? 'bg-amber-100/80 border-amber-300 text-amber-900'
-                                              : 'bg-[#FFF5F7] border-[#F2C4D2] text-[#8C243B]'
-                                          }`}
-                                        >
-                                          {esBloqueada ? (
-                                            <IconLock className="w-2.5 h-2.5 text-amber-700" />
-                                          ) : (
-                                            <IconClock className="w-2.5 h-2.5 text-[#C74B66]" />
-                                          )}
-                                          <span>{horaInicio}{horaFin ? ` - ${horaFin}` : ''}</span>
-                                        </div>
+                      {/* Tarjetas de citas posicionadas al minuto exacto de inicio y duración */}
+                      <div className="absolute inset-0 pointer-events-none">
+                        {posicionesDia.map((pos) => {
+                          const { cita, top, height, colIndex, totalCols } = pos;
+                          const horaInicio = obtenerHoraMinutosBogota(cita.fecha_inicio);
+                          const horaFin = cita.fecha_fin ? obtenerHoraMinutosBogota(cita.fecha_fin) : '';
+                          const esBloqueada = cita.estado === 'bloqueada';
+                          const { motivo: motivoBloqueo, por: bloqueadoPor } = obtenerDetalleBloqueo(cita);
+                          const nombreClienta = obtenerNombreClienta(cita);
+                          const servicioNombre = obtenerServicioCita(cita);
+                          const telLimpio = String(cita.clientes?.telefono_wa || '').replace(/\D/g, '');
+                          const canchaCita = canchas.find((c) => c.id === cita.cancha_id);
+                          const puedeDesbloquear =
+                            esVistaAdmin || (perfilActual?.canchaId === cita.cancha_id);
 
-                                        <span
-                                          className={`text-[8px] font-extrabold px-1.5 py-0.2 rounded border ${
-                                            esBloqueada
-                                              ? 'bg-amber-200/90 text-amber-900 border-amber-300'
-                                              : cita.estado === 'completada'
-                                              ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                                              : cita.estado === 'cancelada'
-                                              ? 'bg-rose-100 text-rose-800 border-rose-300'
-                                              : 'bg-[#FCE8EF] text-[#8C243B] border-[#F2C4D2]'
-                                          }`}
-                                        >
-                                          {esBloqueada ? 'BLOQ' : cita.estado === 'completada' ? 'LISTA' : 'CONF'}
-                                        </span>
-                                      </div>
+                          const leftPercent = (colIndex / totalCols) * 100;
+                          const widthPercent = (1 / totalCols) * 100;
 
-                                      {/* Fila 2: Nombre Clienta o Motivo Bloqueo */}
-                                      <div className="leading-tight">
-                                        <p
-                                          className={`font-bold text-[11px] truncate ${
-                                            esBloqueada ? 'text-amber-950 font-serif' : 'text-[#2D2529]'
-                                          }`}
-                                          title={esBloqueada ? motivoBloqueo : nombreClienta}
-                                        >
-                                          {esBloqueada ? `🔒 ${motivoBloqueo}` : nombreClienta}
-                                        </p>
-                                        <p
-                                          className="text-[10px] text-[#7D6870] truncate"
-                                          title={esBloqueada ? bloqueadoPor : servicioNombre}
-                                        >
-                                          {esBloqueada ? bloqueadoPor : `💅 ${servicioNombre}`}
-                                        </p>
-                                      </div>
-
-                                      {/* Si se ven todas las especialistas, pill de la especialista */}
-                                      {(!especialistaIdActual || especialistaIdActual === 'todas') &&
-                                        canchaCita && (
-                                          <div className="leading-none pt-0.5">
-                                            <span className="text-[9px] font-bold text-[#8C243B] bg-[#FFF5F7] px-1.5 py-0.5 rounded border border-[#F2C4D2] truncate block max-w-full">
-                                              💅 {canchaCita.nombre}
-                                            </span>
-                                          </div>
-                                        )}
-
-                                      {/* Fila 3: Precio y Acciones */}
-                                      <div className="flex items-center justify-between pt-1 border-t border-[#FCE8EF] text-[10px]">
-                                        <span className="font-mono font-bold text-[#8C243B]">
-                                          {esBloqueada
-                                            ? ''
-                                            : `$${Number(cita.valor_total || 25000).toLocaleString('es-CO')}`}
-                                        </span>
-
-                                        <div className="flex items-center gap-1">
-                                          {esBloqueada ? (
-                                            puedeDesbloquear && (
-                                              <button
-                                                onClick={() => handleDesbloquearHorario(cita.id, horaInicio)}
-                                                className="px-1.5 py-0.5 rounded bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 text-[9px] font-bold transition cursor-pointer shadow-2xs"
-                                                title="Desbloquear horario"
-                                              >
-                                                Liberar
-                                              </button>
-                                            )
-                                          ) : (
-                                            <>
-                                              {telLimpio && (
-                                                <a
-                                                  href={`https://wa.me/${telLimpio}?text=Hola%20${encodeURIComponent(
-                                                    nombreClienta
-                                                  )},%20te%20saludamos%20de%20JL%20M%C3%ADmate%20Nails%20respecto%20a%20tu%20cita%20de%20las%20${horaInicio}.`}
-                                                  target="_blank"
-                                                  rel="noreferrer"
-                                                  className="p-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 transition"
-                                                  title="WhatsApp"
-                                                >
-                                                  <IconBrandWhatsapp className="w-3 h-3" />
-                                                </a>
-                                              )}
-
-                                              {cita.estado !== 'completada' && cita.estado !== 'cancelada' && (
-                                                <button
-                                                  onClick={() => handleCambiarEstado(cita.id, 'completada')}
-                                                  className="p-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition cursor-pointer"
-                                                  title="Marcar como atendida"
-                                                >
-                                                  <IconCheck className="w-3 h-3" />
-                                                </button>
-                                              )}
-
-                                              {esVistaAdmin && (
-                                                <button
-                                                  onClick={() => handleEliminarCita(cita.id, nombreClienta)}
-                                                  className="p-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 transition cursor-pointer"
-                                                  title="Eliminar cita"
-                                                >
-                                                  <IconTrash className="w-3 h-3" />
-                                                </button>
-                                              )}
-                                            </>
-                                          )}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            ) : (
-                              /* CELDA VACÍA (ESPACIO LIBRE - EXACTO COMO EN LA VISTA DIARIA) */
-                              <div className="h-full min-h-[50px] flex items-center justify-between text-xs text-[#7D6870]/60 px-1.5 py-1 rounded-xl transition hover:bg-[#FFF5F7]/40 group/libre">
-                                <span className="text-[10px] font-medium text-[#7D6870]/40 italic select-none">
-                                  Espacio libre
-                                </span>
-                                <div className="flex items-center gap-1 opacity-0 group-hover/celda:opacity-100 transition">
-                                  {/* Botón Bloquear */}
-                                  {especialistaIdActual && especialistaIdActual !== 'todas' && (
-                                    <button
-                                      onClick={() =>
-                                        abrirModalBloquear(
-                                          especialistaIdActual,
-                                          `${String(h).padStart(2, '0')}:00`,
-                                          d.fechaIso
-                                        )
-                                      }
-                                      className="p-1 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100 cursor-pointer shadow-2xs"
-                                      title="Bloquear este horario"
-                                    >
-                                      <IconLock className="w-2.5 h-2.5" />
-                                    </button>
+                          return (
+                            <div
+                              key={cita.id}
+                              style={{
+                                top: `${top}px`,
+                                height: `${height}px`,
+                                left: `calc(${leftPercent}% + 2px)`,
+                                width: `calc(${widthPercent}% - 4px)`,
+                              }}
+                              className={`absolute z-20 pointer-events-auto rounded-xl border text-xs p-1.5 transition shadow-2xs flex flex-col justify-between overflow-hidden ${
+                                esBloqueada
+                                  ? 'bg-gradient-to-r from-amber-50 to-orange-50/80 border-amber-300 shadow-amber-100/50'
+                                  : cita.estado === 'completada'
+                                  ? 'bg-emerald-50/80 border-emerald-300'
+                                  : cita.estado === 'cancelada'
+                                  ? 'bg-slate-50 border-slate-200 opacity-60'
+                                  : 'bg-white border-[#F2C4D2] hover:border-[#8C243B] hover:shadow-xs'
+                              }`}
+                            >
+                              {/* Fila 1: Hora y Estado */}
+                              <div className="flex items-center justify-between gap-1 leading-none">
+                                <div
+                                  className={`px-1 py-0.5 rounded border font-mono font-bold text-[9px] flex items-center gap-0.5 shadow-2xs shrink-0 ${
+                                    esBloqueada
+                                      ? 'bg-amber-100/80 border-amber-300 text-amber-900'
+                                      : 'bg-[#FFF5F7] border-[#F2C4D2] text-[#8C243B]'
+                                  }`}
+                                >
+                                  {esBloqueada ? (
+                                    <IconLock className="w-2.5 h-2.5 text-amber-700" />
+                                  ) : (
+                                    <IconClock className="w-2.5 h-2.5 text-[#C74B66]" />
                                   )}
+                                  <span>{horaInicio}{horaFin ? ` - ${horaFin}` : ''}</span>
+                                </div>
 
-                                  {/* Botón Agendar */}
-                                  {esVistaAdmin && (
-                                    <button
-                                      onClick={() =>
-                                        abrirModalAgendar(
-                                          especialistaIdActual !== 'todas' ? especialistaIdActual : undefined,
-                                          `${String(h).padStart(2, '0')}:00`,
-                                          d.fechaIso
-                                        )
-                                      }
-                                      className="p-1 rounded-lg bg-white border border-[#F2C4D2] text-[#8C243B] hover:bg-[#FCE8EF] cursor-pointer shadow-2xs"
-                                      title={`Agendar turno para ${d.nombreCorto} ${d.diaNum} a las ${formatearHora12(h)}`}
-                                    >
-                                      <IconPlus className="w-2.5 h-2.5" />
-                                    </button>
+                                <span
+                                  className={`text-[8px] font-extrabold px-1 py-0.2 rounded border shrink-0 ${
+                                    esBloqueada
+                                      ? 'bg-amber-200 text-amber-900 border-amber-300'
+                                      : cita.estado === 'completada'
+                                      ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                      : cita.estado === 'cancelada'
+                                      ? 'bg-rose-100 text-rose-800 border-rose-300'
+                                      : 'bg-[#FCE8EF] text-[#8C243B] border-[#F2C4D2]'
+                                  }`}
+                                >
+                                  {esBloqueada ? 'BLOQ' : cita.estado === 'completada' ? 'LISTA' : 'CONF'}
+                                </span>
+                              </div>
+
+                              {/* Fila 2: Nombre Clienta o Motivo Bloqueo */}
+                              <div className="leading-tight my-0.5 min-w-0">
+                                <p
+                                  className={`font-bold text-[10px] truncate ${
+                                    esBloqueada ? 'text-amber-950 font-serif' : 'text-[#2D2529]'
+                                  }`}
+                                  title={esBloqueada ? motivoBloqueo : nombreClienta}
+                                >
+                                  {esBloqueada ? `🔒 ${motivoBloqueo}` : nombreClienta}
+                                </p>
+                                <p
+                                  className="text-[9px] text-[#7D6870] truncate"
+                                  title={esBloqueada ? bloqueadoPor : servicioNombre}
+                                >
+                                  {esBloqueada ? bloqueadoPor : `💅 ${servicioNombre}`}
+                                </p>
+                              </div>
+
+                              {/* Si se ven todas las especialistas, badge de la especialista */}
+                              {(!especialistaIdActual || especialistaIdActual === 'todas') &&
+                                canchaCita && (
+                                  <div className="leading-none pb-0.5 truncate">
+                                    <span className="text-[8px] font-bold text-[#8C243B] bg-[#FFF5F7] px-1 py-0.2 rounded border border-[#F2C4D2] truncate block">
+                                      💅 {canchaCita.nombre}
+                                    </span>
+                                  </div>
+                                )}
+
+                              {/* Fila 3: Precio y Acciones */}
+                              <div className="flex items-center justify-between pt-0.5 border-t border-[#FCE8EF] text-[9px]">
+                                <span className="font-mono font-bold text-[#8C243B] truncate">
+                                  {esBloqueada
+                                    ? ''
+                                    : `$${Number(cita.valor_total || 25000).toLocaleString('es-CO')}`}
+                                </span>
+
+                                <div className="flex items-center gap-1 shrink-0">
+                                  {esBloqueada ? (
+                                    puedeDesbloquear && (
+                                      <button
+                                        onClick={() => handleDesbloquearHorario(cita.id, horaInicio)}
+                                        className="px-1 py-0.5 rounded bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 text-[8px] font-bold transition cursor-pointer shadow-2xs"
+                                        title="Desbloquear horario"
+                                      >
+                                        Liberar
+                                      </button>
+                                    )
+                                  ) : (
+                                    <>
+                                      {telLimpio && (
+                                        <a
+                                          href={`https://wa.me/${telLimpio}?text=Hola%20${encodeURIComponent(
+                                            nombreClienta
+                                          )},%20te%20saludamos%20de%20JL%20M%C3%ADmate%20Nails%20respecto%20a%20tu%20cita%20de%20las%20${horaInicio}.`}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="p-0.5 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-700 transition"
+                                          title="WhatsApp"
+                                        >
+                                          <IconBrandWhatsapp className="w-2.5 h-2.5" />
+                                        </a>
+                                      )}
+
+                                      {cita.estado !== 'completada' && cita.estado !== 'cancelada' && (
+                                        <button
+                                          onClick={() => handleCambiarEstado(cita.id, 'completada')}
+                                          className="p-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white transition cursor-pointer"
+                                          title="Completada"
+                                        >
+                                          <IconCheck className="w-2.5 h-2.5" />
+                                        </button>
+                                      )}
+
+                                      {esVistaAdmin && (
+                                        <button
+                                          onClick={() => handleEliminarCita(cita.id, nombreClienta)}
+                                          className="p-0.5 rounded bg-rose-50 hover:bg-rose-100 text-rose-700 transition cursor-pointer"
+                                          title="Eliminar"
+                                        >
+                                          <IconTrash className="w-2.5 h-2.5" />
+                                        </button>
+                                      )}
+                                    </>
                                   )}
                                 </div>
                               </div>
-                            )}
-                          </div>
-                        );
-                      })}
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>
       </div>
     );
   };
+
 
   // ============================================================================
   // VISTA 2: DASHBOARD PRINCIPAL (ADMIN O MANICURISTA)

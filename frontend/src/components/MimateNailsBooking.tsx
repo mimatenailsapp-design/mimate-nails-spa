@@ -233,7 +233,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
     } catch {}
   }, []);
 
-  const cargarSlots = async (f = fecha, emp = empleadaId) => {
+  const cargarSlots = async (f = fecha, emp = empleadaId, dur = servicioSeleccionado?.duracion || 45) => {
     if (!f) return;
     setCargandoSlots(true);
     setAvisoSlots(null);
@@ -246,9 +246,14 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
       return;
     }
 
+    const duracion = Math.max(15, dur);
+
     try {
       // 1. Intentar endpoint en backend
-      const query = new URLSearchParams({ date: f });
+      const query = new URLSearchParams({
+        date: f,
+        duracion_minutos: String(duracion),
+      });
       if (emp) query.set('cancha_id', emp);
 
       const res = await fetch(`/api/spa/slots?${query.toString()}`);
@@ -267,8 +272,13 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
 
     // 2. Consulta en tiempo real en Supabase (Garantiza que citas o bloqueos dejen de aparecer inmediatamente)
     try {
-      const horasBase = ['09:30', '10:30', '11:30', '12:30', '13:30', '14:30', '15:30', '16:30'];
+      const horasBase = [
+        '09:30', '10:00', '10:30', '11:00', '11:30',
+        '12:00', '12:30', '13:00', '13:30', '14:00',
+        '14:30', '15:00', '15:30', '16:00', '16:30', '17:00'
+      ];
       const ahoraMs = Date.now();
+      const horaCierreMs = new Date(`${f}T17:30:00-05:00`).getTime();
 
       let listaEmp = empleadas;
       if (listaEmp.length === 0) {
@@ -294,14 +304,43 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
         (r) => !reagendarId || r.id !== reagendarId
       );
 
+      // Candidatos dinámicos: horas base + puntos exactos de fin de citas previas
+      const candidatosSet = new Set<string>(horasBase);
+      for (const r of ocupadas) {
+        if (r.fecha_fin) {
+          try {
+            const dFin = new Date(r.fecha_fin);
+            const hhmmFin = dFin.toLocaleTimeString('es-CO', {
+              timeZone: 'America/Bogota',
+              hour: '2-digit',
+              minute: '2-digit',
+              hour12: false,
+            });
+            const finMs = new Date(`${f}T${hhmmFin}:00-05:00`).getTime();
+            const aperturaMs = new Date(`${f}T09:00:00-05:00`).getTime();
+            if (finMs >= aperturaMs && finMs < horaCierreMs) {
+              candidatosSet.add(hhmmFin);
+            }
+          } catch {
+            // Ignorar fecha inválida
+          }
+        }
+      }
+
+      const candidatosOrdenados = Array.from(candidatosSet).sort();
       const slotsLibres: string[] = [];
 
-      for (const h of horasBase) {
+      for (const h of candidatosOrdenados) {
         const slotStartMs = new Date(`${f}T${h}:00-05:00`).getTime();
-        const slotEndMs = slotStartMs + 60 * 60 * 1000;
+        const slotEndMs = slotStartMs + duracion * 60 * 1000;
 
         // Si es hoy y la hora ya pasó, no se puede agendar
         if (slotStartMs <= ahoraMs) {
+          continue;
+        }
+
+        // Si la cita se sale del horario de cierre del spa, descartar
+        if (slotEndMs > horaCierreMs) {
           continue;
         }
 
@@ -331,7 +370,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
       setSlots(slotsLibres);
       setAvisoSlots(
         slotsLibres.length === 0
-          ? 'No hay horarios disponibles para esta fecha. Todos los turnos están ocupados o bloqueados 💕'
+          ? 'No hay horarios disponibles para esta fecha con la duración de este servicio. Prueba con otro día 💕'
           : null
       );
     } catch (errSupabase) {
@@ -343,12 +382,12 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
     }
   };
 
-  // Cargar slots cuando cambia la fecha o la empleada en el modal
+  // Cargar slots cuando cambia la fecha, la empleada o el servicio en el modal
   useEffect(() => {
     if (!modalAbierto || !fecha) return;
     setHoraSeleccionada(null);
-    cargarSlots(fecha, empleadaId);
-  }, [modalAbierto, fecha, empleadaId]);
+    cargarSlots(fecha, empleadaId, servicioSeleccionado?.duracion);
+  }, [modalAbierto, fecha, empleadaId, servicioSeleccionado?.id, servicioSeleccionado?.duracion]);
 
   const abrirModal = (s: Servicio) => {
     setServicioSeleccionado(s);
