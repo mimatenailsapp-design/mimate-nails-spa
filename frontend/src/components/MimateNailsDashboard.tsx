@@ -280,6 +280,67 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   const [errorBloquear, setErrorBloquear] = useState<string | null>(null);
   const [menuBloquearManiAbierto, setMenuBloquearManiAbierto] = useState(false);
 
+  // Horas libres para el modal de Agendar Cita (dejan de aparecer las horas que ya tienen cita o bloqueo)
+  const horasDisponiblesAgendarAdmin = useMemo(() => {
+    if (!agendarFecha || !agendarManicuristaId) return HORAS_JORNADA;
+
+    const horasOcupadas = new Set<string>();
+
+    for (const h of HORAS_JORNADA) {
+      const slotStartMs = new Date(`${agendarFecha}T${h}:00-05:00`).getTime();
+      const slotEndMs = slotStartMs + 60 * 60 * 1000;
+
+      const estaOcupada = reservas.some((r) => {
+        if (r.estado === 'cancelada') return false;
+        if (r.cancha_id !== agendarManicuristaId) return false;
+        const rStart = new Date(r.fecha_inicio).getTime();
+        const rEnd = new Date(r.fecha_fin).getTime();
+        return rStart < slotEndMs && rEnd > slotStartMs;
+      });
+
+      if (estaOcupada) {
+        horasOcupadas.add(h);
+      }
+    }
+
+    return HORAS_JORNADA.filter((h) => !horasOcupadas.has(h));
+  }, [reservas, agendarFecha, agendarManicuristaId]);
+
+  // Si cambia la manicurista o fecha en el modal de agendar, ajustar a una hora disponible
+  useEffect(() => {
+    if (modalAgendarAbierto && horasDisponiblesAgendarAdmin.length > 0) {
+      if (!horasDisponiblesAgendarAdmin.includes(agendarHora)) {
+        setAgendarHora(horasDisponiblesAgendarAdmin[0]);
+      }
+    }
+  }, [modalAgendarAbierto, agendarFecha, agendarManicuristaId, horasDisponiblesAgendarAdmin]);
+
+  // Horas ya ocupadas o bloqueadas para el modal de Bloquear Horario
+  const horasYaOcupadasBloqueo = useMemo(() => {
+    if (!bloquearFecha) return new Set<string>();
+
+    const ocupadas = new Set<string>();
+
+    for (const h of HORAS_OPCIONES_BLOQUEO) {
+      const slotStartMs = new Date(`${bloquearFecha}T${h}:00-05:00`).getTime();
+      const slotEndMs = slotStartMs + 60 * 60 * 1000;
+
+      const estaOcupada = reservas.some((r) => {
+        if (r.estado === 'cancelada') return false;
+        if (bloquearManicuristaId !== 'todas' && r.cancha_id !== bloquearManicuristaId) return false;
+        const rStart = new Date(r.fecha_inicio).getTime();
+        const rEnd = new Date(r.fecha_fin).getTime();
+        return rStart < slotEndMs && rEnd > slotStartMs;
+      });
+
+      if (estaOcupada) {
+        ocupadas.add(h);
+      }
+    }
+
+    return ocupadas;
+  }, [reservas, bloquearFecha, bloquearManicuristaId]);
+
   // 1. Cargar datos del Spa (Equipo, Servicios)
   const cargarInfoSpa = async () => {
     try {
@@ -2014,26 +2075,32 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                           exit={{ opacity: 0, y: -4 }}
                           className="absolute left-0 right-0 top-full mt-1 z-30 bg-white border border-[#F2C4D2] rounded-2xl shadow-xl p-1.5 max-h-48 overflow-y-auto space-y-1"
                         >
-                          {HORAS_JORNADA.map((h) => {
-                            const estaSel = h === agendarHora;
-                            return (
-                              <div
-                                key={h}
-                                onClick={() => {
-                                  setAgendarHora(h);
-                                  setMenuHoraAbierto(false);
-                                }}
-                                className={`px-2.5 py-1.5 rounded-lg flex items-center justify-between cursor-pointer font-mono text-xs transition ${
-                                  estaSel
-                                    ? 'bg-[#FCE8EF] text-[#8C243B] font-bold'
-                                    : 'hover:bg-[#FFF5F7] text-[#2D2529]'
-                                }`}
-                              >
-                                <span>{h}</span>
-                                {estaSel && <IconCheck className="w-3.5 h-3.5 text-[#8C243B]" />}
-                              </div>
-                            );
-                          })}
+                          {horasDisponiblesAgendarAdmin.length === 0 ? (
+                            <div className="p-2.5 text-center text-xs text-[#8C243B] bg-[#FFF5F7] rounded-xl font-medium">
+                              No hay horarios disponibles (todos están ocupados o bloqueados).
+                            </div>
+                          ) : (
+                            horasDisponiblesAgendarAdmin.map((h) => {
+                              const estaSel = h === agendarHora;
+                              return (
+                                <div
+                                  key={h}
+                                  onClick={() => {
+                                    setAgendarHora(h);
+                                    setMenuHoraAbierto(false);
+                                  }}
+                                  className={`px-2.5 py-1.5 rounded-lg flex items-center justify-between cursor-pointer font-mono text-xs transition ${
+                                    estaSel
+                                      ? 'bg-[#FCE8EF] text-[#8C243B] font-bold'
+                                      : 'hover:bg-[#FFF5F7] text-[#2D2529]'
+                                  }`}
+                                >
+                                  <span>{h}</span>
+                                  {estaSel && <IconCheck className="w-3.5 h-3.5 text-[#8C243B]" />}
+                                </div>
+                              );
+                            })
+                          )}
                         </motion.div>
                       )}
                     </AnimatePresence>
@@ -2266,7 +2333,11 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                     <div className="flex items-center gap-2 text-[10px]">
                       <button
                         type="button"
-                        onClick={() => setBloquearHorasSeleccionadas([...HORAS_OPCIONES_BLOQUEO])}
+                        onClick={() =>
+                          setBloquearHorasSeleccionadas(
+                            HORAS_OPCIONES_BLOQUEO.filter((h) => !horasYaOcupadasBloqueo.has(h))
+                          )
+                        }
                         className="text-[#8C243B] font-bold hover:underline cursor-pointer"
                       >
                         Todo el día
@@ -2288,21 +2359,34 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
                   <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
                     {HORAS_OPCIONES_BLOQUEO.map((h) => {
+                      const yaOcupada = horasYaOcupadasBloqueo.has(h);
                       const estaMarcada = bloquearHorasSeleccionadas.includes(h);
                       return (
                         <button
                           key={h}
                           type="button"
-                          onClick={() => toggleHoraBloqueo(h)}
-                          className={`py-2 px-2.5 rounded-xl font-mono text-xs font-bold transition flex items-center justify-center gap-1 cursor-pointer border ${
-                            estaMarcada
-                              ? 'bg-amber-500 text-white border-amber-600 shadow-2xs scale-102 ring-2 ring-amber-300'
-                              : 'bg-[#FFF5F7] hover:bg-[#FCE8EF] text-[#2D2529] border-[#F2C4D2]'
+                          disabled={yaOcupada}
+                          onClick={() => !yaOcupada && toggleHoraBloqueo(h)}
+                          className={`py-2 px-2 rounded-xl font-mono text-xs font-bold transition flex flex-col items-center justify-center gap-0.5 border ${
+                            yaOcupada
+                              ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-60'
+                              : estaMarcada
+                              ? 'bg-amber-500 text-white border-amber-600 shadow-2xs scale-102 ring-2 ring-amber-300 cursor-pointer'
+                              : 'bg-[#FFF5F7] hover:bg-[#FCE8EF] text-[#2D2529] border-[#F2C4D2] cursor-pointer'
                           }`}
                         >
-                          <IconClock className="w-3 h-3 opacity-75" />
-                          <span>{h}</span>
-                          {estaMarcada && <IconCheck className="w-3.5 h-3.5 stroke-[3]" />}
+                          <div className="flex items-center gap-1">
+                            <IconClock className="w-3 h-3 opacity-75" />
+                            <span>{h}</span>
+                          </div>
+                          {yaOcupada && (
+                            <span className="text-[9px] font-sans font-bold text-slate-500 uppercase tracking-tighter">
+                              Ocupada
+                            </span>
+                          )}
+                          {estaMarcada && !yaOcupada && (
+                            <IconCheck className="w-3.5 h-3.5 stroke-[3]" />
+                          )}
                         </button>
                       );
                     })}

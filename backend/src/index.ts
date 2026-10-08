@@ -967,16 +967,16 @@ app.get('/api/spa/slots', async (req: Request, res: Response) => {
     // Franjas horarias de 9:30 am a 5:30 pm (último turno inicia a las 16:30)
     const horasBase = ['09:30', '10:30', '11:30', '12:30', '13:30', '14:30', '15:30', '16:30'];
 
-    const inicioDia = new Date(`${date}T00:00:00-05:00`).toISOString();
-    const finDia = new Date(`${date}T23:59:59-05:00`).toISOString();
+    const inicioBuffer = new Date(new Date(`${date}T00:00:00-05:00`).getTime() - 6 * 60 * 60 * 1000).toISOString();
+    const finBuffer = new Date(new Date(`${date}T23:59:59-05:00`).getTime() + 6 * 60 * 60 * 1000).toISOString();
 
     const { data: reservasOcupadas } = await supabase
       .from('reservas')
       .select('cancha_id, fecha_inicio, fecha_fin, estado')
       .in('cancha_id', listaEmpleadas.map(e => e.id))
       .neq('estado', 'cancelada')
-      .gte('fecha_inicio', inicioDia)
-      .lte('fecha_inicio', finDia);
+      .gte('fecha_inicio', inicioBuffer)
+      .lte('fecha_inicio', finBuffer);
 
     const ocupadas = reservasOcupadas || [];
     const ahoraMs = Date.now();

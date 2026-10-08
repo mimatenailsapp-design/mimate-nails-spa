@@ -12,6 +12,7 @@ import {
   IconHeart,
   IconChevronDown,
 } from '@tabler/icons-react';
+import { supabase } from '../config/supabase';
 
 interface Servicio {
   id: number;
@@ -217,31 +218,114 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
     } catch {}
   }, []);
 
-  const cargarSlots = (f = fecha, emp = empleadaId) => {
+  const cargarSlots = async (f = fecha, emp = empleadaId) => {
     if (!f) return;
     setCargandoSlots(true);
     setAvisoSlots(null);
 
-    const query = new URLSearchParams({ date: f });
-    if (emp) query.set('cancha_id', emp);
+    const dObj = new Date(`${f}T12:00:00-05:00`);
+    if (dObj.getDay() === 0) {
+      setSlots([]);
+      setAvisoSlots('Los domingos estamos cerrados. Atendemos con amor de Lunes a Sábado de 9:30 am a 5:30 pm 💕');
+      setCargandoSlots(false);
+      return;
+    }
 
-    fetch(`/api/spa/slots?${query.toString()}`)
-      .then((r) => r.json())
-      .then((d) => {
-        setSlots(d.slots || []);
-        if (d.aviso) setAvisoSlots(d.aviso);
-      })
-      .catch(() => {
-        // Fallback de horarios entre 9:30 am y 5:30 pm
-        const dObj = new Date(`${f}T12:00:00-05:00`);
-        if (dObj.getDay() === 0) {
-          setSlots([]);
-          setAvisoSlots('Los domingos estamos cerrados. Atendemos con amor de Lunes a Sábado de 9:30 am a 5:30 pm 💕');
-        } else {
-          setSlots(['09:30', '10:30', '11:30', '12:30', '13:30', '14:30', '15:30', '16:30']);
+    try {
+      // 1. Intentar endpoint en backend
+      const query = new URLSearchParams({ date: f });
+      if (emp) query.set('cancha_id', emp);
+
+      const res = await fetch(`/api/spa/slots?${query.toString()}`);
+      if (res.ok) {
+        const d = await res.json();
+        if (Array.isArray(d.slots)) {
+          setSlots(d.slots);
+          if (d.aviso) setAvisoSlots(d.aviso);
+          setCargandoSlots(false);
+          return;
         }
-      })
-      .finally(() => setCargandoSlots(false));
+      }
+    } catch {
+      // Si la API falla o está en reposo, consultar directamente a Supabase
+    }
+
+    // 2. Consulta en tiempo real en Supabase (Garantiza que citas o bloqueos dejen de aparecer inmediatamente)
+    try {
+      const horasBase = ['09:30', '10:30', '11:30', '12:30', '13:30', '14:30', '15:30', '16:30'];
+      const ahoraMs = Date.now();
+
+      let listaEmp = empleadas;
+      if (listaEmp.length === 0) {
+        const { data: canchasDb } = await supabase.from('canchas').select('id, nombre').eq('activa', true);
+        if (canchasDb && canchasDb.length > 0) {
+          listaEmp = canchasDb;
+          setEmpleadas(canchasDb);
+        }
+      }
+
+      const inicioBuffer = new Date(new Date(`${f}T00:00:00-05:00`).getTime() - 6 * 60 * 60 * 1000).toISOString();
+      const finBuffer = new Date(new Date(`${f}T23:59:59-05:00`).getTime() + 6 * 60 * 60 * 1000).toISOString();
+
+      const { data: reservasOcupadas } = await supabase
+        .from('reservas')
+        .select('id, cancha_id, fecha_inicio, fecha_fin, estado')
+        .neq('estado', 'cancelada')
+        .gte('fecha_inicio', inicioBuffer)
+        .lte('fecha_inicio', finBuffer);
+
+      // Excluir la reserva previa a reprogramar para no autobloquearse
+      const ocupadas = (reservasOcupadas || []).filter(
+        (r) => !reagendarId || r.id !== reagendarId
+      );
+
+      const slotsLibres: string[] = [];
+
+      for (const h of horasBase) {
+        const slotStartMs = new Date(`${f}T${h}:00-05:00`).getTime();
+        const slotEndMs = slotStartMs + 60 * 60 * 1000;
+
+        // Si es hoy y la hora ya pasó, no se puede agendar
+        if (slotStartMs <= ahoraMs) {
+          continue;
+        }
+
+        // Buscar qué manicuristas están ocupadas (cita agendada o bloqueo de horario)
+        const ocupadasEnHora = ocupadas
+          .filter((r) => {
+            const rStart = new Date(r.fecha_inicio).getTime();
+            const rEnd = new Date(r.fecha_fin).getTime();
+            return rStart < slotEndMs && rEnd > slotStartMs;
+          })
+          .map((r) => r.cancha_id);
+
+        if (emp) {
+          // Si eligió manicurista específica: si esa manicurista está ocupada o bloqueada, NO aparece
+          if (!ocupadasEnHora.includes(emp)) {
+            slotsLibres.push(h);
+          }
+        } else {
+          // Si eligió cualquiera disponible: debe haber al menos una libre
+          const hayLibre = listaEmp.some((e) => !ocupadasEnHora.includes(e.id));
+          if (hayLibre) {
+            slotsLibres.push(h);
+          }
+        }
+      }
+
+      setSlots(slotsLibres);
+      setAvisoSlots(
+        slotsLibres.length === 0
+          ? 'No hay horarios disponibles para esta fecha. Todos los turnos están ocupados o bloqueados 💕'
+          : null
+      );
+    } catch (errSupabase) {
+      console.error('Error calculando slots en Supabase:', errSupabase);
+      setSlots([]);
+      setAvisoSlots('No fue posible consultar la disponibilidad. Por favor intenta nuevamente.');
+    } finally {
+      setCargandoSlots(false);
+    }
   };
 
   // Cargar slots cuando cambia la fecha o la empleada en el modal
@@ -303,25 +387,73 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
           telefono: telefono.trim(),
         });
         setPaso(3);
-        // Refrescar slots inmediatamente para que la hora reservada ya no aparezca
         cargarSlots(fecha, empleadaId);
       } else {
         alert(data.error || 'Ocurrió un error al agendar tu cita.');
         cargarSlots(fecha, empleadaId);
       }
     } catch {
-      // Fallback local exitoso si offline
-      const empNombre = empleadas.find((e) => e.id === empleadaId)?.nombre || 'Manicurista asignada';
-      setReservaConfirmada({
-        codigo: 'WEB-' + Math.floor(1000 + Math.random() * 9000),
-        empleada: empNombre,
-        servicio: servicioSeleccionado.nombre,
-        fecha,
-        hora: horaSeleccionada,
-        precio: servicioSeleccionado.precio,
-        telefono: telefono.trim(),
-      });
-      setPaso(3);
+      // Fallback directo en Supabase si la API backend está temporalmente inactiva
+      try {
+        let cleanPhone = String(telefono.trim()).replace(/\D/g, '');
+        if (cleanPhone.length === 10 && cleanPhone.startsWith('3')) {
+          cleanPhone = `57${cleanPhone}`;
+        }
+
+        let clienteId: string | null = null;
+        const { data: clienteExistente } = await supabase
+          .from('clientes')
+          .select('id')
+          .eq('telefono_wa', cleanPhone)
+          .maybeSingle();
+
+        if (clienteExistente) {
+          clienteId = clienteExistente.id;
+        } else {
+          const { data: clienteCreado } = await supabase
+            .from('clientes')
+            .insert({ telefono_wa: cleanPhone, nombre: nombre.trim() })
+            .select('id')
+            .single();
+          if (clienteCreado) clienteId = clienteCreado.id;
+        }
+
+        const empAsignada = empleadas.find((e) => e.id === empleadaId) || empleadas[0];
+        const dInicio = new Date(`${fecha}T${horaSeleccionada}:00-05:00`);
+        const dFin = new Date(dInicio.getTime() + (Number(servicioSeleccionado.duracion) || 60) * 60 * 1000);
+
+        if (empAsignada && clienteId) {
+          await supabase.from('reservas').insert({
+            cancha_id: empAsignada.id,
+            cliente_id: clienteId,
+            fecha_inicio: dInicio.toISOString(),
+            fecha_fin: dFin.toISOString(),
+            valor_total: servicioSeleccionado.precio,
+            valor_anticipo_requerido: 0,
+            estado: 'confirmada',
+            notas: `💅 Servicio: ${servicioSeleccionado.nombre} | Clienta: ${nombre.trim()} | Reserva Web JL Mímate Nails`,
+          });
+
+          if (reagendarId) {
+            await supabase.from('reservas').delete().eq('id', reagendarId);
+          }
+        }
+
+        setReservaConfirmada({
+          codigo: 'WEB-' + Math.floor(1000 + Math.random() * 9000),
+          empleada: empAsignada?.nombre || 'Manicurista asignada',
+          servicio: servicioSeleccionado.nombre,
+          fecha,
+          hora: horaSeleccionada,
+          precio: servicioSeleccionado.precio,
+          telefono: telefono.trim(),
+        });
+        setPaso(3);
+        cargarSlots(fecha, empleadaId);
+      } catch (errDb) {
+        console.error('Error insertando en Supabase:', errDb);
+        alert('Ocurrió un error al agendar tu cita. Por favor intenta de nuevo.');
+      }
     } finally {
       setEnviandoReserva(false);
     }
