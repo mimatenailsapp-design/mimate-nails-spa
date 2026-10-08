@@ -349,22 +349,128 @@ app.get('/api/reservas', async (req: Request, res: Response) => {
   res.json(data);
 });
 
-// Bloquear Franja Horaria (Mantenimiento, torneo, lluvia)
+// Bloquear Horarios (1 hora o varias horas, para admin o manicuristas)
 app.post('/api/bloqueos', async (req: Request, res: Response) => {
-  const { cancha_id, fecha_inicio, fecha_fin, motivo } = req.body;
-
-  const { data, error } = await supabase
-    .from('bloqueos_horario')
-    .insert({
+  try {
+    const {
       cancha_id,
+      cancha_ids,
+      fecha,
+      horas,
       fecha_inicio,
       fecha_fin,
-      motivo: motivo || 'Mantenimiento preventivo',
-    })
-    .select();
+      duracion_minutos = 60,
+      motivo = 'Horario bloqueado',
+      bloqueado_por = 'Personal del Spa',
+    } = req.body;
+
+    const idsCanchas: string[] = [];
+    if (Array.isArray(cancha_ids) && cancha_ids.length > 0) {
+      idsCanchas.push(...cancha_ids);
+    } else if (cancha_id) {
+      if (Array.isArray(cancha_id)) {
+        idsCanchas.push(...cancha_id);
+      } else {
+        idsCanchas.push(cancha_id);
+      }
+    }
+
+    if (idsCanchas.length === 0) {
+      return res.status(400).json({ error: 'Debes seleccionar al menos una manicurista / especialista.' });
+    }
+
+    const registrosAInsertar: any[] = [];
+
+    // Si viene fecha_inicio y fecha_fin en formato ISO directo
+    if (fecha_inicio && fecha_fin) {
+      for (const cid of idsCanchas) {
+        registrosAInsertar.push({
+          cancha_id: cid,
+          cliente_id: null,
+          fecha_inicio,
+          fecha_fin,
+          estado: 'bloqueada',
+          valor_total: 0,
+          valor_anticipo_requerido: 0,
+          notas: `🔒 BLOQUEO: ${motivo} | Por: ${bloqueado_por}`,
+        });
+      }
+    } else if (fecha && Array.isArray(horas) && horas.length > 0) {
+      // Si viene fecha YYYY-MM-DD y lista de horas ['09:30', '10:30', ...]
+      for (const h of horas) {
+        const dInicio = new Date(`${fecha}T${h}:00-05:00`);
+        const dFin = new Date(dInicio.getTime() + (Number(duracion_minutos) || 60) * 60 * 1000);
+
+        for (const cid of idsCanchas) {
+          registrosAInsertar.push({
+            cancha_id: cid,
+            cliente_id: null,
+            fecha_inicio: dInicio.toISOString(),
+            fecha_fin: dFin.toISOString(),
+            estado: 'bloqueada',
+            valor_total: 0,
+            valor_anticipo_requerido: 0,
+            notas: `🔒 BLOQUEO: ${motivo} | Hora: ${h} | Por: ${bloqueado_por}`,
+          });
+        }
+      }
+    } else if (fecha && req.body.hora) {
+      // Si viene una sola hora
+      const h = req.body.hora;
+      const dInicio = new Date(`${fecha}T${h}:00-05:00`);
+      const dFin = new Date(dInicio.getTime() + (Number(duracion_minutos) || 60) * 60 * 1000);
+
+      for (const cid of idsCanchas) {
+        registrosAInsertar.push({
+          cancha_id: cid,
+          cliente_id: null,
+          fecha_inicio: dInicio.toISOString(),
+          fecha_fin: dFin.toISOString(),
+          estado: 'bloqueada',
+          valor_total: 0,
+          valor_anticipo_requerido: 0,
+          notas: `🔒 BLOQUEO: ${motivo} | Hora: ${h} | Por: ${bloqueado_por}`,
+        });
+      }
+    } else {
+      return res.status(400).json({ error: 'Faltan parámetros de fecha y horario para realizar el bloqueo.' });
+    }
+
+    const { data, error } = await supabase
+      .from('reservas')
+      .insert(registrosAInsertar)
+      .select('*, canchas(nombre)');
+
+    if (error) {
+      if (error.code === '23P01') {
+        return res.status(409).json({
+          error: 'Uno o más de los horarios seleccionados ya tiene una cita o bloqueo registrado.',
+        });
+      }
+      return res.status(500).json({ error: error.message });
+    }
+
+    res.status(201).json({
+      success: true,
+      bloqueados: data?.length || 0,
+      data,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Desbloquear Horario (Eliminar bloqueo específico)
+app.delete('/api/bloqueos/:id', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { error } = await supabase
+    .from('reservas')
+    .delete()
+    .eq('id', id)
+    .eq('estado', 'bloqueada');
 
   if (error) return res.status(500).json({ error: error.message });
-  res.status(201).json(data);
+  res.json({ success: true, message: 'Horario desbloqueado con éxito' });
 });
 
 // Actualizar estado de una reserva
