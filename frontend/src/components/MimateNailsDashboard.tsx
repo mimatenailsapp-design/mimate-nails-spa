@@ -151,9 +151,43 @@ function formatearHora12(hora24: number): string {
   return `${h12} ${periodo}`;
 }
 
+// Funciones para calcular la hora en Colombia (America/Bogota, UTC-5)
+function obtenerHoraMinutosBogota(isoStr: string): string {
+  try {
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return '08:00';
+    return d.toLocaleTimeString('es-CO', {
+      timeZone: 'America/Bogota',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+  } catch {
+    return '08:00';
+  }
+}
+
+function obtenerHoraEnteraBogota(isoStr: string): number {
+  try {
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return 8;
+    const hStr = d.toLocaleTimeString('en-US', {
+      timeZone: 'America/Bogota',
+      hour: 'numeric',
+      hour12: false,
+    });
+    return parseInt(hStr, 10);
+  } catch {
+    return 8;
+  }
+}
+
 export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, complejoId }) => {
-  const hoyStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
+  const hoyStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }); // YYYY-MM-DD
   const [fechaSeleccionada, setFechaSeleccionada] = useState<string>(hoyStr);
+  const [idComplejoDetectado, setIdComplejoDetectado] = useState<string>(
+    complejoId || '3bd1708c-21de-42a8-a529-d7c91fd41ed2'
+  );
   const [perfilActual, setPerfilActual] = useState<StaffProfile | null>(() => {
     try {
       const g = localStorage.getItem('mimate_staff_profile');
@@ -204,8 +238,11 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       const res = await fetch('/api/spa/info');
       if (res.ok) {
         const d = await res.json();
+        const idReal = d.complejo?.id || complejoId || '3bd1708c-21de-42a8-a529-d7c91fd41ed2';
+        setIdComplejoDetectado(idReal);
         if (d.equipo) setCanchas(d.equipo);
         if (d.servicios) setServicios(d.servicios);
+        cargarReservas(idReal);
       }
     } catch (e) {
       console.error('Error cargando info spa:', e);
@@ -213,10 +250,13 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   };
 
   // 2. Cargar Reservas del Spa
-  const cargarReservas = async () => {
+  const cargarReservas = async (overrideId?: string | unknown) => {
     setCargando(true);
     try {
-      const spaId = complejoId || 'f6a7b8c9-d0e1-2f3a-4b5c-6d7e8f901234';
+      const spaId =
+        typeof overrideId === 'string' && overrideId
+          ? overrideId
+          : idComplejoDetectado || complejoId || '3bd1708c-21de-42a8-a529-d7c91fd41ed2';
       const res = await fetch(`/api/reservas?complejo_id=${spaId}`);
       if (res.ok) {
         const data = await res.json();
@@ -721,8 +761,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
           <div className="relative divide-y divide-[#F2C4D2]/60 border-b border-[#F2C4D2]/60">
             {HORAS_TIMELINE.map((h) => {
               const citasEnHora = citasManicurista.filter((cita) => {
-                const horaStr = cita.fecha_inicio.split('T')[1]?.slice(0, 5) || '08:00';
-                const hCita = parseInt(horaStr.split(':')[0], 10);
+                const hCita = obtenerHoraEnteraBogota(cita.fecha_inicio);
                 return hCita === h;
               });
 
@@ -744,8 +783,8 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                     {citasEnHora.length > 0 ? (
                       <div className="space-y-2">
                         {citasEnHora.map((cita) => {
-                          const horaInicio = cita.fecha_inicio.split('T')[1]?.slice(0, 5) || '08:00';
-                          const horaFin = cita.fecha_fin.split('T')[1]?.slice(0, 5) || '09:00';
+                          const horaInicio = obtenerHoraMinutosBogota(cita.fecha_inicio);
+                          const horaFin = cita.fecha_fin ? obtenerHoraMinutosBogota(cita.fecha_fin) : '';
                           const nombreClienta = obtenerNombreClienta(cita);
                           const servicioNombre = obtenerServicioCita(cita);
                           const telLimpio = String(cita.clientes?.telefono_wa || '').replace(/\D/g, '');
@@ -925,7 +964,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
             {/* Recargar datos */}
             <button
-              onClick={cargarReservas}
+              onClick={() => cargarReservas()}
               disabled={cargando}
               className="p-2 rounded-xl border border-[#F2C4D2] hover:bg-[#FCE8EF] text-[#7D6870] hover:text-[#8C243B] transition cursor-pointer"
               title="Actualizar datos"
@@ -1123,7 +1162,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                         </div>
                       ) : (
                         citasCancha.map((cita) => {
-                          const horaInicio = cita.fecha_inicio.split('T')[1]?.slice(0, 5) || '09:30';
+                          const horaInicio = obtenerHoraMinutosBogota(cita.fecha_inicio);
                           const nombreClienta = obtenerNombreClienta(cita);
                           const servicioNombre = obtenerServicioCita(cita);
                           const telLimpio = String(cita.clientes?.telefono_wa || '').replace(/\D/g, '');
