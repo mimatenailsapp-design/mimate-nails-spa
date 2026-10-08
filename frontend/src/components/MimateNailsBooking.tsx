@@ -464,15 +464,15 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
   );
 
   return (
-    <div className="min-h-screen bg-[#FFF5F7] text-[#2D2529] font-sans antialiased selection:bg-[#F3C6D3] selection:text-[#8C243B]">
-      {/* Botón flotante para acceder a la administración y turnos del equipo */}
+    <div className="min-h-screen bg-[#FFF5F7] text-[#2D2529] font-sans antialiased selection:bg-[#F3C6D3] selection:text-[#8C243B] relative">
+      {/* Botón superior para acceder a la administración y turnos (solo se queda arriba, no persigue la pantalla) */}
       {onIrAlAdmin && (
         <button
           onClick={onIrAlAdmin}
-          className="fixed top-3 right-3 z-30 text-[11px] font-semibold tracking-wider uppercase bg-white/90 hover:bg-white text-[#8C243B] border border-[#F2C4D2] px-3.5 py-1.5 rounded-full shadow-xs backdrop-blur-md transition cursor-pointer flex items-center gap-1.5"
+          className="absolute top-3 right-3 z-20 text-[10px] font-medium tracking-wide text-[#7D6870] hover:text-[#8C243B] bg-white/75 hover:bg-white border border-[#F2C4D2]/80 hover:border-[#F2C4D2] px-3 py-1.5 rounded-full shadow-2xs backdrop-blur-md transition cursor-pointer flex items-center gap-1 opacity-70 hover:opacity-100"
+          title="Acceso exclusivo al panel de turnos del equipo"
         >
           <span>Portal del Equipo & Admin</span>
-          <span>💅</span>
         </button>
       )}
 
