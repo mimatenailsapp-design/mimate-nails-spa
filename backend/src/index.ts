@@ -174,58 +174,32 @@ app.get('/api/debug/subscribe-waba', async (req: Request, res: Response) => {
     return res.status(500).json({ error: 'Faltan credenciales en Render' });
   }
 
+  const targetWabaId = (req.query.waba_id as string) || '1417768020334062';
+
   try {
-    // 1. Obtener WABAs del Business ID
-    let wabaList: any[] = [];
-    try {
-      const bRes = await axios.get(
-        `https://graph.facebook.com/v21.0/1069645615979114/owned_whatsapp_business_accounts`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      wabaList = bRes.data?.data || [];
-    } catch (e: any) {
-      try {
-        const cRes = await axios.get(
-          `https://graph.facebook.com/v21.0/1069645615979114/client_whatsapp_business_accounts`,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        wabaList = cRes.data?.data || [];
-      } catch (e2) {}
-    }
+    // 1. Suscribir la nueva App a la WABA (Activa la entrega de Webhooks de WhatsApp)
+    const subRes = await axios.post(
+      `https://graph.facebook.com/v21.0/${targetWabaId}/subscribed_apps`,
+      {},
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
 
-    const targetWabaId = wabaList[0]?.id;
-    let subResult: any = null;
-    let appsSuscritas: any = null;
-
-    if (targetWabaId) {
-      try {
-        const subRes = await axios.post(
-          `https://graph.facebook.com/v21.0/${targetWabaId}/subscribed_apps`,
-          {},
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        subResult = subRes.data;
-
-        const checkRes = await axios.get(
-          `https://graph.facebook.com/v21.0/${targetWabaId}/subscribed_apps`,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        appsSuscritas = checkRes.data;
-      } catch (subErr: any) {
-        subResult = { error: subErr.response?.data || subErr.message };
-      }
-    }
+    // 2. Comprobar las apps suscritas a la WABA
+    const checkRes = await axios.get(
+      `https://graph.facebook.com/v21.0/${targetWabaId}/subscribed_apps`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
 
     return res.json({
       success: true,
-      waba_list: wabaList,
-      target_waba_id: targetWabaId || null,
-      subscripcion_result: subResult,
-      apps_suscritas: appsSuscritas,
+      target_waba_id: targetWabaId,
+      subscripcion_result: subRes.data,
+      apps_suscritas: checkRes.data,
     });
   } catch (err: any) {
     return res.status(err.response?.status || 500).json({
       success: false,
+      target_waba_id: targetWabaId,
       error: err.response?.data || err.message,
     });
   }
