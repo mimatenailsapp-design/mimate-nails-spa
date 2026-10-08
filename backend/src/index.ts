@@ -138,31 +138,54 @@ async function enviarMensajeWhatsApp(
 
   let payload: any;
   if (typeof message === 'object' && message.interactive) {
-    const sanitizedSections = (message.interactive.action?.sections || []).map((sec: any) => ({
-      title: (sec.title || 'Opciones').slice(0, 24),
-      rows: (sec.rows || []).map((row: any) => ({
-        id: String(row.id || '').slice(0, 200),
-        title: String(row.title || '').slice(0, 24),
-        ...(row.description ? { description: String(row.description).slice(0, 72) } : {}),
-      })),
-    }));
-
-    payload = {
-      messaging_product: 'whatsapp',
-      recipient_type: 'individual',
-      to: cleanTo,
-      type: 'interactive',
-      interactive: {
-        type: message.interactive.type,
-        ...(message.interactive.header ? { header: { type: 'text', text: message.interactive.header.slice(0, 60) } } : {}),
-        body: { text: message.interactive.body.slice(0, 1024) },
-        ...(message.interactive.footer ? { footer: { text: message.interactive.footer.slice(0, 60) } } : {}),
-        action: {
-          button: (message.interactive.action?.button || 'Elegir').slice(0, 20),
-          sections: sanitizedSections,
+    if (message.interactive.type === 'cta_url') {
+      const ctaAction = message.interactive.action as any;
+      payload = {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: cleanTo,
+        type: 'interactive',
+        interactive: {
+          type: 'cta_url',
+          ...(message.interactive.header ? { header: { type: 'text', text: message.interactive.header.slice(0, 60) } } : {}),
+          body: { text: message.interactive.body.slice(0, 1024) },
+          ...(message.interactive.footer ? { footer: { text: message.interactive.footer.slice(0, 60) } } : {}),
+          action: {
+            name: 'cta_url',
+            parameters: {
+              display_text: (ctaAction.parameters?.display_text || 'Abrir Agenda').slice(0, 20),
+              url: ctaAction.parameters?.url,
+            },
+          },
         },
-      },
-    };
+      };
+    } else {
+      const sanitizedSections = (message.interactive.action?.sections || []).map((sec: any) => ({
+        title: (sec.title || 'Opciones').slice(0, 24),
+        rows: (sec.rows || []).map((row: any) => ({
+          id: String(row.id || '').slice(0, 200),
+          title: String(row.title || '').slice(0, 24),
+          ...(row.description ? { description: String(row.description).slice(0, 72) } : {}),
+        })),
+      }));
+
+      payload = {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: cleanTo,
+        type: 'interactive',
+        interactive: {
+          type: message.interactive.type,
+          ...(message.interactive.header ? { header: { type: 'text', text: message.interactive.header.slice(0, 60) } } : {}),
+          body: { text: message.interactive.body.slice(0, 1024) },
+          ...(message.interactive.footer ? { footer: { text: message.interactive.footer.slice(0, 60) } } : {}),
+          action: {
+            button: (message.interactive.action?.button || 'Elegir').slice(0, 20),
+            sections: sanitizedSections,
+          },
+        },
+      };
+    }
   } else {
     const textBody = typeof message === 'string' ? message : message.texto;
     payload = {
@@ -243,6 +266,7 @@ app.post('/api/bot/simulate', async (req: Request, res: Response) => {
       mensaje_recibido: mensaje,
       respuesta_bot: typeof respuesta === 'string' ? respuesta : respuesta.texto,
       interactive: typeof respuesta === 'object' ? respuesta.interactive : undefined,
+      urlRedirect: typeof respuesta === 'object' ? respuesta.urlRedirect : undefined,
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });

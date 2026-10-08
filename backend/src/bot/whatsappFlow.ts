@@ -26,9 +26,26 @@ export interface BotInteractiveMessage {
   };
 }
 
+export interface BotCtaUrlAction {
+  name: 'cta_url';
+  parameters: {
+    display_text: string;
+    url: string;
+  };
+}
+
+export interface BotCtaUrlMessage {
+  type: 'cta_url';
+  header?: string;
+  body: string;
+  footer?: string;
+  action: BotCtaUrlAction;
+}
+
 export interface BotResponse {
   texto: string;
-  interactive?: BotInteractiveMessage;
+  interactive?: BotInteractiveMessage | BotCtaUrlMessage;
+  urlRedirect?: string;
 }
 
 interface UserSession {
@@ -1542,27 +1559,34 @@ export class WhatsAppFlow {
       const baseUrl = process.env.FRONTEND_URL || 'https://mimate-nails-spa.vercel.app';
       const linkReagendar = `${baseUrl}/?reagendar=${reserva.id}`;
 
-      if (esSpa) {
-        return {
-          texto:
-            `📅✨ *REAGENDAR CITA - JL MÍMATE NAILS* ✨🌸\n\n` +
-            `¡Claro que sí reina! Para elegir una nueva fecha y horario disponible, ingresa a este enlace:\n\n` +
-            `👉 *${linkReagendar}*\n\n` +
-            `💡 *Ten presente:*\n` +
-            `• Tu cita actual (*${fechaCita}* a las *${horaInicio}*) *permanece guardada* hasta que confirmes la nueva fecha en el enlace.\n` +
-            `• Si completas la nueva reserva en la página, tu cita anterior se cancelará automáticamente y quedará vigente la nueva.\n` +
-            `• Si no reagendas, tu cita original seguirá tal cual como la tienes programada.\n\n` +
-            `¡Haz clic en el enlace para elegir tu nuevo horario! 💕💅`,
-        };
-      } else {
-        return {
-          texto:
-            `📅 *CAMBIAR FECHA DE RESERVA*\n\n` +
-            `Puedes elegir una nueva fecha y horario ingresando al siguiente enlace:\n\n` +
-            `👉 *${linkReagendar}*\n\n` +
-            `Nota: Tu reserva actual se mantendrá activa hasta que confirmes la nueva en el enlace.`,
-        };
-      }
+      const textoSinLink = esSpa
+        ? `🌸 *REAGENDAR CITA - JL MÍMATE NAILS* 🌸\n\n` +
+          `¡Claro que sí reina! Toca el botón a continuación para abrir directamente la agenda y elegir tu nuevo horario:\n\n` +
+          `💡 *Ten presente:*\n` +
+          `• Tu cita actual (*${fechaCita}* a las *${horaInicio}*) *permanece guardada* hasta que confirmes la nueva fecha.\n` +
+          `• Si completas la nueva reserva, tu cita anterior se cancelará automáticamente.\n` +
+          `• Si no reagendas, tu cita original seguirá tal cual como la tienes programada.`
+        : `📅 *CAMBIAR FECHA DE RESERVA*\n\n` +
+          `Toca el botón a continuación para abrir directamente la agenda y seleccionar tu nuevo horario.\n\n` +
+          `Tu reserva del *${fechaCita}* a las *${horaInicio}* se mantendrá activa hasta que confirmes la nueva fecha.`;
+
+      return {
+        texto: textoSinLink,
+        urlRedirect: linkReagendar,
+        interactive: {
+          type: 'cta_url',
+          header: esSpa ? '🌸 Reagendar Cita' : '📅 Reagendar',
+          body: textoSinLink,
+          footer: 'JL Mímate Nails',
+          action: {
+            name: 'cta_url',
+            parameters: {
+              display_text: '📅 Abrir Agenda',
+              url: linkReagendar,
+            },
+          },
+        },
+      };
     }
 
     return null;
