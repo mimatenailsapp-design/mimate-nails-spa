@@ -103,12 +103,34 @@ export class WhatsAppFlow {
         session = { paso: 'INICIO', complejoId: complejo.id, ultimoMensaje: ahora };
         sesiones.set(telefono, session);
         const esSpa = complejo.slug === 'mimate-nails' || complejo.tipo_negocio === 'belleza_unas';
+        if (esSpa) {
+          const baseUrl = process.env.FRONTEND_URL || 'https://mimate-nails-spa.vercel.app';
+          const textoReinicio =
+            `🔄 *Conversación reiniciada con éxito* 🌸\n\n` +
+            `¡Hola reina! Tu sesión anterior ha sido limpiada por completo.\n` +
+            `Para agendar tu cita, ver nuestros servicios y elegir tu manicurista preferida, toca el botón a continuación:\n\n` +
+            `¡Te esperamos con amor para consentirte! 💕💅`;
+
+          return {
+            texto: `${textoReinicio}\n\n📅 *Agenda tu cita aquí:*\n${baseUrl}`,
+            urlRedirect: baseUrl,
+            interactive: {
+              type: 'cta_url',
+              header: '🌸 JL Mímate Nails Spa',
+              body: textoReinicio,
+              footer: 'JL Mímate Nails',
+              action: {
+                name: 'cta_url',
+                parameters: {
+                  display_text: '📅 Abrir Agenda',
+                  url: baseUrl,
+                },
+              },
+            },
+          };
+        }
         return {
-          texto: esSpa
-            ? `🔄 *Conversación reiniciada con éxito* 🌸\n\n` +
-              `¡Hola reina! Tu sesión anterior ha sido limpiada por completo.\n` +
-              `Escribe *HOLA* o *MENU* para consultar nuestros servicios y agendar tu cita en *${complejo.nombre}* 💕💅.`
-            : `🔄 *Conversación reiniciada con éxito.*\n\nEscribe *HOLA* para comenzar tu reserva en *${complejo.nombre}*.`,
+          texto: `🔄 *Conversación reiniciada con éxito.*\n\nEscribe *HOLA* para comenzar tu reserva en *${complejo.nombre}*.`,
         };
       }
 
@@ -415,41 +437,65 @@ export class WhatsAppFlow {
 
     const esSpa = complejo.slug === 'mimate-nails' || complejo.tipo_negocio === 'belleza_unas';
 
+    if (esSpa) {
+      session.paso = 'INICIO';
+      const baseUrl = process.env.FRONTEND_URL || 'https://mimate-nails-spa.vercel.app';
+      const saludoNombre = nombrePush ? ` ${nombrePush}` : '';
+      const textoSpa =
+        `🌸✨ *¡HOLA${saludoNombre ? saludoNombre.toUpperCase() : ' REINA'}! BIENVENIDA A JL MÍMATE NAILS* ✨🌸\n\n` +
+        `Nos alegra mucho saludarte. Para agendar tu cita, ver nuestros servicios y elegir tu manicurista preferida, abre nuestra agenda tocando el botón a continuación:\n\n` +
+        `📍 Pereira, Cuba (Calle 66 bis #26-57)\n` +
+        `💅 Sin cobros anticipados (pagas en el spa).\n\n` +
+        `¡Te esperamos con amor para consentirte! 💕`;
+
+      return {
+        texto: `${textoSpa}\n\n📅 *Agenda tu cita aquí:*\n${baseUrl}`,
+        urlRedirect: baseUrl,
+        interactive: {
+          type: 'cta_url',
+          header: '🌸 JL Mímate Nails Spa',
+          body: textoSpa,
+          footer: 'JL Mímate Nails',
+          action: {
+            name: 'cta_url',
+            parameters: {
+              display_text: '📅 Abrir Agenda',
+              url: baseUrl,
+            },
+          },
+        },
+      };
+    }
+
     const rows: InteractiveRow[] = canchas.slice(0, 9).map((c) => ({
       id: `cancha_${c.id}`,
       title: c.nombre.slice(0, 24),
-      description: esSpa
-        ? `Profesional de Uñas • Mímate Nails`.slice(0, 72)
-        : `${c.deporte.toUpperCase().replace('_', ' ')} • $${c.precio_estandar.toLocaleString('es-CO')}`.slice(0, 72),
+      description: `${c.deporte.toUpperCase().replace('_', ' ')} • $${c.precio_estandar.toLocaleString('es-CO')}`.slice(0, 72),
     }));
 
     // Opción para hablar directamente con un encargado o asesor
     rows.push({
       id: 'contacto_asesor',
       title: '💬 Hablar con Asesor',
-      description: esSpa ? 'Atención personalizada con encargada' : 'Atención personalizada con encargado',
+      description: 'Atención personalizada con encargado',
     });
 
-    const textoRespuesta = esSpa
-      ? `👋 ¡Hola ${nombrePush || 'reina'}! Te damos la bienvenida a *${complejo.nombre}* 🌸✨.\n\n` +
-        `• Toca el botón a continuación para elegir tu manicurista preferida 💕.\n` +
-        `• O puedes escribir *ASESOR* en cualquier momento para atención personalizada.`
-      : `👋 ¡Hola ${nombrePush || ''}! Bienvenido a las reservas 24/7 de *${complejo.nombre}*.\n\n` +
-        `• Abre el menú desplegable a continuación para seleccionar tu cancha o servicio ⚽🎾.\n` +
-        `• O puedes escribir *ASESOR* en cualquier momento para hablar con un encargado.`;
+    const textoRespuesta = `👋 ¡Hola ${nombrePush || ''}! Bienvenido a las reservas 24/7 de *${complejo.nombre}*.\n\n` +
+      `• Abre el menú desplegable a continuación para seleccionar tu cancha o servicio ⚽🎾.\n` +
+      `• O puedes escribir *ASESOR* en cualquier momento para hablar con un encargado.`;
 
     return {
       texto: textoRespuesta,
       interactive: {
         type: 'list',
-        header: esSpa ? 'JL Mímate Nails Spa' : complejo.nombre.slice(0, 60),
+        header: complejo.nombre.slice(0, 60),
         body: textoRespuesta,
         footer: 'Elige del menú o escribe ASESOR',
         action: {
-          button: esSpa ? 'Elegir Profesional' : 'Elegir Opción',
+          button: 'Elegir Opción',
           sections: [
             {
-              title: esSpa ? 'Nuestras Manicuristas' : 'Canchas y Opciones',
+              title: 'Canchas y Opciones',
               rows,
             },
           ],
