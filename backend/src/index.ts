@@ -92,6 +92,30 @@ app.get('/api/debug/whatsapp', (req: Request, res: Response) => {
   });
 });
 
+app.get('/api/debug/phone-info', async (req: Request, res: Response) => {
+  const token = (process.env.WHATSAPP_TOKEN || '').trim();
+  const phoneId = (process.env.WHATSAPP_PHONE_NUMBER_ID || '').trim();
+
+  if (!token || !phoneId) {
+    return res.status(500).json({ error: 'Faltan credenciales en Render' });
+  }
+
+  try {
+    const metaRes = await axios.get(
+      `https://graph.facebook.com/v21.0/${phoneId}?fields=verified_name,display_phone_number,quality_rating,code_verification_status,throughput`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return res.json({ success: true, phone_info: metaRes.data });
+  } catch (err: any) {
+    return res.status(err.response?.status || 500).json({
+      success: false,
+      error: err.response?.data || err.message,
+    });
+  }
+});
+
 app.post('/api/debug/test-send', async (req: Request, res: Response) => {
   const { to, text } = req.body;
   if (!to) {
