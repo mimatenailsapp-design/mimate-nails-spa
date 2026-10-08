@@ -94,6 +94,8 @@ app.post('/webhook', async (req: Request, res: Response) => {
           } else if (messageObj.interactive.type === 'button_reply' && messageObj.interactive.button_reply) {
             texto = messageObj.interactive.button_reply.id || messageObj.interactive.button_reply.title || '';
           }
+        } else if (messageObj.type === 'button' && messageObj.button) {
+          texto = messageObj.button.payload || messageObj.button.text || '';
         }
 
         let mediaId: string | undefined;

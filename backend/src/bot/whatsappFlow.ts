@@ -1448,30 +1448,69 @@ export class WhatsAppFlow {
     const matchId = texto.match(/(?:confirmar|cancelar|reagendar|cambiar_fecha)_cita_([a-zA-Z0-9-]+)/i);
     const idDirecto = matchId ? matchId[1] : null;
 
-    const esConfirmar =
-      (idDirecto !== null && texto.includes('confirmar_cita_')) ||
-      input === '1' ||
-      input === 'confirmar' ||
-      input === 'confirmar cita' ||
-      input === 'confirmo' ||
-      input.includes('confirmar cita');
+    const lineas = texto.split('\n').map((l) => l.trim().toLowerCase()).filter(Boolean);
+    const ultimaLinea = lineas.length > 0 ? lineas[lineas.length - 1] : input;
+    const opcionFinal = ultimaLinea.replace(/^[📅✅❌1️⃣2️⃣3️⃣\s\.\-]+/, '').trim();
 
-    const esCancelar =
-      (idDirecto !== null && texto.includes('cancelar_cita_')) ||
-      input === '2' ||
-      input === 'cancelar cita' ||
-      input === 'cancelo' ||
-      input.includes('cancelar cita');
+    let esConfirmar = false;
+    let esCancelar = false;
+    let esReagendar = false;
 
-    const esReagendar =
-      (idDirecto !== null && (texto.includes('reagendar_cita_') || texto.includes('cambiar_fecha_'))) ||
-      input === '3' ||
-      input === 'cambiar fecha' ||
-      input === 'reagendar' ||
-      input === 'reprogramar' ||
-      input === 'cambio de fecha' ||
-      input.includes('cambiar fecha') ||
-      input.includes('reagendar');
+    if (idDirecto !== null) {
+      if (texto.includes('confirmar_cita_')) esConfirmar = true;
+      else if (texto.includes('cancelar_cita_')) esCancelar = true;
+      else if (texto.includes('reagendar_cita_') || texto.includes('cambiar_fecha_')) esReagendar = true;
+    } else if (lineas.length > 3) {
+      // Mensaje con texto citado/largo: evaluamos la última línea que contiene la selección real del usuario
+      if (
+        opcionFinal.includes('cambiar fecha') ||
+        opcionFinal.includes('reagendar') ||
+        opcionFinal.includes('cambio de fecha') ||
+        opcionFinal === '3'
+      ) {
+        esReagendar = true;
+      } else if (
+        opcionFinal.includes('cancelar') ||
+        opcionFinal === '2'
+      ) {
+        esCancelar = true;
+      } else if (
+        opcionFinal.includes('confirmar') ||
+        opcionFinal.includes('confirmo') ||
+        opcionFinal === '1'
+      ) {
+        esConfirmar = true;
+      }
+    } else {
+      // Mensaje corto directo del usuario
+      if (
+        input === '3' ||
+        input === 'cambiar fecha' ||
+        input === 'reagendar' ||
+        input === 'reprogramar' ||
+        input === 'cambio de fecha' ||
+        input.includes('cambiar fecha') ||
+        input.includes('reagendar')
+      ) {
+        esReagendar = true;
+      } else if (
+        input === '2' ||
+        input === 'cancelar cita' ||
+        input === 'cancelar' ||
+        input === 'cancelo' ||
+        input.includes('cancelar cita')
+      ) {
+        esCancelar = true;
+      } else if (
+        input === '1' ||
+        input === 'confirmar' ||
+        input === 'confirmar cita' ||
+        input === 'confirmo' ||
+        input.includes('confirmar cita')
+      ) {
+        esConfirmar = true;
+      }
+    }
 
     if (!esConfirmar && !esCancelar && !esReagendar) {
       return null;
