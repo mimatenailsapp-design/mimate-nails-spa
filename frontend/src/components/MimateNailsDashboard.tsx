@@ -123,8 +123,6 @@ const PERFILES_SPA_CONFIG: Omit<StaffProfile, 'canchaId'>[] = [
   },
 ];
 
-const HORAS_JORNADA = ['09:30', '10:30', '11:30', '12:30', '13:30', '14:30', '15:30', '16:30'];
-
 interface Props {
   onIrAWebReservas: () => void;
   complejoId?: string;
@@ -685,10 +683,12 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
   // Horas libres para el modal de Agendar Cita con cálculo dinámico por duración y fin de citas previas
   const horasDisponiblesAgendarAdmin = useMemo(() => {
-    if (!agendarFecha || !agendarManicuristaId) return HORAS_JORNADA;
+    if (!agendarFecha || !agendarManicuristaId) return [];
 
     const duracionMinutos = servicioSeleccionadoForm?.duracion || 45;
     const horaCierreMs = new Date(`${agendarFecha}T19:00:00-05:00`).getTime();
+    const ahoraMs = Date.now();
+    const esHoy = agendarFecha === hoyStr;
 
     // Horas base cada 30 minutos desde las 8:00 hasta las 18:30
     const horasBaseAdmin = [
@@ -734,12 +734,22 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       const slotStartMs = new Date(`${agendarFecha}T${h}:00-05:00`).getTime();
       const slotEndMs = slotStartMs + duracionMinutos * 60 * 1000;
 
-      // Si sobrepasa la hora de cierre del spa, no se puede agendar
+      // 1. Si es hoy y el horario ya pasó, no se puede agendar
+      if (esHoy && slotStartMs <= ahoraMs) {
+        continue;
+      }
+
+      // Si es una fecha anterior a hoy en Colombia, descartar todo
+      if (agendarFecha < hoyStr) {
+        continue;
+      }
+
+      // 2. Si sobrepasa la hora de cierre del spa, no se puede agendar
       if (slotEndMs > horaCierreMs) {
         continue;
       }
 
-      // Validar si solapa con alguna reserva existente de esta manicurista
+      // 3. Validar si solapa con alguna reserva activa o bloqueada existente de esta manicurista
       const colisiona = reservasMani.some((r) => {
         const rStart = new Date(r.fecha_inicio).getTime();
         const rEnd = new Date(r.fecha_fin).getTime();
@@ -752,13 +762,17 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     }
 
     return libres;
-  }, [reservas, agendarFecha, agendarManicuristaId, servicioSeleccionadoForm?.duracion]);
+  }, [reservas, agendarFecha, agendarManicuristaId, servicioSeleccionadoForm?.duracion, hoyStr]);
 
   // Si cambia la manicurista, el servicio o la fecha en el modal de agendar, ajustar a una hora disponible
   useEffect(() => {
-    if (modalAgendarAbierto && horasDisponiblesAgendarAdmin.length > 0) {
-      if (!horasDisponiblesAgendarAdmin.includes(agendarHora)) {
-        setAgendarHora(horasDisponiblesAgendarAdmin[0]);
+    if (modalAgendarAbierto) {
+      if (horasDisponiblesAgendarAdmin.length > 0) {
+        if (!horasDisponiblesAgendarAdmin.includes(agendarHora)) {
+          setAgendarHora(horasDisponiblesAgendarAdmin[0]);
+        }
+      } else {
+        setAgendarHora('');
       }
     }
   }, [modalAgendarAbierto, agendarFecha, agendarManicuristaId, servicioSeleccionadoForm?.duracion, horasDisponiblesAgendarAdmin]);
@@ -1107,9 +1121,11 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
   // Abrir modal de Agendar Cita con una manicurista preseleccionada
   const abrirModalAgendar = (manicuristaId?: string, horaInicial?: string, fechaInicial?: string) => {
-    setAgendarManicuristaId(manicuristaId || canchas[0]?.id || '');
-    setAgendarFecha(fechaInicial || fechaSeleccionada);
-    setAgendarHora(horaInicial || '09:30');
+    const maniId = manicuristaId || canchas[0]?.id || '';
+    const fecha = fechaInicial || fechaSeleccionada;
+    setAgendarManicuristaId(maniId);
+    setAgendarFecha(fecha);
+    setAgendarHora(horaInicial || '');
     setAgendarNombre('');
     setAgendarTelefono('');
     setErrorAgendar(null);
@@ -1124,6 +1140,11 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     e.preventDefault();
     if (!agendarNombre.trim() || !agendarTelefono.trim()) {
       setErrorAgendar('Por favor ingresa nombre y teléfono de la clienta.');
+      return;
+    }
+
+    if (!agendarHora) {
+      setErrorAgendar('No hay un turno válido seleccionado para esta fecha y especialista.');
       return;
     }
 
@@ -3491,126 +3512,126 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                     />
                   </div>
 
-                  {/* Menú Desplegable Hora */}
-                  <div className="relative">
-                    <label className="font-bold text-[#7D6870] block mb-1">Hora</label>
+                    {/* Menú Desplegable Hora */}
+                    <div className="relative">
+                      <label className="font-bold text-[#7D6870] block mb-1">Hora</label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMenuHoraAbierto(!menuHoraAbierto);
+                          setMenuManiAbierto(false);
+                          setMenuServicioAbierto(false);
+                        }}
+                        className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] hover:border-[#8C243B] rounded-xl font-bold text-[#2D2529] flex items-center justify-between transition cursor-pointer text-left shadow-2xs"
+                      >
+                        <span className="flex items-center gap-1 font-mono text-[#8C243B]">
+                          <IconClock className="w-3.5 h-3.5 text-[#C74B66]" />
+                          {agendarHora || 'Seleccionar turno'}
+                        </span>
+                        <IconChevronDown className={`w-3.5 h-3.5 text-[#8C243B] transition-transform ${menuHoraAbierto ? 'rotate-180' : ''}`} />
+                      </button>
+
+                      <AnimatePresence>
+                        {menuHoraAbierto && (
+                          <motion.div
+                            initial={{ opacity: 0, y: -4 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -4 }}
+                            className="absolute left-0 right-0 top-full mt-1 z-30 bg-white border border-[#F2C4D2] rounded-2xl shadow-xl p-1.5 max-h-48 overflow-y-auto space-y-1"
+                          >
+                            {horasDisponiblesAgendarAdmin.length === 0 ? (
+                              <div className="p-2.5 text-center text-xs text-[#8C243B] bg-[#FFF5F7] rounded-xl font-medium">
+                                No hay horarios disponibles para esta fecha (todos están ocupados, bloqueados o ya pasaron).
+                              </div>
+                            ) : (
+                              horasDisponiblesAgendarAdmin.map((h) => {
+                                const estaSel = h === agendarHora;
+                                return (
+                                  <div
+                                    key={h}
+                                    onClick={() => {
+                                      setAgendarHora(h);
+                                      setMenuHoraAbierto(false);
+                                    }}
+                                    className={`px-2.5 py-1.5 rounded-lg flex items-center justify-between cursor-pointer font-mono text-xs transition ${
+                                      estaSel
+                                        ? 'bg-[#FCE8EF] text-[#8C243B] font-bold'
+                                        : 'hover:bg-[#FFF5F7] text-[#2D2529]'
+                                    }`}
+                                  >
+                                    <span>{h}</span>
+                                    {estaSel && <IconCheck className="w-3.5 h-3.5 text-[#8C243B]" />}
+                                  </div>
+                                );
+                              })
+                            )}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  </div>
+
+                  {/* 4. DATOS DE LA CLIENTA */}
+                  <div>
+                    <label className="font-bold text-[#7D6870] block mb-1">
+                      Nombre de la Clienta
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ej: Camila Restrepo"
+                      value={agendarNombre}
+                      onChange={(e) => setAgendarNombre(e.target.value)}
+                      className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl text-[#2D2529] font-medium outline-none focus:border-[#8C243B]"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-[#7D6870] block mb-1">
+                      Teléfono WhatsApp (10 dígitos)
+                    </label>
+                    <input
+                      type="tel"
+                      placeholder="321 961 0896"
+                      value={agendarTelefono}
+                      onChange={(e) => setAgendarTelefono(e.target.value)}
+                      className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl text-[#2D2529] font-mono outline-none focus:border-[#8C243B]"
+                      required
+                    />
+                    <p className="text-[10px] text-[#7D6870] mt-0.5">
+                      Se enviará el voucher de confirmación automáticamente a su WhatsApp.
+                    </p>
+                  </div>
+
+                  {errorAgendar && (
+                    <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-[11px] flex items-center gap-1.5 font-medium">
+                      <IconAlertCircle className="w-4 h-4 shrink-0" />
+                      <span>{errorAgendar}</span>
+                    </div>
+                  )}
+
+                  <div className="flex gap-2 pt-2">
                     <button
                       type="button"
-                      onClick={() => {
-                        setMenuHoraAbierto(!menuHoraAbierto);
-                        setMenuManiAbierto(false);
-                        setMenuServicioAbierto(false);
-                      }}
-                      className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] hover:border-[#8C243B] rounded-xl font-bold text-[#2D2529] flex items-center justify-between transition cursor-pointer text-left shadow-2xs"
+                      onClick={() => setModalAgendarAbierto(false)}
+                      className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-[#7D6870] font-semibold rounded-xl transition cursor-pointer"
                     >
-                      <span className="flex items-center gap-1 font-mono text-[#8C243B]">
-                        <IconClock className="w-3.5 h-3.5 text-[#C74B66]" />
-                        {agendarHora}
-                      </span>
-                      <IconChevronDown className={`w-3.5 h-3.5 text-[#8C243B] transition-transform ${menuHoraAbierto ? 'rotate-180' : ''}`} />
+                      Cancelar
                     </button>
-
-                    <AnimatePresence>
-                      {menuHoraAbierto && (
-                        <motion.div
-                          initial={{ opacity: 0, y: -4 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -4 }}
-                          className="absolute left-0 right-0 top-full mt-1 z-30 bg-white border border-[#F2C4D2] rounded-2xl shadow-xl p-1.5 max-h-48 overflow-y-auto space-y-1"
-                        >
-                          {horasDisponiblesAgendarAdmin.length === 0 ? (
-                            <div className="p-2.5 text-center text-xs text-[#8C243B] bg-[#FFF5F7] rounded-xl font-medium">
-                              No hay horarios disponibles (todos están ocupados o bloqueados).
-                            </div>
-                          ) : (
-                            horasDisponiblesAgendarAdmin.map((h) => {
-                              const estaSel = h === agendarHora;
-                              return (
-                                <div
-                                  key={h}
-                                  onClick={() => {
-                                    setAgendarHora(h);
-                                    setMenuHoraAbierto(false);
-                                  }}
-                                  className={`px-2.5 py-1.5 rounded-lg flex items-center justify-between cursor-pointer font-mono text-xs transition ${
-                                    estaSel
-                                      ? 'bg-[#FCE8EF] text-[#8C243B] font-bold'
-                                      : 'hover:bg-[#FFF5F7] text-[#2D2529]'
-                                  }`}
-                                >
-                                  <span>{h}</span>
-                                  {estaSel && <IconCheck className="w-3.5 h-3.5 text-[#8C243B]" />}
-                                </div>
-                              );
-                            })
-                          )}
-                        </motion.div>
+                    <button
+                      type="submit"
+                      disabled={guardandoCita || !agendarHora}
+                      className="flex-1 py-2.5 bg-[#8C243B] hover:bg-[#731D30] text-white font-bold rounded-xl transition shadow-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      {guardandoCita ? (
+                        <>
+                          <IconLoader2 className="w-4 h-4 animate-spin" />
+                          <span>Agendando...</span>
+                        </>
+                      ) : (
+                        <span>Confirmar Cita</span>
                       )}
-                    </AnimatePresence>
-                  </div>
-                </div>
-
-                {/* 4. DATOS DE LA CLIENTA */}
-                <div>
-                  <label className="font-bold text-[#7D6870] block mb-1">
-                    Nombre de la Clienta
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Ej: Camila Restrepo"
-                    value={agendarNombre}
-                    onChange={(e) => setAgendarNombre(e.target.value)}
-                    className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl text-[#2D2529] font-medium outline-none focus:border-[#8C243B]"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="font-bold text-[#7D6870] block mb-1">
-                    Teléfono WhatsApp (10 dígitos)
-                  </label>
-                  <input
-                    type="tel"
-                    placeholder="321 961 0896"
-                    value={agendarTelefono}
-                    onChange={(e) => setAgendarTelefono(e.target.value)}
-                    className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl text-[#2D2529] font-mono outline-none focus:border-[#8C243B]"
-                    required
-                  />
-                  <p className="text-[10px] text-[#7D6870] mt-0.5">
-                    Se enviará el voucher de confirmación automáticamente a su WhatsApp.
-                  </p>
-                </div>
-
-                {errorAgendar && (
-                  <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-[11px] flex items-center gap-1.5 font-medium">
-                    <IconAlertCircle className="w-4 h-4 shrink-0" />
-                    <span>{errorAgendar}</span>
-                  </div>
-                )}
-
-                <div className="flex gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setModalAgendarAbierto(false)}
-                    className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-[#7D6870] font-semibold rounded-xl transition cursor-pointer"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={guardandoCita}
-                    className="flex-1 py-2.5 bg-[#8C243B] hover:bg-[#731D30] text-white font-bold rounded-xl transition shadow-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-                  >
-                    {guardandoCita ? (
-                      <>
-                        <IconLoader2 className="w-4 h-4 animate-spin" />
-                        <span>Agendando...</span>
-                      </>
-                    ) : (
-                      <span>Confirmar Cita</span>
-                    )}
-                  </button>
+                    </button>
                 </div>
               </form>
             </motion.div>
