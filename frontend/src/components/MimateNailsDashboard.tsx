@@ -208,8 +208,8 @@ function obtenerHoraMinutosBogota(isoStr: string): string {
 
 
 
-// Minutos desde las 8:00 AM en Colombia (0 = 8:00 AM, 60 = 9:00 AM, 90 = 9:30 AM, etc.)
-function obtenerMinutosDesde8AMBogota(isoStr: string): number {
+// Minutos desde la apertura en Colombia (por defecto horaBaseApertura = 8:00 AM)
+function obtenerMinutosDesdeAperturaBogota(isoStr: string, horaBaseApertura: number = 8): number {
   try {
     const d = new Date(isoStr);
     if (isNaN(d.getTime())) return 0;
@@ -220,7 +220,7 @@ function obtenerMinutosDesde8AMBogota(isoStr: string): number {
       hour12: false,
     });
     const [h, m] = horaStr.split(':').map((n) => parseInt(n, 10));
-    return (h - 8) * 60 + m;
+    return (h - horaBaseApertura) * 60 + m;
   } catch {
     return 0;
   }
@@ -247,11 +247,11 @@ interface CitaPosicionada {
   totalCols: number;
 }
 
-function calcularPosicionesCitas(citas: Reserva[]): CitaPosicionada[] {
+function calcularPosicionesCitas(citas: Reserva[], horaBaseApertura: number = 8): CitaPosicionada[] {
   if (!citas || citas.length === 0) return [];
 
   const items = citas.map((c) => {
-    const minInicio = Math.max(0, obtenerMinutosDesde8AMBogota(c.fecha_inicio));
+    const minInicio = Math.max(0, obtenerMinutosDesdeAperturaBogota(c.fecha_inicio, horaBaseApertura));
     const durMin = obtenerDuracionMinutosCita(c.fecha_inicio, c.fecha_fin);
     const minFin = minInicio + durMin;
     const top = (minInicio / 60) * ALTURA_HORA_PX;
@@ -449,19 +449,23 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     }
   };
 
-  // Configuración de Anticipos (20%) y Modal de Configuración
+  // Configuración de Anticipos (20%), Cuentas y Horario de Trabajo (Modal de Configuración)
   const [configAnticipo, setConfigAnticipo] = useState<{
     exigeAnticipo: boolean;
     porcentajeAnticipo: number;
     nequiNumero: string;
     bancolombiaNumero: string;
     titularCuenta: string;
+    horaApertura: string;
+    horaCierre: string;
   }>({
     exigeAnticipo: false,
     porcentajeAnticipo: 20,
     nequiNumero: '321 961 0896',
     bancolombiaNumero: 'Ahorros 245-000123-88',
     titularCuenta: 'JL Mímate Nails Spa',
+    horaApertura: '08:00',
+    horaCierre: '19:00',
   });
   const [modalConfigAnticipoAbierto, setModalConfigAnticipoAbierto] = useState(false);
   const [guardandoConfigAnticipo, setGuardandoConfigAnticipo] = useState(false);
@@ -478,10 +482,12 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
           nequiNumero: d.nequiNumero || '321 961 0896',
           bancolombiaNumero: d.bancolombiaNumero || 'Ahorros 245-000123-88',
           titularCuenta: d.titularCuenta || 'JL Mímate Nails Spa',
+          horaApertura: d.horaApertura || '08:00',
+          horaCierre: d.horaCierre || '19:00',
         });
       }
     } catch (e) {
-      console.error('Error al cargar config de anticipo:', e);
+      console.error('Error al cargar config de anticipo y horario:', e);
     }
   };
 
@@ -496,7 +502,8 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       });
       if (res.ok) {
         setModalConfigAnticipoAbierto(false);
-        alert('¡Configuración de anticipos guardada con éxito!');
+        alert('¡Configuración de horario y reservas guardada con éxito!');
+        cargarReservas();
       } else {
         alert('No se pudo guardar la configuración.');
       }
@@ -681,22 +688,48 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     return servicios.find((s) => s.id === Number(agendarServicioId)) || servicios[0];
   }, [servicios, agendarServicioId]);
 
+  // Horas base de opciones de bloqueo dinámicas según horario configurado
+  const horasOpcionesBloqueoDinamicas = useMemo(() => {
+    const aperturaStr = configAnticipo.horaApertura || '08:00';
+    const cierreStr = configAnticipo.horaCierre || '19:00';
+    const [aperH, aperM] = aperturaStr.split(':').map(Number);
+    const [cierH, cierM] = cierreStr.split(':').map(Number);
+    const startMin = (isNaN(aperH) ? 8 : aperH) * 60 + (isNaN(aperM) ? 0 : aperM);
+    const endMin = (isNaN(cierH) ? 19 : cierH) * 60 + (isNaN(cierM) ? 0 : cierM);
+
+    const lista: string[] = [];
+    for (let m = startMin; m < endMin; m += 30) {
+      const hh = String(Math.floor(m / 60)).padStart(2, '0');
+      const mm = String(m % 60).padStart(2, '0');
+      lista.push(`${hh}:${mm}`);
+    }
+    return lista.length > 0 ? lista : HORAS_OPCIONES_BLOQUEO;
+  }, [configAnticipo.horaApertura, configAnticipo.horaCierre]);
+
   // Horas libres para el modal de Agendar Cita con cálculo dinámico por duración y fin de citas previas
   const horasDisponiblesAgendarAdmin = useMemo(() => {
     if (!agendarFecha || !agendarManicuristaId) return [];
 
+    const aperturaStr = configAnticipo.horaApertura || '08:00';
+    const cierreStr = configAnticipo.horaCierre || '19:00';
     const duracionMinutos = servicioSeleccionadoForm?.duracion || 45;
-    const horaCierreMs = new Date(`${agendarFecha}T19:00:00-05:00`).getTime();
+    const horaCierreMs = new Date(`${agendarFecha}T${cierreStr}:00-05:00`).getTime();
+    const horaAperturaMs = new Date(`${agendarFecha}T${aperturaStr}:00-05:00`).getTime();
     const ahoraMs = Date.now();
     const esHoy = agendarFecha === hoyStr;
 
-    // Horas base cada 30 minutos desde las 8:00 hasta las 18:30
-    const horasBaseAdmin = [
-      '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
-      '11:00', '11:30', '12:00', '12:30', '13:00', '13:30',
-      '14:00', '14:30', '15:00', '15:30', '16:00', '16:30',
-      '17:00', '17:30', '18:00', '18:30'
-    ];
+    // Generar franjas base cada 30 minutos desde la hora de apertura hasta la de cierre
+    const [aperH, aperM] = aperturaStr.split(':').map(Number);
+    const [cierH, cierM] = cierreStr.split(':').map(Number);
+    const startMin = (isNaN(aperH) ? 8 : aperH) * 60 + (isNaN(aperM) ? 0 : aperM);
+    const endMin = (isNaN(cierH) ? 19 : cierH) * 60 + (isNaN(cierM) ? 0 : cierM);
+
+    const horasBaseAdmin: string[] = [];
+    for (let m = startMin; m < endMin; m += 30) {
+      const hh = String(Math.floor(m / 60)).padStart(2, '0');
+      const mm = String(m % 60).padStart(2, '0');
+      horasBaseAdmin.push(`${hh}:${mm}`);
+    }
 
     const candidatosSet = new Set<string>(horasBaseAdmin);
 
@@ -717,8 +750,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
         try {
           const hhmmFin = obtenerHoraMinutosBogota(r.fecha_fin);
           const finMs = new Date(`${agendarFecha}T${hhmmFin}:00-05:00`).getTime();
-          const aperturaMs = new Date(`${agendarFecha}T08:00:00-05:00`).getTime();
-          if (finMs >= aperturaMs && finMs < horaCierreMs) {
+          if (finMs >= horaAperturaMs && finMs < horaCierreMs) {
             candidatosSet.add(hhmmFin);
           }
         } catch {
@@ -762,7 +794,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     }
 
     return libres;
-  }, [reservas, agendarFecha, agendarManicuristaId, servicioSeleccionadoForm?.duracion, hoyStr]);
+  }, [reservas, agendarFecha, agendarManicuristaId, servicioSeleccionadoForm?.duracion, hoyStr, configAnticipo.horaApertura, configAnticipo.horaCierre]);
 
   // Si cambia la manicurista, el servicio o la fecha en el modal de agendar, ajustar a una hora disponible
   useEffect(() => {
@@ -783,7 +815,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
     const ocupadas = new Set<string>();
 
-    for (const h of HORAS_OPCIONES_BLOQUEO) {
+    for (const h of horasOpcionesBloqueoDinamicas) {
       const slotStartMs = new Date(`${bloquearFecha}T${h}:00-05:00`).getTime();
       const slotEndMs = slotStartMs + 60 * 60 * 1000;
 
@@ -801,7 +833,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     }
 
     return ocupadas;
-  }, [reservas, bloquearFecha, bloquearManicuristaId]);
+  }, [reservas, bloquearFecha, bloquearManicuristaId, horasOpcionesBloqueoDinamicas]);
 
   // 1. Cargar datos del Spa (Equipo, Servicios)
   const cargarInfoSpa = async () => {
@@ -2422,23 +2454,19 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
               <span className="sm:hidden">Bloquear</span>
             </button>
 
-            {/* Botón Exclusivo para la Admin: Configuración de Anticipos (20%) */}
+            {/* Botón Exclusivo para la Admin: Configuración de Horario de Trabajo y Anticipos */}
             {esAdmin && (
               <button
                 onClick={() => setModalConfigAnticipoAbierto(true)}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition shadow-xs cursor-pointer border ${
-                  configAnticipo.exigeAnticipo
-                    ? 'bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100'
-                    : 'bg-white border-[#F2C4D2] text-[#7D6870] hover:text-[#2D2529]'
-                }`}
-                title="Configurar anticipo del 20% y cuentas bancarias de recaudo"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition shadow-xs cursor-pointer border bg-white border-[#F2C4D2] text-[#8C243B] hover:bg-[#FCE8EF]"
+                title="Modificar horario de trabajo por temporada, anticipos y cuentas de recaudo"
               >
-                <span>💵</span>
+                <IconClock className="w-3.5 h-3.5 text-[#C74B66]" />
                 <span className="hidden sm:inline">
-                  Anticipos: {configAnticipo.exigeAnticipo ? `ON (${configAnticipo.porcentajeAnticipo}%)` : 'OFF'}
+                  Horario: {configAnticipo.horaApertura} - {configAnticipo.horaCierre}
                 </span>
                 <span className="sm:hidden">
-                  {configAnticipo.exigeAnticipo ? 'Anticipo ON' : 'Anticipo OFF'}
+                  {configAnticipo.horaApertura}-{configAnticipo.horaCierre}
                 </span>
               </button>
             )}
@@ -3799,7 +3827,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                         type="button"
                         onClick={() =>
                           setBloquearHorasSeleccionadas(
-                            HORAS_OPCIONES_BLOQUEO.filter((h) => !horasYaOcupadasBloqueo.has(h))
+                            horasOpcionesBloqueoDinamicas.filter((h) => !horasYaOcupadasBloqueo.has(h))
                           )
                         }
                         className="text-[#8C243B] font-bold hover:underline cursor-pointer"
@@ -3822,7 +3850,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                   </p>
 
                   <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
-                    {HORAS_OPCIONES_BLOQUEO.map((h) => {
+                    {horasOpcionesBloqueoDinamicas.map((h) => {
                       const yaOcupada = horasYaOcupadasBloqueo.has(h);
                       const estaMarcada = bloquearHorasSeleccionadas.includes(h);
                       return (
@@ -3944,7 +3972,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
           </div>
         )}
 
-        {/* MODAL CONFIGURACIÓN DE ANTICIPOS (20%) & CUENTAS */}
+        {/* MODAL CONFIGURACIÓN DE HORARIOS, ANTICIPOS & CUENTAS */}
         {modalConfigAnticipoAbierto && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
             <motion.div
@@ -3955,13 +3983,13 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
             >
               <div className="flex items-center justify-between border-b border-[#FCE8EF] pb-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-2xl">💵</span>
+                  <span className="text-2xl">⚙️</span>
                   <div>
                     <h3 className="font-bold text-base text-[#2D2529] font-serif">
-                      Anticipos & Cuentas Bancarias
+                      Configuración del Spa
                     </h3>
                     <p className="text-[11px] text-[#7D6870]">
-                      Configuración de reservas web para clientas
+                      Horario de trabajo por temporada y anticipos web
                     </p>
                   </div>
                 </div>
@@ -3974,8 +4002,63 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
               </div>
 
               <form onSubmit={handleGuardarConfigAnticipo} className="space-y-4 text-xs">
-                {/* 1. SWITCH PRINCIPAL ACTIVAR / DESACTIVAR */}
-                <div className="p-3.5 rounded-2xl bg-[#FFF5F7] border border-[#F2C4D2] flex items-center justify-between gap-3">
+                {/* 1. SECCIÓN: HORARIO DE TRABAJO (EXTENSIÓN POR TEMPORADA) */}
+                <div className="p-3.5 rounded-2xl bg-[#FFF5F7] border border-[#F2C4D2] space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-bold text-[#8C243B] text-xs flex items-center gap-1.5">
+                        <IconClock className="w-3.5 h-3.5 text-[#C74B66]" />
+                        <span>Horario de Trabajo (Temporada)</span>
+                      </p>
+                      <p className="text-[11px] text-[#7D6870] leading-snug">
+                        Modifica las horas de apertura y cierre para habilitar turnos más tempranos o tardíos.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <div>
+                      <label className="font-bold text-[#7D6870] block mb-1">
+                        Hora Apertura
+                      </label>
+                      <input
+                        type="time"
+                        value={configAnticipo.horaApertura}
+                        onChange={(e) =>
+                          setConfigAnticipo((prev) => ({
+                            ...prev,
+                            horaApertura: e.target.value,
+                          }))
+                        }
+                        className="w-full px-3 py-2 bg-white border border-[#F2C4D2] rounded-xl font-bold text-[#2D2529] outline-none focus:border-[#8C243B]"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="font-bold text-[#7D6870] block mb-1">
+                        Hora Cierre
+                      </label>
+                      <input
+                        type="time"
+                        value={configAnticipo.horaCierre}
+                        onChange={(e) =>
+                          setConfigAnticipo((prev) => ({
+                            ...prev,
+                            horaCierre: e.target.value,
+                          }))
+                        }
+                        className="w-full px-3 py-2 bg-white border border-[#F2C4D2] rounded-xl font-bold text-[#2D2529] outline-none focus:border-[#8C243B]"
+                        required
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-[#7D6870]">
+                    💡 <em>Los turnos ya reservados previamente se mantienen intactos. Las nuevas horas disponibles se recalculan al instante.</em>
+                  </p>
+                </div>
+
+                {/* 2. SWITCH PRINCIPAL ACTIVAR / DESACTIVAR ANTICIPO */}
+                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-3">
                   <div className="space-y-0.5">
                     <p className="font-bold text-[#8C243B] text-xs">
                       ¿Exigir anticipo para reservas?

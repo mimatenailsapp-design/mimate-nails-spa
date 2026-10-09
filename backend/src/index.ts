@@ -593,7 +593,7 @@ app.patch('/api/complejos/:id', async (req: Request, res: Response) => {
   }
 });
 
-// Consultar configuración actual de anticipos y cuentas del spa
+// Consultar configuración actual de anticipos, cuentas y horario del spa
 app.get('/api/spa/config', async (req: Request, res: Response) => {
   try {
     const { data: complejo, error } = await supabase
@@ -611,16 +611,26 @@ app.get('/api/spa/config', async (req: Request, res: Response) => {
       nequiNumero: complejo.nequi_numero || '321 961 0896',
       bancolombiaNumero: complejo.daviplata_numero || 'Ahorros 245-000123-88',
       titularCuenta: complejo.titular_cuenta || 'JL Mímate Nails Spa',
+      horaApertura: complejo.hora_apertura ? complejo.hora_apertura.slice(0, 5) : '08:00',
+      horaCierre: complejo.hora_cierre ? complejo.hora_cierre.slice(0, 5) : '19:00',
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// Actualizar configuración de anticipos y cuentas del spa desde el Dashboard
+// Actualizar configuración de anticipos, cuentas y horario del spa desde el Dashboard
 app.patch('/api/spa/config', async (req: Request, res: Response) => {
   try {
-    const { exigeAnticipo, porcentajeAnticipo, nequiNumero, bancolombiaNumero, titularCuenta } = req.body;
+    const {
+      exigeAnticipo,
+      porcentajeAnticipo,
+      nequiNumero,
+      bancolombiaNumero,
+      titularCuenta,
+      horaApertura,
+      horaCierre,
+    } = req.body;
 
     const updateData: any = {};
     if (exigeAnticipo !== undefined) {
@@ -631,6 +641,19 @@ app.patch('/api/spa/config', async (req: Request, res: Response) => {
     if (nequiNumero !== undefined) updateData.nequi_numero = String(nequiNumero).trim();
     if (bancolombiaNumero !== undefined) updateData.daviplata_numero = String(bancolombiaNumero).trim();
     if (titularCuenta !== undefined) updateData.titular_cuenta = String(titularCuenta).trim();
+
+    if (horaApertura !== undefined) {
+      const hAper = String(horaApertura).trim().slice(0, 5);
+      if (/^\d{2}:\d{2}$/.test(hAper)) {
+        updateData.hora_apertura = `${hAper}:00`;
+      }
+    }
+    if (horaCierre !== undefined) {
+      const hCier = String(horaCierre).trim().slice(0, 5);
+      if (/^\d{2}:\d{2}$/.test(hCier)) {
+        updateData.hora_cierre = `${hCier}:00`;
+      }
+    }
 
     const { data, error } = await supabase
       .from('complejos')
@@ -649,6 +672,8 @@ app.patch('/api/spa/config', async (req: Request, res: Response) => {
         nequiNumero: data.nequi_numero || '321 961 0896',
         bancolombiaNumero: data.daviplata_numero || 'Ahorros 245-000123-88',
         titularCuenta: data.titular_cuenta || 'JL Mímate Nails Spa',
+        horaApertura: data.hora_apertura ? data.hora_apertura.slice(0, 5) : '08:00',
+        horaCierre: data.hora_cierre ? data.hora_cierre.slice(0, 5) : '19:00',
       },
     });
   } catch (error: any) {
@@ -1171,7 +1196,7 @@ app.get('/api/spa/slots', async (req: Request, res: Response) => {
 
     const { data: complejo } = await supabase
       .from('complejos')
-      .select('id')
+      .select('id, hora_apertura, hora_cierre')
       .eq('slug', 'mimate-nails')
       .maybeSingle();
 
@@ -1186,12 +1211,21 @@ app.get('/api/spa/slots', async (req: Request, res: Response) => {
     const listaEmpleadas = empleadas || [];
     if (listaEmpleadas.length === 0) return res.json({ date, slots: [] });
 
-    // Franjas base cada 30 minutos (jornada 9:30 a 17:30)
-    const horasBase = [
-      '09:30', '10:00', '10:30', '11:00', '11:30',
-      '12:00', '12:30', '13:00', '13:30', '14:00',
-      '14:30', '15:00', '15:30', '16:00', '16:30', '17:00'
-    ];
+    const aperturaStr = complejo.hora_apertura ? complejo.hora_apertura.slice(0, 5) : '08:00';
+    const cierreStr = complejo.hora_cierre ? complejo.hora_cierre.slice(0, 5) : '19:00';
+
+    // Generar franjas base cada 30 minutos desde apertura hasta cierre
+    const [aperH, aperM] = aperturaStr.split(':').map(Number);
+    const [cierH, cierM] = cierreStr.split(':').map(Number);
+    const startTotalMin = aperH * 60 + aperM;
+    const endTotalMin = cierH * 60 + cierM;
+
+    const horasBase: string[] = [];
+    for (let m = startTotalMin; m < endTotalMin; m += 30) {
+      const hh = String(Math.floor(m / 60)).padStart(2, '0');
+      const mm = String(m % 60).padStart(2, '0');
+      horasBase.push(`${hh}:${mm}`);
+    }
 
     const inicioBuffer = new Date(new Date(`${date}T00:00:00-05:00`).getTime() - 6 * 60 * 60 * 1000).toISOString();
     const finBuffer = new Date(new Date(`${date}T23:59:59-05:00`).getTime() + 6 * 60 * 60 * 1000).toISOString();
@@ -1206,7 +1240,8 @@ app.get('/api/spa/slots', async (req: Request, res: Response) => {
 
     const ocupadas = reservasOcupadas || [];
     const ahoraMs = Date.now();
-    const horaCierreMs = new Date(`${date}T17:30:00-05:00`).getTime();
+    const horaCierreMs = new Date(`${date}T${cierreStr}:00-05:00`).getTime();
+    const horaAperturaMs = new Date(`${date}T${aperturaStr}:00-05:00`).getTime();
 
     // Candidatos dinámicos: horas base + puntos exactos donde terminan citas previas de ese día
     const candidatosSet = new Set<string>(horasBase);
@@ -1222,8 +1257,7 @@ app.get('/api/spa/slots', async (req: Request, res: Response) => {
             hour12: false,
           });
           const finMs = new Date(`${date}T${hhmmFin}:00-05:00`).getTime();
-          const aperturaMs = new Date(`${date}T09:00:00-05:00`).getTime();
-          if (finMs >= aperturaMs && finMs < horaCierreMs) {
+          if (finMs >= horaAperturaMs && finMs < horaCierreMs) {
             candidatosSet.add(hhmmFin);
           }
         } catch {

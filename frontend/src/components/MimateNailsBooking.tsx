@@ -162,19 +162,23 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
   const [telefono, setTelefono] = useState('');
   const [nombre, setNombre] = useState('');
   const [enviandoReserva, setEnviandoReserva] = useState(false);
-  // Configuración de anticipos (20%) y cuentas bancarias
+  // Configuración de anticipos (20%), cuentas bancarias y horario de atención
   const [spaConfig, setSpaConfig] = useState<{
     exigeAnticipo: boolean;
     porcentajeAnticipo: number;
     nequiNumero?: string;
     bancolombiaNumero?: string;
     titularCuenta?: string;
+    horaApertura?: string;
+    horaCierre?: string;
   }>({
     exigeAnticipo: false,
     porcentajeAnticipo: 20,
     nequiNumero: '321 961 0896',
     bancolombiaNumero: 'Ahorros 245-000123-88',
     titularCuenta: 'JL Mímate Nails Spa',
+    horaApertura: '08:00',
+    horaCierre: '19:00',
   });
 
   const [reservaConfirmada, setReservaConfirmada] = useState<{
@@ -313,13 +317,23 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
 
     // 2. Consulta en tiempo real en Supabase (Garantiza que citas o bloqueos dejen de aparecer inmediatamente)
     try {
-      const horasBase = [
-        '09:30', '10:00', '10:30', '11:00', '11:30',
-        '12:00', '12:30', '13:00', '13:30', '14:00',
-        '14:30', '15:00', '15:30', '16:00', '16:30', '17:00'
-      ];
+      const aperturaStr = spaConfig.horaApertura || '08:00';
+      const cierreStr = spaConfig.horaCierre || '19:00';
+      const [aperH, aperM] = aperturaStr.split(':').map(Number);
+      const [cierH, cierM] = cierreStr.split(':').map(Number);
+      const startMin = (isNaN(aperH) ? 8 : aperH) * 60 + (isNaN(aperM) ? 0 : aperM);
+      const endMin = (isNaN(cierH) ? 19 : cierH) * 60 + (isNaN(cierM) ? 0 : cierM);
+
+      const horasBase: string[] = [];
+      for (let m = startMin; m < endMin; m += 30) {
+        const hh = String(Math.floor(m / 60)).padStart(2, '0');
+        const mm = String(m % 60).padStart(2, '0');
+        horasBase.push(`${hh}:${mm}`);
+      }
+
       const ahoraMs = Date.now();
-      const horaCierreMs = new Date(`${f}T17:30:00-05:00`).getTime();
+      const horaCierreMs = new Date(`${f}T${cierreStr}:00-05:00`).getTime();
+      const horaAperturaMs = new Date(`${f}T${aperturaStr}:00-05:00`).getTime();
 
       let listaEmp = empleadas;
       if (listaEmp.length === 0) {
@@ -358,8 +372,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
               hour12: false,
             });
             const finMs = new Date(`${f}T${hhmmFin}:00-05:00`).getTime();
-            const aperturaMs = new Date(`${f}T09:00:00-05:00`).getTime();
-            if (finMs >= aperturaMs && finMs < horaCierreMs) {
+            if (finMs >= horaAperturaMs && finMs < horaCierreMs) {
               candidatosSet.add(hhmmFin);
             }
           } catch {
