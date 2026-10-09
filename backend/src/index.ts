@@ -1384,7 +1384,7 @@ app.post('/api/spa/reservar', async (req: Request, res: Response) => {
     const anticipoFmt = '$' + anticipoCalculado.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
     const saldoRestanteFmt = '$' + saldoRestante.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 
-    const estadoInicial = exigeAnticipo ? 'pendiente_anticipo' : 'confirmada';
+    const estadoInicial = exigeAnticipo ? 'pendiente_pago' : 'confirmada';
     const expiracionReserva = exigeAnticipo ? new Date(Date.now() + 60 * 60 * 1000).toISOString() : null;
 
     const notas = exigeAnticipo

@@ -1763,7 +1763,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                             ? 'bg-gradient-to-r from-amber-50 to-orange-50/80 border-amber-300 shadow-amber-100/50'
                             : estaEnAtencion
                             ? 'bg-rose-50/90 border-[#8C243B] ring-2 ring-[#8C243B]/20 shadow-[#8C243B]/10'
-                            : cita.estado === 'pendiente_anticipo'
+                            : cita.estado === 'pendiente_anticipo' || cita.estado === 'pendiente_pago'
                             ? 'bg-amber-50/80 border-amber-300 shadow-amber-100/40 text-amber-950'
                             : cita.estado === 'completada'
                             ? 'bg-emerald-50/80 border-emerald-300'
@@ -1828,7 +1828,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                                   <span>Desbloquear</span>
                                 </button>
                               )
-                            ) : cita.estado === 'pendiente_anticipo' ? (
+                            ) : cita.estado === 'pendiente_anticipo' || cita.estado === 'pendiente_pago' ? (
                                   <>
                                     {/* Badge de estado de anticipo */}
                                     {cita.notas?.includes('[COMPROBANTE_VALIDO_IA]') ? (
@@ -2239,6 +2239,8 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                                   ? 'bg-gradient-to-r from-amber-50 to-orange-50/80 border-amber-300 text-amber-900 shadow-amber-100/50'
                                   : estaEnAtencion
                                   ? 'bg-rose-50/90 border-[#8C243B] ring-2 ring-[#8C243B]/20 text-[#8C243B]'
+                                  : cita.estado === 'pendiente_anticipo' || cita.estado === 'pendiente_pago'
+                                  ? 'bg-amber-50/90 border-amber-300 text-amber-950'
                                   : cita.estado === 'completada'
                                   ? 'bg-emerald-50/90 border-emerald-300 text-emerald-950'
                                   : cita.estado === 'cancelada'
@@ -2268,6 +2270,8 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                                     className={`text-[8px] font-extrabold px-1 py-0.2 rounded border shrink-0 ${
                                       esBloqueada
                                         ? 'bg-amber-200 text-amber-900 border-amber-300'
+                                        : cita.estado === 'pendiente_anticipo' || cita.estado === 'pendiente_pago'
+                                        ? 'bg-amber-100 text-amber-900 border-amber-300'
                                         : cita.estado === 'completada'
                                         ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
                                         : cita.estado === 'cancelada'
@@ -2275,7 +2279,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                                         : 'bg-[#FCE8EF] text-[#8C243B] border-[#F2C4D2]'
                                     }`}
                                   >
-                                    {esBloqueada ? 'BLOQ' : cita.estado === 'completada' ? 'LISTA' : 'CONF'}
+                                    {esBloqueada ? 'BLOQ' : (cita.estado === 'pendiente_anticipo' || cita.estado === 'pendiente_pago') ? 'ABONO' : cita.estado === 'completada' ? 'LISTA' : 'CONF'}
                                   </span>
                                 )}
                               </div>
@@ -2797,6 +2801,8 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                                   ? 'bg-gradient-to-r from-amber-50 to-orange-50/70 border-amber-300 shadow-2xs'
                                   : estaEnAtencion
                                   ? 'bg-rose-50/90 border-[#8C243B] ring-2 ring-[#8C243B]/20 shadow-[#8C243B]/10'
+                                  : cita.estado === 'pendiente_anticipo' || cita.estado === 'pendiente_pago'
+                                  ? 'bg-amber-50/80 border-amber-300 shadow-amber-100/40 text-amber-950'
                                   : cita.estado === 'completada'
                                   ? 'bg-emerald-50/60 border-emerald-200'
                                   : cita.estado === 'cancelada'
@@ -2827,6 +2833,8 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                                     className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full border ${
                                       esBloqueada
                                         ? 'bg-amber-200/80 text-amber-900 border-amber-300'
+                                        : cita.estado === 'pendiente_anticipo' || cita.estado === 'pendiente_pago'
+                                        ? 'bg-amber-100 text-amber-900 border-amber-300'
                                         : cita.estado === 'completada'
                                         ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
                                         : cita.estado === 'cancelada'
@@ -2834,7 +2842,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                                         : 'bg-[#FCE8EF] text-[#8C243B] border-[#F2C4D2]'
                                     }`}
                                   >
-                                    {esBloqueada ? 'BLOQUEADO' : cita.estado.toUpperCase()}
+                                    {esBloqueada ? 'BLOQUEADO' : (cita.estado === 'pendiente_anticipo' || cita.estado === 'pendiente_pago') ? 'ABONO' : cita.estado.toUpperCase()}
                                   </span>
                                 )}
                               </div>
@@ -4589,7 +4597,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                     <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${
                       esBloqueada
                         ? 'bg-amber-100 text-amber-900 border-amber-300'
-                        : cita.estado === 'pendiente_anticipo'
+                        : cita.estado === 'pendiente_anticipo' || cita.estado === 'pendiente_pago'
                         ? cita.notas?.includes('[COMPROBANTE_VALIDO_IA]')
                           ? 'bg-amber-500 text-white border-amber-600 animate-pulse'
                           : 'bg-amber-100 text-amber-900 border-amber-300'
@@ -4655,7 +4663,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                       <span>Desbloquear Horario</span>
                     </button>
                   )
-                ) : cita.estado === 'pendiente_anticipo' ? (
+                ) : cita.estado === 'pendiente_anticipo' || cita.estado === 'pendiente_pago' ? (
                   <>
                     {telLimpio && (
                       <a
