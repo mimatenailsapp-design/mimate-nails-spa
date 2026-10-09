@@ -1381,12 +1381,22 @@ app.get('/api/metricas', async (req: Request, res: Response) => {
   }
 });
 
-// Tarea de recordatorios automáticos
-app.post('/api/cron/recordatorios', async (req: Request, res: Response) => {
+// Endpoint de Keep-Alive y Salud para UptimeRobot / cron-job.org
+app.get(['/api/ping', '/api/health', '/health'], (req: Request, res: Response) => {
+  res.json({
+    status: 'ok',
+    servicio: 'JL Mímate Nails Spa - Backend 24/7',
+    uptime_segundos: Math.round(process.uptime()),
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// Tarea de recordatorios automáticos (admite GET y POST para cron jobs y keep-alive)
+app.all('/api/cron/recordatorios', async (req: Request, res: Response) => {
   try {
     const resultado = await ReminderService.procesarRecordatoriosProximos();
     await BookingService.liberarReservasExpiradas();
-    res.json({ status: 'ok', ...resultado });
+    res.json({ status: 'ok', keep_alive: true, timestamp: new Date().toISOString(), ...resultado });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
