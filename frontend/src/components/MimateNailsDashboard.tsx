@@ -22,6 +22,8 @@ import {
   IconTrash,
   IconCalendarEvent,
   IconCalendarMonth,
+  IconHeadset,
+  IconSearch,
 } from '@tabler/icons-react';
 import { supabase } from '../config/supabase';
 
@@ -325,6 +327,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       return null;
     }
   });
+  const esAdmin = perfilActual?.rol === 'admin';
 
   // Estado para el View Emergente (Popover) grande al pasar el mouse por encima de una cita
   const [popoverCita, setPopoverCita] = useState<{
@@ -417,6 +420,130 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   const [guardandoBloqueo, setGuardandoBloqueo] = useState(false);
   const [errorBloquear, setErrorBloquear] = useState<string | null>(null);
   const [menuBloquearManiAbierto, setMenuBloquearManiAbierto] = useState(false);
+
+  // Estados para el Modal de Números Silenciados (Atención Humana / Exclusiones Bot)
+  const [modalExclusionesAbierto, setModalExclusionesAbierto] = useState(false);
+  const [exclusionesBot, setExclusionesBot] = useState<Array<{ id?: string; telefono: string; nombre?: string; motivo?: string; creado_en?: string }>>([]);
+  const [cargandoExclusiones, setCargandoExclusiones] = useState(false);
+  const [nuevoTelExclusion, setNuevoTelExclusion] = useState('');
+  const [nuevoNombreExclusion, setNuevoNombreExclusion] = useState('');
+  const [busquedaExclusion, setBusquedaExclusion] = useState('');
+  const [guardandoExclusion, setGuardandoExclusion] = useState(false);
+  const [errorExclusion, setErrorExclusion] = useState<string | null>(null);
+
+  // Cargar lista de exclusiones desde el backend
+  const cargarExclusionesBot = async () => {
+    try {
+      setCargandoExclusiones(true);
+      const res = await fetch('/api/bot/exclusiones');
+      if (res.ok) {
+        const data = await res.json();
+        setExclusionesBot(data.exclusiones || []);
+      }
+    } catch (e) {
+      console.error('Error cargando exclusiones:', e);
+    } finally {
+      setCargandoExclusiones(false);
+    }
+  };
+
+  useEffect(() => {
+    if (esAdmin) {
+      cargarExclusionesBot();
+    }
+  }, [esAdmin]);
+
+  const abrirModalExclusiones = () => {
+    setNuevoTelExclusion('');
+    setNuevoNombreExclusion('');
+    setErrorExclusion(null);
+    setBusquedaExclusion('');
+    setModalExclusionesAbierto(true);
+    cargarExclusionesBot();
+  };
+
+  const handleAgregarExclusion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const telLimpio = nuevoTelExclusion.replace(/\D/g, '');
+    if (!telLimpio || telLimpio.length < 7) {
+      setErrorExclusion('Por favor ingresa un número de teléfono válido.');
+      return;
+    }
+
+    setGuardandoExclusion(true);
+    setErrorExclusion(null);
+    try {
+      const res = await fetch('/api/bot/exclusiones', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          telefono: telLimpio,
+          nombre: nuevoNombreExclusion.trim() || undefined,
+        }),
+      });
+
+      if (res.ok) {
+        setNuevoTelExclusion('');
+        setNuevoNombreExclusion('');
+        await cargarExclusionesBot();
+      } else {
+        const data = await res.json();
+        setErrorExclusion(data.error || 'No se pudo guardar la exclusión.');
+      }
+    } catch (err: any) {
+      setErrorExclusion('Error de conexión al agregar número.');
+    } finally {
+      setGuardandoExclusion(false);
+    }
+  };
+
+  const handleEliminarExclusion = async (telefono: string, nombre?: string) => {
+    if (!window.confirm(`¿Reactivar el bot de WhatsApp para ${nombre || telefono}? El bot volverá a responderle automáticamente.`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/bot/exclusiones/${telefono}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        setExclusionesBot((prev) => prev.filter((item) => item.telefono !== telefono));
+      } else {
+        alert('No se pudo reactivar el bot.');
+      }
+    } catch (e) {
+      console.error('Error eliminando exclusión:', e);
+    }
+  };
+
+  const handleToggleSilenciarDesdeCita = async (telefono: string, nombre?: string) => {
+    const telLimpio = telefono.replace(/\D/g, '');
+    const solo10 = telLimpio.startsWith('57') && telLimpio.length === 12 ? telLimpio.slice(2) : telLimpio;
+    const yaEstaSilenciado = exclusionesBot.some((e) => {
+      const eLimpio = e.telefono.replace(/\D/g, '');
+      return eLimpio === telLimpio || eLimpio === solo10 || (eLimpio.startsWith('57') && eLimpio.slice(2) === solo10);
+    });
+
+    if (yaEstaSilenciado) {
+      await handleEliminarExclusion(telLimpio, nombre);
+    } else {
+      try {
+        const res = await fetch('/api/bot/exclusiones', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            telefono: telLimpio,
+            nombre: nombre || 'Clienta conocida',
+          }),
+        });
+        if (res.ok) {
+          await cargarExclusionesBot();
+          alert(`✅ Bot silenciado para ${nombre || telefono}. Los mensajes serán atendidos manualmente.`);
+        }
+      } catch (err) {
+        console.error('Error silenciando bot desde cita:', err);
+      }
+    }
+  };
 
   // Modal de Confirmación Elegante para Eliminar Citas
   const [citaAEliminar, setCitaAEliminar] = useState<{
@@ -1179,8 +1306,6 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       porServicio,
     };
   }, [reservasFiltradasMetricas, canchas, servicios]);
-
-  const esAdmin = perfilActual?.rol === 'admin';
 
   // ============================================================================
   // VISTA 1: PANTALLA DE LOGIN CON LOS 4 PERFILES
@@ -2085,6 +2210,24 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                 <IconPlus className="w-4 h-4 stroke-[3]" />
                 <span className="hidden sm:inline">Agendar Cita</span>
                 <span className="sm:hidden">Agendar</span>
+              </button>
+            )}
+
+            {/* Botón Exclusivo para la Admin: Clientes con Bot Silenciado (Atención Humana) */}
+            {esAdmin && (
+              <button
+                onClick={abrirModalExclusiones}
+                className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2] text-xs font-bold rounded-xl transition shadow-xs cursor-pointer active:scale-95"
+                title="Gestionar clientes con bot silenciado para atención humana personalizada"
+              >
+                <IconHeadset className="w-3.5 h-3.5 text-[#8C243B]" />
+                <span className="hidden sm:inline">Bot Silenciado</span>
+                <span className="sm:hidden">Silenciados</span>
+                {exclusionesBot.length > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full bg-[#8C243B] text-white text-[10px] font-mono font-bold">
+                    {exclusionesBot.length}
+                  </span>
+                )}
               </button>
             )}
 
@@ -3557,6 +3700,218 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       </AnimatePresence>
 
             {/* ==================================================================== */}
+      {/* ==================================================================== */}
+      {/* MODAL ELEGANTE: GESTIÓN DE CLIENTES CON BOT SILENCIADO (ATENCIÓN HUMANA) */}
+      {/* ==================================================================== */}
+      <AnimatePresence>
+        {esAdmin && modalExclusionesAbierto && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-3xl max-w-lg w-full p-6 border border-[#F2C4D2] shadow-2xl space-y-4 max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95"
+            >
+              {/* Encabezado del Modal */}
+              <div className="flex items-center justify-between border-b border-[#FCE8EF] pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-2xl bg-[#FFF5F7] text-[#8C243B] border border-[#F2C4D2] flex items-center justify-center font-bold text-lg shadow-2xs">
+                    <IconHeadset className="w-5 h-5 text-[#8C243B]" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-bold text-base text-[#2D2529] font-serif">
+                        Clientes con Bot Silenciado
+                      </h3>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2]">
+                        Atención Humana
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-[#7D6870]">
+                      El bot de WhatsApp NO responderá automáticamente a estos números
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setModalExclusionesAbierto(false)}
+                  className="p-1.5 rounded-full text-[#7D6870] hover:text-[#2D2529] hover:bg-[#FFF5F7] cursor-pointer transition"
+                >
+                  <IconX className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Formulario para Agregar Nuevo Número */}
+              <form onSubmit={handleAgregarExclusion} className="p-3.5 bg-[#FFF5F7] border border-[#F2C4D2] rounded-2xl space-y-2.5">
+                <p className="text-xs font-bold text-[#8C243B] flex items-center gap-1.5">
+                  <IconPlus className="w-3.5 h-3.5" />
+                  <span>Silenciar bot para una clienta conocida</span>
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <label className="text-[11px] font-semibold text-[#7D6870] block mb-1">
+                      Teléfono WhatsApp
+                    </label>
+                    <input
+                      type="tel"
+                      placeholder="Ej: 321 961 0896"
+                      value={nuevoTelExclusion}
+                      onChange={(e) => setNuevoTelExclusion(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-[#F2C4D2] rounded-xl font-mono text-xs text-[#2D2529] outline-none focus:border-[#8C243B] shadow-2xs"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-semibold text-[#7D6870] block mb-1">
+                      Nombre / Motivo (Opcional)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ej: Camila (Clienta Fija)"
+                      value={nuevoNombreExclusion}
+                      onChange={(e) => setNuevoNombreExclusion(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-[#F2C4D2] rounded-xl text-xs text-[#2D2529] outline-none focus:border-[#8C243B] shadow-2xs"
+                    />
+                  </div>
+                </div>
+
+                {errorExclusion && (
+                  <p className="text-[11px] text-rose-600 font-medium flex items-center gap-1">
+                    <IconAlertCircle className="w-3.5 h-3.5" />
+                    <span>{errorExclusion}</span>
+                  </p>
+                )}
+
+                <div className="flex justify-end pt-1">
+                  <button
+                    type="submit"
+                    disabled={guardandoExclusion}
+                    className="px-4 py-2 bg-gradient-to-r from-[#8C243B] to-[#C74B66] hover:from-[#731D30] hover:to-[#B03C54] text-white text-xs font-bold rounded-xl transition shadow-xs cursor-pointer flex items-center gap-1.5 disabled:opacity-50 active:scale-95"
+                  >
+                    {guardandoExclusion ? (
+                      <>
+                        <IconLoader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Guardando...</span>
+                      </>
+                    ) : (
+                      <>
+                        <IconCheck className="w-3.5 h-3.5" />
+                        <span>Silenciar Bot para este Número</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+
+              {/* Barra de Búsqueda y Contador */}
+              <div className="flex items-center justify-between gap-2 text-xs">
+                <div className="relative flex-1">
+                  <IconSearch className="w-3.5 h-3.5 text-[#7D6870] absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Buscar en la lista..."
+                    value={busquedaExclusion}
+                    onChange={(e) => setBusquedaExclusion(e.target.value)}
+                    className="w-full pl-8 pr-3 py-1.5 bg-[#FFF5F7]/70 border border-[#F2C4D2] rounded-xl text-xs text-[#2D2529] outline-none focus:border-[#8C243B]"
+                  />
+                </div>
+                <span className="text-[11px] text-[#7D6870] font-semibold shrink-0">
+                  {exclusionesBot.length} {exclusionesBot.length === 1 ? 'número' : 'números'}
+                </span>
+              </div>
+
+              {/* Lista de Números Excluidos */}
+              <div className="flex-1 overflow-y-auto space-y-2 pr-1 min-h-[160px] max-h-[300px]">
+                {cargandoExclusiones ? (
+                  <div className="py-8 text-center text-[#7D6870] text-xs flex items-center justify-center gap-2">
+                    <IconLoader2 className="w-4 h-4 animate-spin text-[#8C243B]" />
+                    <span>Cargando lista...</span>
+                  </div>
+                ) : (() => {
+                  const filtradas = exclusionesBot.filter((item) => {
+                    const q = busquedaExclusion.toLowerCase().trim();
+                    if (!q) return true;
+                    return (
+                      item.telefono.includes(q) ||
+                      (item.nombre && item.nombre.toLowerCase().includes(q))
+                    );
+                  });
+
+                  if (filtradas.length === 0) {
+                    return (
+                      <div className="text-center py-8 text-[#7D6870] space-y-1 bg-[#FFF5F7]/40 rounded-2xl border border-dashed border-[#F2C4D2]">
+                        <p className="text-xs font-bold text-[#8C243B]">
+                          {busquedaExclusion ? 'Sin resultados para la búsqueda' : 'No hay números con bot silenciado'}
+                        </p>
+                        <p className="text-[11px] opacity-75">
+                          {busquedaExclusion ? 'Intenta con otro término' : 'El bot está respondiendo normalmente a todas las clientas.'}
+                        </p>
+                      </div>
+                    );
+                  }
+
+                  return filtradas.map((item) => {
+                    const telLimpio = item.telefono.replace(/\D/g, '');
+                    return (
+                      <div
+                        key={item.telefono}
+                        className="p-3 bg-white border border-[#F2C4D2] rounded-2xl flex items-center justify-between gap-3 shadow-2xs hover:border-[#8C243B] transition"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-800 border border-amber-200 flex items-center justify-center font-bold text-xs shrink-0">
+                            🔇
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-[#2D2529] truncate font-serif">
+                              {item.nombre || 'Clienta de confianza'}
+                            </p>
+                            <div className="flex items-center gap-2 text-[11px] text-[#7D6870]">
+                              <span className="font-mono">{item.telefono}</span>
+                              <a
+                                href={`https://wa.me/${telLimpio}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-emerald-700 hover:text-emerald-800 font-semibold flex items-center gap-0.5"
+                                title="Abrir chat en WhatsApp"
+                              >
+                                <IconBrandWhatsapp className="w-3 h-3" />
+                                <span>Abrir</span>
+                              </a>
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => handleEliminarExclusion(item.telefono, item.nombre)}
+                          className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shrink-0 active:scale-95 shadow-2xs"
+                          title="Quitar de esta lista y permitir que el bot vuelva a responder"
+                        >
+                          <IconRefresh className="w-3 h-3 text-emerald-700" />
+                          <span>Reactivar Bot</span>
+                        </button>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+
+              {/* Pie del Modal */}
+              <div className="pt-2 border-t border-[#FCE8EF] flex items-center justify-between text-[11px] text-[#7D6870]">
+                <span>💡 Mientras un número esté en esta lista, tu equipo debe atenderla manualmente.</span>
+                <button
+                  type="button"
+                  onClick={() => setModalExclusionesAbierto(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-[#7D6870] font-semibold rounded-xl transition cursor-pointer"
+                >
+                  Cerrar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* MODAL ELEGANTE: CONFIRMAR ELIMINACIÓN DE CITA                        */}
       {/* ==================================================================== */}
       <AnimatePresence>
@@ -3836,6 +4191,28 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                         <span>Completada</span>
                       </button>
                     )}
+
+                    {esAdmin && telLimpio && (() => {
+                      const solo10 = telLimpio.startsWith('57') && telLimpio.length === 12 ? telLimpio.slice(2) : telLimpio;
+                      const estaSilenciado = exclusionesBot.some((e) => {
+                        const eLimpio = e.telefono.replace(/\D/g, '');
+                        return eLimpio === telLimpio || eLimpio === solo10 || (eLimpio.startsWith('57') && eLimpio.slice(2) === solo10);
+                      });
+                      return (
+                        <button
+                          onClick={() => handleToggleSilenciarDesdeCita(telLimpio, nombreClienta)}
+                          className={`px-2.5 py-2 rounded-xl text-xs font-bold transition shadow-2xs cursor-pointer flex items-center gap-1 active:scale-95 ${
+                            estaSilenciado
+                              ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                              : 'bg-white hover:bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2]'
+                          }`}
+                          title={estaSilenciado ? 'Bot actualmente silenciado para esta clienta. Clic para reactivar.' : 'Silenciar bot para atender manualmente a esta clienta'}
+                        >
+                          <IconHeadset className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">{estaSilenciado ? 'Atención Humana' : 'Silenciar Bot'}</span>
+                        </button>
+                      );
+                    })()}
 
                     {esAdmin && (
                       <button

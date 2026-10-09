@@ -7,6 +7,7 @@ import { WhatsAppFlow, BotResponse } from './bot/whatsappFlow.js';
 import { ReminderService } from './services/reminderService.js';
 import { BookingService } from './services/bookingService.js';
 import { AIReceptionistService } from './services/aiReceptionistService.js';
+import { BotExclusionsService } from './services/botExclusionsService.js';
 
 dotenv.config();
 
@@ -308,6 +309,19 @@ app.post('/webhook', async (req: Request, res: Response) => {
           texto = messageObj.image?.caption || 'comprobante_imagen';
         }
 
+        // Verificar si el número está en la lista de exclusión (atención humana / bot silenciado)
+        const esExcluido = await BotExclusionsService.esNumeroExcluido(telefonoCliente);
+        if (esExcluido) {
+          console.log(`[Bot WhatsApp] Mensaje de ${telefonoCliente} IGNORADO (Número en lista de atención humana).`);
+          addDebugLog('WEBHOOK_IN', {
+            telefonoCliente,
+            nombrePush,
+            motivo: 'NUMERO_EXCLUIDO_BOT_SILENCIADO',
+            texto,
+          });
+          return res.sendStatus(200);
+        }
+
         // 2. Procesar con las especialistas, tarifas, Nequi y comprobantes de ESE complejo
         const respuestaBot = await WhatsAppFlow.procesarMensaje(
           telefonoCliente,
@@ -471,6 +485,41 @@ async function enviarMensajeWhatsApp(
     }
   }
 }
+
+// ==============================================================================
+// 2.1 LISTA DE EXCLUSIÓN DE WHATSAPP (BOT SILENCIADO - ATENCIÓN HUMANA MANUAL)
+// ==============================================================================
+app.get('/api/bot/exclusiones', async (req: Request, res: Response) => {
+  try {
+    const exclusiones = await BotExclusionsService.getExclusiones();
+    res.json({ success: true, exclusiones });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/bot/exclusiones', async (req: Request, res: Response) => {
+  try {
+    const { telefono, nombre, motivo } = req.body;
+    if (!telefono) {
+      return res.status(400).json({ success: false, error: 'El número de teléfono es requerido' });
+    }
+    const nueva = await BotExclusionsService.agregarExclusion(telefono, nombre, motivo);
+    res.json({ success: true, exclusion: nueva });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.delete('/api/bot/exclusiones/:telefono', async (req: Request, res: Response) => {
+  try {
+    const { telefono } = req.params;
+    await BotExclusionsService.eliminarExclusion(telefono);
+    res.json({ success: true, message: 'Número eliminado de la lista de exclusión. Bot reactivado.' });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
 // ==============================================================================
 // 3. SIMULADOR CONVERSACIONAL DE WHATSAPP (SOPORTA SELECCIÓN DE EMPRESA)
