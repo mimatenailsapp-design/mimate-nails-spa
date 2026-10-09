@@ -22,7 +22,6 @@ import {
   IconTrash,
   IconCalendarEvent,
   IconCalendarMonth,
-  IconHeadset,
   IconSearch,
 } from '@tabler/icons-react';
 import { supabase } from '../config/supabase';
@@ -421,7 +420,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   const [errorBloquear, setErrorBloquear] = useState<string | null>(null);
   const [menuBloquearManiAbierto, setMenuBloquearManiAbierto] = useState(false);
 
-  // Estados para el Modal de Números Silenciados (Atención Humana / Exclusiones Bot)
+  // Estados para el Modal de Restricción del Bot (Sin Acceso Automático a Enlaces de Reserva)
   const [modalExclusionesAbierto, setModalExclusionesAbierto] = useState(false);
   const [exclusionesBot, setExclusionesBot] = useState<Array<{ id?: string; telefono: string; nombre?: string; motivo?: string; creado_en?: string }>>([]);
   const [cargandoExclusiones, setCargandoExclusiones] = useState(false);
@@ -430,6 +429,10 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   const [busquedaExclusion, setBusquedaExclusion] = useState('');
   const [guardandoExclusion, setGuardandoExclusion] = useState(false);
   const [errorExclusion, setErrorExclusion] = useState<string | null>(null);
+
+  // Modal Elegante de Confirmación para Reactivar Bot (Quitar Restricción)
+  const [exclusionAReactivar, setExclusionAReactivar] = useState<{ telefono: string; nombre?: string } | null>(null);
+  const [reactivandoBot, setReactivandoBot] = useState(false);
 
   // Cargar lista de exclusiones desde el backend
   const cargarExclusionesBot = async () => {
@@ -488,7 +491,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
         await cargarExclusionesBot();
       } else {
         const data = await res.json();
-        setErrorExclusion(data.error || 'No se pudo guardar la exclusión.');
+        setErrorExclusion(data.error || 'No se pudo guardar la restricción.');
       }
     } catch (err: any) {
       setErrorExclusion('Error de conexión al agregar número.');
@@ -497,21 +500,30 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     }
   };
 
-  const handleEliminarExclusion = async (telefono: string, nombre?: string) => {
-    if (!window.confirm(`¿Reactivar el bot de WhatsApp para ${nombre || telefono}? El bot volverá a responderle automáticamente.`)) {
-      return;
-    }
+  // Abrir modal de confirmación con los colores de la app para Reactivar Bot
+  const solicitarReactivarBot = (telefono: string, nombre?: string) => {
+    setExclusionAReactivar({ telefono, nombre });
+  };
+
+  // Procesar reactivación confirmada
+  const handleConfirmarReactivarBot = async () => {
+    if (!exclusionAReactivar) return;
+    setReactivandoBot(true);
     try {
-      const res = await fetch(`/api/bot/exclusiones/${telefono}`, {
+      const res = await fetch(`/api/bot/exclusiones/${exclusionAReactivar.telefono}`, {
         method: 'DELETE',
       });
       if (res.ok) {
-        setExclusionesBot((prev) => prev.filter((item) => item.telefono !== telefono));
+        setExclusionesBot((prev) => prev.filter((item) => item.telefono !== exclusionAReactivar.telefono));
+        setExclusionAReactivar(null);
       } else {
-        alert('No se pudo reactivar el bot.');
+        alert('No se pudo reactivar el bot en el servidor.');
       }
     } catch (e) {
-      console.error('Error eliminando exclusión:', e);
+      console.error('Error eliminando restricción:', e);
+      alert('Error de conexión al reactivar el bot.');
+    } finally {
+      setReactivandoBot(false);
     }
   };
 
@@ -524,7 +536,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     });
 
     if (yaEstaSilenciado) {
-      await handleEliminarExclusion(telLimpio, nombre);
+      solicitarReactivarBot(telLimpio, nombre);
     } else {
       try {
         const res = await fetch('/api/bot/exclusiones', {
@@ -532,15 +544,14 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             telefono: telLimpio,
-            nombre: nombre || 'Clienta conocida',
+            nombre: nombre || 'Restringido desde agenda',
           }),
         });
         if (res.ok) {
           await cargarExclusionesBot();
-          alert(`✅ Bot silenciado para ${nombre || telefono}. Los mensajes serán atendidos manualmente.`);
         }
       } catch (err) {
-        console.error('Error silenciando bot desde cita:', err);
+        console.error('Error restringiendo bot desde cita:', err);
       }
     }
   };
@@ -2220,9 +2231,9 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                 className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2] text-xs font-bold rounded-xl transition shadow-xs cursor-pointer active:scale-95"
                 title="Gestionar clientes con bot silenciado para atención humana personalizada"
               >
-                <IconHeadset className="w-3.5 h-3.5 text-[#8C243B]" />
-                <span className="hidden sm:inline">Bot Silenciado</span>
-                <span className="sm:hidden">Silenciados</span>
+                <IconLock className="w-3.5 h-3.5 text-[#8C243B]" />
+                <span className="hidden sm:inline">Bot Restringido</span>
+                <span className="sm:hidden">Restringidos</span>
                 {exclusionesBot.length > 0 && (
                   <span className="px-1.5 py-0.2 rounded-full bg-[#8C243B] text-white text-[10px] font-mono font-bold">
                     {exclusionesBot.length}
@@ -3701,7 +3712,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
             {/* ==================================================================== */}
       {/* ==================================================================== */}
-      {/* MODAL ELEGANTE: GESTIÓN DE CLIENTES CON BOT SILENCIADO (ATENCIÓN HUMANA) */}
+      {/* MODAL ELEGANTE: RESTRICCIÓN DE ACCESO AL BOT DE WHATSAPP             */}
       {/* ==================================================================== */}
       <AnimatePresence>
         {esAdmin && modalExclusionesAbierto && (
@@ -3715,20 +3726,20 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
               {/* Encabezado del Modal */}
               <div className="flex items-center justify-between border-b border-[#FCE8EF] pb-3">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-10 h-10 rounded-2xl bg-[#FFF5F7] text-[#8C243B] border border-[#F2C4D2] flex items-center justify-center font-bold text-lg shadow-2xs">
-                    <IconHeadset className="w-5 h-5 text-[#8C243B]" />
+                  <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-800 border border-amber-300 flex items-center justify-center font-bold text-lg shadow-2xs">
+                    <IconLock className="w-5 h-5 text-amber-700" />
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
                       <h3 className="font-bold text-base text-[#2D2529] font-serif">
-                        Clientes con Bot Silenciado
+                        Restricción de Acceso al Bot
                       </h3>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2]">
-                        Atención Humana
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                        Control de Acceso
                       </span>
                     </div>
                     <p className="text-[11px] text-[#7D6870]">
-                      El bot de WhatsApp NO responderá automáticamente a estos números
+                      El bot NO responderá ni enviará enlaces de reserva a estos números
                     </p>
                   </div>
                 </div>
@@ -3740,11 +3751,11 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                 </button>
               </div>
 
-              {/* Formulario para Agregar Nuevo Número */}
+              {/* Formulario para Agregar Nuevo Número Restringido */}
               <form onSubmit={handleAgregarExclusion} className="p-3.5 bg-[#FFF5F7] border border-[#F2C4D2] rounded-2xl space-y-2.5">
                 <p className="text-xs font-bold text-[#8C243B] flex items-center gap-1.5">
                   <IconPlus className="w-3.5 h-3.5" />
-                  <span>Silenciar bot para una clienta conocida</span>
+                  <span>Restringir nuevo número</span>
                 </p>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
@@ -3764,11 +3775,11 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
                   <div>
                     <label className="text-[11px] font-semibold text-[#7D6870] block mb-1">
-                      Nombre / Motivo (Opcional)
+                      Motivo / Identificador (Opcional)
                     </label>
                     <input
                       type="text"
-                      placeholder="Ej: Camila (Clienta Fija)"
+                      placeholder="Ej: Cancela seguido / No asiste"
                       value={nuevoNombreExclusion}
                       onChange={(e) => setNuevoNombreExclusion(e.target.value)}
                       className="w-full px-3 py-2 bg-white border border-[#F2C4D2] rounded-xl text-xs text-[#2D2529] outline-none focus:border-[#8C243B] shadow-2xs"
@@ -3796,8 +3807,8 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                       </>
                     ) : (
                       <>
-                        <IconCheck className="w-3.5 h-3.5" />
-                        <span>Silenciar Bot para este Número</span>
+                        <IconLock className="w-3.5 h-3.5" />
+                        <span>Restringir Acceso al Bot</span>
                       </>
                     )}
                   </button>
@@ -3817,11 +3828,11 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                   />
                 </div>
                 <span className="text-[11px] text-[#7D6870] font-semibold shrink-0">
-                  {exclusionesBot.length} {exclusionesBot.length === 1 ? 'número' : 'números'}
+                  {exclusionesBot.length} {exclusionesBot.length === 1 ? 'número restringido' : 'números restringidos'}
                 </span>
               </div>
 
-              {/* Lista de Números Excluidos */}
+              {/* Lista de Números Restringidos */}
               <div className="flex-1 overflow-y-auto space-y-2 pr-1 min-h-[160px] max-h-[300px]">
                 {cargandoExclusiones ? (
                   <div className="py-8 text-center text-[#7D6870] text-xs flex items-center justify-center gap-2">
@@ -3842,10 +3853,10 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                     return (
                       <div className="text-center py-8 text-[#7D6870] space-y-1 bg-[#FFF5F7]/40 rounded-2xl border border-dashed border-[#F2C4D2]">
                         <p className="text-xs font-bold text-[#8C243B]">
-                          {busquedaExclusion ? 'Sin resultados para la búsqueda' : 'No hay números con bot silenciado'}
+                          {busquedaExclusion ? 'Sin resultados para la búsqueda' : 'No hay números restringidos'}
                         </p>
                         <p className="text-[11px] opacity-75">
-                          {busquedaExclusion ? 'Intenta con otro término' : 'El bot está respondiendo normalmente a todas las clientas.'}
+                          {busquedaExclusion ? 'Intenta con otro término' : 'El bot está atendiendo normalmente a los usuarios.'}
                         </p>
                       </div>
                     );
@@ -3859,12 +3870,12 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                         className="p-3 bg-white border border-[#F2C4D2] rounded-2xl flex items-center justify-between gap-3 shadow-2xs hover:border-[#8C243B] transition"
                       >
                         <div className="flex items-center gap-2.5 min-w-0">
-                          <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-800 border border-amber-200 flex items-center justify-center font-bold text-xs shrink-0">
-                            🔇
+                          <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-900 border border-amber-300 flex items-center justify-center font-bold text-xs shrink-0">
+                            🔒
                           </div>
                           <div className="min-w-0">
                             <p className="text-xs font-bold text-[#2D2529] truncate font-serif">
-                              {item.nombre || 'Clienta de confianza'}
+                              {item.nombre || 'Número restringido'}
                             </p>
                             <div className="flex items-center gap-2 text-[11px] text-[#7D6870]">
                               <span className="font-mono">{item.telefono}</span>
@@ -3883,9 +3894,9 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                         </div>
 
                         <button
-                          onClick={() => handleEliminarExclusion(item.telefono, item.nombre)}
+                          onClick={() => solicitarReactivarBot(item.telefono, item.nombre)}
                           className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shrink-0 active:scale-95 shadow-2xs"
-                          title="Quitar de esta lista y permitir que el bot vuelva a responder"
+                          title="Levantar la restricción y permitir que el bot vuelva a responder"
                         >
                           <IconRefresh className="w-3 h-3 text-emerald-700" />
                           <span>Reactivar Bot</span>
@@ -3898,13 +3909,107 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
               {/* Pie del Modal */}
               <div className="pt-2 border-t border-[#FCE8EF] flex items-center justify-between text-[11px] text-[#7D6870]">
-                <span>💡 Mientras un número esté en esta lista, tu equipo debe atenderla manualmente.</span>
+                <span>💡 Los números en esta lista no podrán solicitar enlaces ni agendar por el bot.</span>
                 <button
                   type="button"
                   onClick={() => setModalExclusionesAbierto(false)}
                   className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-[#7D6870] font-semibold rounded-xl transition cursor-pointer"
                 >
                   Cerrar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ==================================================================== */}
+      {/* MODAL ELEGANTE: CONFIRMAR REACTIVACIÓN DEL BOT (QUITAR RESTRICCIÓN)   */}
+      {/* ==================================================================== */}
+      <AnimatePresence>
+        {exclusionAReactivar && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-3xl max-w-md w-full p-6 border border-[#F2C4D2] shadow-2xl space-y-4 animate-in fade-in zoom-in-95"
+            >
+              {/* Cabecera del Modal con Colores de la App */}
+              <div className="flex items-center justify-between border-b border-[#FCE8EF] pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center justify-center font-bold text-lg shadow-2xs">
+                    <IconRefresh className="w-5 h-5 text-emerald-700" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-base text-[#2D2529] font-serif">
+                      ¿Reactivar el Bot para este Número?
+                    </h3>
+                    <p className="text-[11px] text-[#7D6870]">
+                      Se levantará la restricción de agendamiento automático
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setExclusionAReactivar(null)}
+                  className="p-1.5 rounded-full text-[#7D6870] hover:text-[#2D2529] hover:bg-[#FFF5F7] cursor-pointer transition"
+                >
+                  <IconX className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Tarjeta con los Datos del Número */}
+              <div className="bg-[#FFF5F7] border border-[#F2C4D2] rounded-2xl p-4 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-[#7D6870]">Identificador / Motivo:</span>
+                  <span className="font-bold text-sm text-[#2D2529] font-serif">
+                    {exclusionAReactivar.nombre || 'Número restringido'}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-[#7D6870]">Teléfono WhatsApp:</span>
+                  <span className="font-mono font-bold text-[#8C243B] bg-white px-2 py-0.5 rounded-lg border border-[#F2C4D2]">
+                    📱 {exclusionAReactivar.telefono}
+                  </span>
+                </div>
+              </div>
+
+              {/* Alerta Informativa */}
+              <div className="p-3 rounded-2xl bg-emerald-50/80 border border-emerald-200 text-emerald-950 text-xs flex items-center gap-2.5">
+                <IconCheck className="w-4 h-4 text-emerald-700 shrink-0" />
+                <span>
+                  Al reactivar el bot, este número volverá a recibir respuestas automáticas y podrá agendar citas por WhatsApp.
+                </span>
+              </div>
+
+              {/* Botones Cancelar y Confirmar con Colores de la Marca */}
+              <div className="flex gap-2.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setExclusionAReactivar(null)}
+                  disabled={reactivandoBot}
+                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-[#7D6870] font-semibold text-xs rounded-xl transition cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmarReactivarBot}
+                  disabled={reactivandoBot}
+                  className="flex-1 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs rounded-xl transition shadow-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 active:scale-95"
+                >
+                  {reactivandoBot ? (
+                    <>
+                      <IconLoader2 className="w-4 h-4 animate-spin" />
+                      <span>Reactivando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <IconRefresh className="w-4 h-4" />
+                      <span>Sí, Reactivar Bot</span>
+                    </>
+                  )}
                 </button>
               </div>
             </motion.div>
@@ -4206,10 +4311,10 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                               ? 'bg-amber-100 text-amber-900 border border-amber-300'
                               : 'bg-white hover:bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2]'
                           }`}
-                          title={estaSilenciado ? 'Bot actualmente silenciado para esta clienta. Clic para reactivar.' : 'Silenciar bot para atender manualmente a esta clienta'}
+                          title={estaSilenciado ? 'Acceso al bot actualmente restringido para este número. Clic para reactivar.' : 'Restringir bot para evitar que este número use reservas automáticas'}
                         >
-                          <IconHeadset className="w-3.5 h-3.5" />
-                          <span className="hidden sm:inline">{estaSilenciado ? 'Atención Humana' : 'Silenciar Bot'}</span>
+                          <IconLock className="w-3.5 h-3.5 text-amber-700" />
+                          <span className="hidden sm:inline">{estaSilenciado ? 'Bot Restringido' : 'Restringir Bot'}</span>
                         </button>
                       );
                     })()}
