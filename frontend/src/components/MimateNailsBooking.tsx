@@ -225,6 +225,16 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
 
     try {
       const params = new URLSearchParams(window.location.search);
+      const urlTel = params.get('tel') || params.get('telefono');
+      if (urlTel) {
+        const cleanUrlTel = urlTel.replace(/\D/g, '').replace(/^57/, '');
+        setTelefono(cleanUrlTel);
+      }
+      const urlNombre = params.get('nombre');
+      if (urlNombre) {
+        setNombre(decodeURIComponent(urlNombre));
+      }
+
       const rId = params.get('reagendar');
       if (rId) {
         setReagendarId(rId);

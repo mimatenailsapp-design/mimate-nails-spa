@@ -105,6 +105,12 @@ export class WhatsAppFlow {
         const esSpa = complejo.slug === 'mimate-nails' || complejo.tipo_negocio === 'belleza_unas';
         if (esSpa) {
           const baseUrl = process.env.FRONTEND_URL || 'https://mimate-nails-spa.vercel.app';
+          const cleanTel = telefono.replace(/\D/g, '');
+          const queryParams = new URLSearchParams();
+          if (cleanTel) queryParams.set('tel', cleanTel);
+          if (nombrePush) queryParams.set('nombre', nombrePush);
+          const urlAgenda = `${baseUrl}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+
           const textoReinicio =
             `🔄 *Conversación reiniciada con éxito* 🌸\n\n` +
             `¡Hola reina! Tu sesión anterior ha sido limpiada por completo.\n` +
@@ -112,8 +118,8 @@ export class WhatsAppFlow {
             `¡Te esperamos con amor para consentirte! 💕💅`;
 
           return {
-            texto: `${textoReinicio}\n\n📅 *Agenda tu cita aquí:*\n${baseUrl}`,
-            urlRedirect: baseUrl,
+            texto: `${textoReinicio}\n\n📅 *Agenda tu cita aquí:*\n${urlAgenda}`,
+            urlRedirect: urlAgenda,
             interactive: {
               type: 'cta_url',
               header: '🌸 JL Mímate Nails Spa',
@@ -123,7 +129,7 @@ export class WhatsAppFlow {
                 name: 'cta_url',
                 parameters: {
                   display_text: '📅 Abrir Agenda',
-                  url: baseUrl,
+                  url: urlAgenda,
                 },
               },
             },
@@ -444,17 +450,28 @@ export class WhatsAppFlow {
     if (esSpa) {
       session.paso = 'INICIO';
       const baseUrl = process.env.FRONTEND_URL || 'https://mimate-nails-spa.vercel.app';
+      const cleanTel = telefono.replace(/\D/g, '');
+      const queryParams = new URLSearchParams();
+      if (cleanTel) queryParams.set('tel', cleanTel);
+      if (nombrePush) queryParams.set('nombre', nombrePush);
+      const urlAgenda = `${baseUrl}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+
+      const exigeAnticipo = (Number(complejo.porcentaje_anticipo_minimo) || 0) > 0;
+      const textoAnticipo = exigeAnticipo
+        ? `💅 Pre-reserva fácil con abono del ${complejo.porcentaje_anticipo_minimo}% para asegurar tu cupo.`
+        : `💅 Sin cobros anticipados (pagas en el spa).`;
+
       const saludoNombre = nombrePush ? ` ${nombrePush}` : '';
       const textoSpa =
         `🌸✨ *¡HOLA${saludoNombre ? saludoNombre.toUpperCase() : ' REINA'}! BIENVENIDA A JL MÍMATE NAILS* ✨🌸\n\n` +
         `Nos alegra mucho saludarte. Para agendar tu cita, ver nuestros servicios y elegir tu manicurista preferida, abre nuestra agenda tocando el botón a continuación:\n\n` +
         `📍 Pereira, Cuba (Calle 66 bis #26-57)\n` +
-        `💅 Sin cobros anticipados (pagas en el spa).\n\n` +
+        `${textoAnticipo}\n\n` +
         `¡Te esperamos con amor para consentirte! 💕`;
 
       return {
-        texto: `${textoSpa}\n\n📅 *Agenda tu cita aquí:*\n${baseUrl}`,
-        urlRedirect: baseUrl,
+        texto: `${textoSpa}\n\n📅 *Agenda tu cita aquí:*\n${urlAgenda}`,
+        urlRedirect: urlAgenda,
         interactive: {
           type: 'cta_url',
           header: '🌸 JL Mímate Nails Spa',
@@ -464,7 +481,7 @@ export class WhatsAppFlow {
             name: 'cta_url',
             parameters: {
               display_text: '📅 Abrir Agenda',
-              url: baseUrl,
+              url: urlAgenda,
             },
           },
         },
@@ -1216,16 +1233,28 @@ export class WhatsAppFlow {
         .map((c) => c.id);
 
       if (clienteIds.length > 0) {
-        const { data: reservas } = await supabase
+        let { data: reservas, error: errRes } = await supabase
           .from('reservas')
-          .select('*, canchas(*), clientes(*)')
+          .select('*, canchas!inner(*), clientes(*)')
           .in('cliente_id', clienteIds)
-          .eq('complejo_id', complejo.id)
+          .eq('canchas.complejo_id', complejo.id)
           .in('estado', ['pendiente_anticipo', 'pendiente_pago'])
           .order('created_at', { ascending: false });
 
+        if (errRes) {
+          console.error('[RECEPCION_COMPROBANTE] Error buscando por canchas.complejo_id:', errRes.message);
+          const { data: resFallback } = await supabase
+            .from('reservas')
+            .select('*, canchas(*), clientes(*)')
+            .in('cliente_id', clienteIds)
+            .in('estado', ['pendiente_anticipo', 'pendiente_pago'])
+            .order('created_at', { ascending: false });
+          reservas = resFallback;
+        }
+
         if (reservas && reservas.length > 0) {
           reservaTarget = reservas[0];
+          session.reservaId = reservaTarget.id;
         }
       }
     }
@@ -1261,13 +1290,31 @@ export class WhatsAppFlow {
         complejo.titular_cuenta
       );
 
-      // CASO 2.1: NO ES UN COMPROBANTE BANCARIO (selfie, sticker, uña, meme, etc.)
+      // CASO 2.1: NO ES UN COMPROBANTE BANCARIO (selfie, sticker, uña, forro, meme, etc.)
       if (analisis.es_comprobante_bancario === false) {
+        const clienteNombre = reservaTarget.clientes?.nombre || 'reina';
+        const nombreManicurista = reservaTarget.canchas?.nombre || 'tu manicurista';
+        const horaInicio = new Date(reservaTarget.fecha_inicio).toLocaleTimeString('es-CO', {
+          hour: 'numeric',
+          minute: '2-digit',
+          timeZone: 'America/Bogota',
+        });
+        const anticipoFmt = '$' + Number(anticipoRequerido).toLocaleString('es-CO');
+
+        let tiempoRestanteMsg = 'tienes hasta 60 minutos desde tu pre-reserva antes de que el turno se libere automáticamente';
+        if (reservaTarget.expiracion_reserva) {
+          const expMs = new Date(reservaTarget.expiracion_reserva).getTime();
+          const diffMin = Math.round((expMs - Date.now()) / (1000 * 60));
+          if (diffMin > 0) {
+            tiempoRestanteMsg = `te quedan aproximadamente *${diffMin} minutos* para asegurar tu cupo`;
+          }
+        }
+
         return {
-          texto: `🌸 *Hola reina, recibimos tu foto:*\n\n` +
-            `Sin embargo, nuestro sistema no detectó que sea un comprobante de transferencia bancaria (Nequi o Bancolombia) 📄❌.\n\n` +
-            `👉 Por favor envíanos la *captura de pantalla o comprobante de pago oficial* para poder validar tu anticipo y asegurar tu cita.\n` +
-            `⏰ Recuerda que tienes hasta 1 hora desde tu solicitud antes de que el turno se libere automáticamente 💕💅.`,
+          texto: `🌸 *Hola ${clienteNombre}, recibimos tu imagen:* 💕\n\n` +
+            `Sin embargo, nuestro sistema no detectó que sea un comprobante de transferencia bancaria de Nequi o Bancolombia 📄❌.\n\n` +
+            `👉 Para confirmar tu cita de las *${horaInicio}* con *${nombreManicurista}*, por favor envíanos la *foto o captura de pantalla clara del comprobante de abono* (${anticipoFmt}).\n\n` +
+            `⏰ Recuerda que ${tiempoRestanteMsg} 💕💅.`,
         };
       }
 
@@ -1561,6 +1608,10 @@ export class WhatsAppFlow {
 
     if (!reserva) {
       const baseUrl = process.env.FRONTEND_URL || 'https://mimate-nails-spa.vercel.app';
+      const cleanTel = telefono.replace(/\D/g, '');
+      const queryParams = new URLSearchParams();
+      if (cleanTel) queryParams.set('tel', cleanTel);
+      const urlAgenda = `${baseUrl}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
       const esSpa = complejo.slug === 'mimate-nails' || complejo.tipo_negocio === 'belleza_unas';
 
       if (esReagendar) {
@@ -1573,7 +1624,7 @@ export class WhatsAppFlow {
 
         return {
           texto: textoSinCita,
-          urlRedirect: baseUrl,
+          urlRedirect: urlAgenda,
           interactive: {
             type: 'cta_url',
             header: esSpa ? '🌸 Abrir Agenda Spa' : '📅 Reservar Turno',
@@ -1583,7 +1634,7 @@ export class WhatsAppFlow {
               name: 'cta_url',
               parameters: {
                 display_text: '📅 Abrir Agenda',
-                url: baseUrl,
+                url: urlAgenda,
               },
             },
           },
@@ -1660,7 +1711,8 @@ export class WhatsAppFlow {
     // CASO 3: REAGENDAR (CAMBIAR FECHA)
     if (esReagendar) {
       const baseUrl = process.env.FRONTEND_URL || 'https://mimate-nails-spa.vercel.app';
-      const linkReagendar = `${baseUrl}/?reagendar=${reserva.id}`;
+      const cleanTel = telefono.replace(/\D/g, '');
+      const linkReagendar = `${baseUrl}/?reagendar=${reserva.id}&tel=${cleanTel}`;
 
       const textoSinLink = esSpa
         ? `🌸 *REAGENDAR CITA - JL MÍMATE NAILS* 🌸\n\n` +
