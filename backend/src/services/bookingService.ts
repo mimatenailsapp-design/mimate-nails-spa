@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { supabase } from '../config/supabase.js';
 
 export interface Complejo {
@@ -275,14 +276,77 @@ export class BookingService {
   }
 
   /**
-   * Libera reservas pendientes cuyo tiempo de pago superó los 15 minutos
+   * Libera reservas pendientes cuyo tiempo de pago superó el límite establecido (60 min)
    */
   static async liberarReservasExpiradas() {
     const ahora = new Date().toISOString();
-    await supabase
-      .from('reservas')
-      .update({ estado: 'cancelada', notas: 'Cancelada automáticamente por expiración de tiempo de pago.' })
-      .eq('estado', 'pendiente_pago')
-      .lt('expiracion_reserva', ahora);
+    try {
+      const { data: expiradas } = await supabase
+        .from('reservas')
+        .select('*, canchas!inner(*, complejos!inner(*)), clientes(*)')
+        .in('estado', ['pendiente_anticipo', 'pendiente_pago'])
+        .not('expiracion_reserva', 'is', null)
+        .lt('expiracion_reserva', ahora);
+
+      if (!expiradas || expiradas.length === 0) return;
+
+      for (const r of expiradas) {
+        const notas = r.notas || '';
+        // Si la clienta ya envió el comprobante y la IA lo validó en revisión, NO se cancela
+        if (notas.includes('[COMPROBANTE_VALIDO_IA]') || notas.includes('[COMPROBANTE_RECIBIDO]')) {
+          continue;
+        }
+
+        console.log(`[EXPIRACION] Liberando turno de reserva ${r.id} por falta de comprobante de anticipo`);
+        await supabase
+          .from('reservas')
+          .update({
+            estado: 'cancelada',
+            notas: `${notas} | [EXPIRADO] Cancelada automáticamente por superar el tiempo límite de anticipo`,
+          })
+          .eq('id', r.id);
+
+        // Enviar notificación por WhatsApp a la clienta
+        const cliente = r.clientes as any;
+        const cancha = r.canchas as any;
+        const complejo = cancha?.complejos as any;
+
+        if (cliente?.telefono_wa) {
+          const horaStr = new Date(r.fecha_inicio).toLocaleTimeString('es-CO', {
+            hour: 'numeric',
+            minute: '2-digit',
+            timeZone: 'America/Bogota',
+          });
+          const msgAviso =
+            `🌸 *JL MÍMATE NAILS* 🌸\n\n` +
+            `Hola *${cliente.nombre || 'Reina'}*, te informamos que tu turno para las *${horaStr}* ha sido liberado porque no recibimos el comprobante de anticipo dentro del tiempo límite.\n\n` +
+            `Si aún deseas apartar tu espacio, con gusto puedes volver a agendar en nuestra agenda web:\n` +
+            `👉 https://mimate-nails-spa.vercel.app 💕💅`;
+
+          const token = complejo?.whatsapp_token || process.env.WHATSAPP_TOKEN;
+          const phoneId = complejo?.whatsapp_phone_number_id || process.env.WHATSAPP_PHONE_NUMBER_ID;
+          if (token && phoneId) {
+            try {
+              let cleanPhone = String(cliente.telefono_wa).replace(/\D/g, '');
+              if (cleanPhone.length === 10 && cleanPhone.startsWith('3')) cleanPhone = `57${cleanPhone}`;
+              await axios.post(
+                `https://graph.facebook.com/v21.0/${phoneId}/messages`,
+                {
+                  messaging_product: 'whatsapp',
+                  to: cleanPhone,
+                  type: 'text',
+                  text: { body: msgAviso },
+                },
+                { headers: { Authorization: `Bearer ${token}` } }
+              );
+            } catch (e: any) {
+              console.warn('Error enviando aviso de liberación por WhatsApp:', e.message);
+            }
+          }
+        }
+      }
+    } catch (err: any) {
+      console.error('Error en liberarReservasExpiradas:', err.message);
+    }
   }
 }

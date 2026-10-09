@@ -162,6 +162,21 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
   const [telefono, setTelefono] = useState('');
   const [nombre, setNombre] = useState('');
   const [enviandoReserva, setEnviandoReserva] = useState(false);
+  // Configuración de anticipos (20%) y cuentas bancarias
+  const [spaConfig, setSpaConfig] = useState<{
+    exigeAnticipo: boolean;
+    porcentajeAnticipo: number;
+    nequiNumero?: string;
+    bancolombiaNumero?: string;
+    titularCuenta?: string;
+  }>({
+    exigeAnticipo: false,
+    porcentajeAnticipo: 20,
+    nequiNumero: '321 961 0896',
+    bancolombiaNumero: 'Ahorros 245-000123-88',
+    titularCuenta: 'JL Mímate Nails Spa',
+  });
+
   const [reservaConfirmada, setReservaConfirmada] = useState<{
     codigo?: string;
     empleada: string;
@@ -170,6 +185,12 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
     hora: string;
     precio: number;
     telefono: string;
+    esPreReserva?: boolean;
+    anticipoRequerido?: number;
+    saldoRestante?: number;
+    nequi?: string;
+    bancolombia?: string;
+    titular?: string;
   } | null>(null);
 
   // Parámetro de reagendamiento desde recordatorio WhatsApp (?reagendar=<id>)
@@ -188,6 +209,16 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
       .then((d) => {
         if (d.equipo && d.equipo.length > 0) {
           setEmpleadas(d.equipo);
+        }
+      })
+      .catch(() => {});
+
+    // Cargar si el spa tiene activada la exigencia de anticipo
+    fetch('/api/spa/config')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d && typeof d.exigeAnticipo === 'boolean') {
+          setSpaConfig(d);
         }
       })
       .catch(() => {});
@@ -431,14 +462,25 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
       const data = await res.json();
 
       if (res.ok) {
+        const esPre = Boolean(data.esPreReserva ?? spaConfig.exigeAnticipo);
+        const porc = data.porcentajeAnticipo || spaConfig.porcentajeAnticipo || 20;
+        const antReq = data.anticipoRequerido ?? Math.round((servicioSeleccionado.precio * porc) / 100);
+        const salRest = data.saldoRestante ?? (servicioSeleccionado.precio - antReq);
+
         setReservaConfirmada({
-          codigo: data.codigoReserva,
+          codigo: data.codigoReserva || data.reserva?.id,
           empleada: data.empleada || 'Manicurista asignada',
           servicio: servicioSeleccionado.nombre,
           fecha,
           hora: horaSeleccionada,
           precio: servicioSeleccionado.precio,
           telefono: telefono.trim(),
+          esPreReserva: esPre,
+          anticipoRequerido: antReq,
+          saldoRestante: salRest,
+          nequi: data.nequiNumero || spaConfig.nequiNumero,
+          bancolombia: data.bancolombiaNumero || spaConfig.bancolombiaNumero,
+          titular: data.titularCuenta || spaConfig.titularCuenta,
         });
         setPaso(3);
         cargarSlots(fecha, empleadaId);
@@ -947,13 +989,53 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                       </div>
                     </div>
 
-                    {/* Aviso de no cobro anticipado */}
-                    <div className="bg-white border border-[#F2C4D2] rounded-xl p-3 flex items-start gap-2 text-xs text-[#7D6870]">
-                      <IconHeart className="w-4 h-4 text-[#C74B66] shrink-0 mt-0.5" />
-                      <p className="leading-snug">
-                        <strong>Sin cobro anticipado:</strong> Cancelas el valor de tu servicio (${servicioSeleccionado?.precio.toLocaleString('es-CO')} COP) el día de tu cita directamente en el spa.
-                      </p>
-                    </div>
+                    {/* Aviso de cobro o anticipo */}
+                    {spaConfig.exigeAnticipo ? (
+                      <div className="bg-[#FFF0F4] border border-[#F2C4D2] rounded-2xl p-4 space-y-2.5 text-xs">
+                        <div className="flex items-center gap-1.5 text-[#8C243B] font-bold">
+                          <IconSparkles className="w-4 h-4 text-[#C74B66] shrink-0" />
+                          <span>Abono requerido para pre-confirmar ({spaConfig.porcentajeAnticipo || 20}%):</span>
+                        </div>
+
+                        {(() => {
+                          const porc = spaConfig.porcentajeAnticipo || 20;
+                          const prec = servicioSeleccionado?.precio || 0;
+                          const ant = Math.round((prec * porc) / 100);
+                          const res = prec - ant;
+                          return (
+                            <div className="grid grid-cols-2 gap-2 text-center font-medium">
+                              <div className="bg-white p-2.5 rounded-xl border border-[#F2C4D2]">
+                                <span className="text-[10px] text-[#7D6870] uppercase font-bold tracking-wider block">
+                                  Abono del {porc}%
+                                </span>
+                                <span className="font-extrabold text-[#8C243B] text-sm font-mono">
+                                  ${ant.toLocaleString('es-CO')}
+                                </span>
+                              </div>
+                              <div className="bg-white p-2.5 rounded-xl border border-[#F2C4D2]">
+                                <span className="text-[10px] text-[#7D6870] uppercase font-bold tracking-wider block">
+                                  Saldo en el spa
+                                </span>
+                                <span className="font-extrabold text-[#2D2529] text-sm font-mono">
+                                  ${res.toLocaleString('es-CO')}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })()}
+
+                        <p className="text-[11px] text-[#7D6870] leading-snug">
+                          🔒 Tu turno quedará <strong>pre-apartado por 60 minutos</strong> mientras realizas la transferencia y envías el comprobante a nuestro WhatsApp.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="bg-white border border-[#F2C4D2] rounded-xl p-3 flex items-start gap-2 text-xs text-[#7D6870]">
+                        <IconHeart className="w-4 h-4 text-[#C74B66] shrink-0 mt-0.5" />
+                        <p className="leading-snug">
+                          <strong>Sin cobro anticipado:</strong> Cancelas el valor de tu servicio (${servicioSeleccionado?.precio.toLocaleString('es-CO')} COP) el día de tu cita directamente en el spa.
+                        </p>
+                      </div>
+                    )}
 
                     {reagendarId && (
                       <div className="bg-[#FFF0F4] border border-[#F2C4D2] rounded-xl p-3 flex items-start gap-2 text-xs text-[#8C243B]">
@@ -981,32 +1063,102 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                         {enviandoReserva ? (
                           <>
                             <IconLoader2 className="w-4 h-4 animate-spin" />
-                            <span>Confirmando cita...</span>
+                            <span>
+                              {spaConfig.exigeAnticipo ? 'Apartando pre-reserva...' : 'Confirmando cita...'}
+                            </span>
                           </>
                         ) : (
-                          <span>Confirmar reserva</span>
+                          <span>
+                            {spaConfig.exigeAnticipo ? 'Confirmar pre-reserva' : 'Confirmar reserva'}
+                          </span>
                         )}
                       </button>
                     </div>
                   </div>
                 )}
 
-                {/* PASO 3: CONFIRMACIÓN EXITOSA */}
+                {/* PASO 3: CONFIRMACIÓN EXITOSA / PRE-CONFIRMADA */}
                 {paso === 3 && reservaConfirmada && (
                   <div className="text-center space-y-4 py-2">
-                    <div className="w-16 h-16 mx-auto rounded-full bg-gradient-to-tr from-[#C74B66] to-[#F2C4D2] flex items-center justify-center text-white shadow-md">
-                      <IconCheck className="w-8 h-8 stroke-[3]" />
+                    <div
+                      className={`w-16 h-16 mx-auto rounded-full flex items-center justify-center text-white shadow-md ${
+                        reservaConfirmada.esPreReserva
+                          ? 'bg-gradient-to-tr from-amber-500 to-[#C74B66]'
+                          : 'bg-gradient-to-tr from-[#C74B66] to-[#F2C4D2]'
+                      }`}
+                    >
+                      {reservaConfirmada.esPreReserva ? (
+                        <IconClock className="w-8 h-8 stroke-[2.5]" />
+                      ) : (
+                        <IconCheck className="w-8 h-8 stroke-[3]" />
+                      )}
                     </div>
 
                     <div className="space-y-1">
+                      {reservaConfirmada.esPreReserva && (
+                        <div className="inline-flex items-center gap-1 px-3 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300 mb-1">
+                          <span>⏳ Pre-apartada por 60 minutos</span>
+                        </div>
+                      )}
                       <h2 className="text-xl font-bold text-[#2D2529]">
-                        ¡Cita <span className="italic text-[#C74B66] font-serif">confirmada!</span>
+                        ¡Cita{' '}
+                        <span className="italic text-[#8C243B] font-serif">
+                          {reservaConfirmada.esPreReserva ? 'pre-confirmada!' : 'confirmada!'}
+                        </span>
                       </h2>
                       <p className="text-xs text-[#7D6870] max-w-sm mx-auto leading-relaxed pt-1">
-                        ¡Listo, reina! Enviamos tu comprobante oficial al WhatsApp{' '}
-                        <strong className="text-[#8C243B]">{reservaConfirmada.telefono}</strong>.
+                        {reservaConfirmada.esPreReserva ? (
+                          <>
+                            ¡Listo, reina! Enviamos los datos y cuentas de transferencia a tu WhatsApp{' '}
+                            <strong className="text-[#8C243B]">{reservaConfirmada.telefono}</strong>.
+                          </>
+                        ) : (
+                          <>
+                            ¡Listo, reina! Enviamos tu comprobante oficial al WhatsApp{' '}
+                            <strong className="text-[#8C243B]">{reservaConfirmada.telefono}</strong>.
+                          </>
+                        )}
                       </p>
                     </div>
+
+                    {reservaConfirmada.esPreReserva && (
+                      <div className="bg-[#FFF5F7] border border-[#F2C4D2] rounded-2xl p-4 text-xs text-left space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-[#8C243B] flex items-center gap-1.5">
+                            <IconBrandWhatsapp className="w-4 h-4 text-emerald-600" />
+                            <span>Cuentas oficiales para el abono:</span>
+                          </span>
+                          <span className="text-[10px] bg-amber-100 text-amber-900 font-bold px-2 py-0.5 rounded-full border border-amber-300">
+                            Límite: 1 hora
+                          </span>
+                        </div>
+
+                        <div className="bg-white p-3 rounded-xl border border-[#F2C4D2] space-y-1.5 font-mono text-[11px]">
+                          <div className="flex justify-between items-center">
+                            <span className="text-[#7D6870]">📲 Nequi:</span>
+                            <span className="font-bold text-[#2D2529] select-all">
+                              {reservaConfirmada.nequi || '321 961 0896'}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-[#7D6870]">🏦 Bancolombia:</span>
+                            <span className="font-bold text-[#2D2529] select-all">
+                              {reservaConfirmada.bancolombia || 'Ahorros 245-000123-88'}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center border-t border-[#FCE8EF] pt-1.5">
+                            <span className="text-[#7D6870]">Titular:</span>
+                            <span className="font-bold text-[#8C243B]">
+                              {reservaConfirmada.titular || 'JL Mímate Nails Spa'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <p className="text-[11px] text-[#7D6870] leading-snug">
+                          📸 <strong>Paso final:</strong> Envía la foto o captura del comprobante al chat de WhatsApp. Nuestro sistema lo verificará para proteger tu turno. Si no se envía en 60 minutos, el espacio se liberará.
+                        </p>
+                      </div>
+                    )}
 
                     {reagendarId && (
                       <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl p-3 text-xs flex items-center justify-center gap-2 font-medium">
@@ -1059,12 +1211,30 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                           </span>
                         </a>
                       </div>
-                      <div className="flex justify-between pt-1">
-                        <span className="text-[#7D6870] font-bold">Total a pagar en el spa:</span>
-                        <span className="font-extrabold text-[#8C243B] font-mono text-sm">
-                          ${reservaConfirmada.precio.toLocaleString('es-CO')}
-                        </span>
-                      </div>
+
+                      {reservaConfirmada.esPreReserva ? (
+                        <>
+                          <div className="flex justify-between border-b border-[#FCE8EF] pb-1.5 pt-0.5">
+                            <span className="text-[#7D6870] font-bold">Abono para confirmar (20%):</span>
+                            <span className="font-extrabold text-[#8C243B] font-mono text-xs">
+                              ${(reservaConfirmada.anticipoRequerido || 0).toLocaleString('es-CO')}
+                            </span>
+                          </div>
+                          <div className="flex justify-between pt-1">
+                            <span className="text-[#7D6870] font-bold">Restante a pagar en el spa (80%):</span>
+                            <span className="font-extrabold text-[#2D2529] font-mono text-sm">
+                              ${(reservaConfirmada.saldoRestante || 0).toLocaleString('es-CO')}
+                            </span>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="flex justify-between pt-1">
+                          <span className="text-[#7D6870] font-bold">Total a pagar en el spa:</span>
+                          <span className="font-extrabold text-[#8C243B] font-mono text-sm">
+                            ${reservaConfirmada.precio.toLocaleString('es-CO')}
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     <button

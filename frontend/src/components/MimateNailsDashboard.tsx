@@ -39,9 +39,10 @@ interface Reserva {
   cliente_id?: string;
   fecha_inicio: string;
   fecha_fin: string;
-  estado: 'pendiente_pago' | 'confirmada' | 'cancelada' | 'completada' | 'bloqueada';
+  estado: 'pendiente_pago' | 'pendiente_anticipo' | 'confirmada' | 'cancelada' | 'completada' | 'bloqueada';
   valor_total: number;
   valor_anticipo_requerido: number;
+  expiracion_reserva?: string | null;
   notas?: string;
   canchas?: {
     id?: string;
@@ -450,9 +451,114 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     }
   };
 
+  // Configuración de Anticipos (20%) y Modal de Configuración
+  const [configAnticipo, setConfigAnticipo] = useState<{
+    exigeAnticipo: boolean;
+    porcentajeAnticipo: number;
+    nequiNumero: string;
+    bancolombiaNumero: string;
+    titularCuenta: string;
+  }>({
+    exigeAnticipo: false,
+    porcentajeAnticipo: 20,
+    nequiNumero: '321 961 0896',
+    bancolombiaNumero: 'Ahorros 245-000123-88',
+    titularCuenta: 'JL Mímate Nails Spa',
+  });
+  const [modalConfigAnticipoAbierto, setModalConfigAnticipoAbierto] = useState(false);
+  const [guardandoConfigAnticipo, setGuardandoConfigAnticipo] = useState(false);
+  const [procesandoAccionAnticipo, setProcesandoAccionAnticipo] = useState<string | null>(null);
+
+  const cargarConfigAnticipo = async () => {
+    try {
+      const res = await fetch('/api/spa/config');
+      if (res.ok) {
+        const d = await res.json();
+        setConfigAnticipo({
+          exigeAnticipo: Boolean(d.exigeAnticipo),
+          porcentajeAnticipo: Number(d.porcentajeAnticipo) || 20,
+          nequiNumero: d.nequiNumero || '321 961 0896',
+          bancolombiaNumero: d.bancolombiaNumero || 'Ahorros 245-000123-88',
+          titularCuenta: d.titularCuenta || 'JL Mímate Nails Spa',
+        });
+      }
+    } catch (e) {
+      console.error('Error al cargar config de anticipo:', e);
+    }
+  };
+
+  const handleGuardarConfigAnticipo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setGuardandoConfigAnticipo(true);
+    try {
+      const res = await fetch('/api/spa/config', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(configAnticipo),
+      });
+      if (res.ok) {
+        setModalConfigAnticipoAbierto(false);
+        alert('¡Configuración de anticipos guardada con éxito!');
+      } else {
+        alert('No se pudo guardar la configuración.');
+      }
+    } catch (err: any) {
+      alert('Error guardando configuración: ' + err.message);
+    } finally {
+      setGuardandoConfigAnticipo(false);
+    }
+  };
+
+  const handleAprobarAnticipo = async (reservaId: string, nombreClienta: string) => {
+    if (!window.confirm(`¿Aprobar el anticipo de "${nombreClienta}"? Se confirmará la cita y se enviará la notificación oficial por WhatsApp.`)) return;
+    setProcesandoAccionAnticipo(reservaId);
+    try {
+      const res = await fetch(`/api/reservas/${reservaId}/aprobar-anticipo`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notas_admin: 'Aprobado manualmente desde el Visor de Control' }),
+      });
+      if (res.ok) {
+        await cargarReservas();
+      } else {
+        alert('No se pudo aprobar el anticipo.');
+      }
+    } catch (err: any) {
+      alert('Error aprobando anticipo: ' + err.message);
+    } finally {
+      setProcesandoAccionAnticipo(null);
+    }
+  };
+
+  const handleRechazarAnticipo = async (reservaId: string, nombreClienta: string) => {
+    const motivo = window.prompt(
+      `¿Rechazar el turno de "${nombreClienta}" y liberar el horario? Escribe un motivo breve para la clienta:`,
+      'Comprobante no válido o tiempo límite expirado'
+    );
+    if (motivo === null) return;
+    setProcesandoAccionAnticipo(reservaId);
+    try {
+      const res = await fetch(`/api/reservas/${reservaId}/rechazar-anticipo`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ motivo: motivo.trim() || 'Comprobante no válido o tiempo límite expirado' }),
+      });
+      if (res.ok) {
+        await cargarReservas();
+      } else {
+        alert('No se pudo rechazar la reserva.');
+      }
+    } catch (err: any) {
+      alert('Error rechazando reserva: ' + err.message);
+    } finally {
+      setProcesandoAccionAnticipo(null);
+    }
+  };
+
   useEffect(() => {
     if (esAdmin) {
       cargarExclusionesBot();
+      cargarConfigAnticipo();
     }
   }, [esAdmin]);
 
@@ -566,8 +672,6 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     especialista?: string;
   } | null>(null);
   const [eliminandoCita, setEliminandoCita] = useState(false);
-
-
 
   // Objeto de la manicurista actualmente seleccionada en el formulario
   const manicuristaSeleccionadaForm = useMemo(() => {
@@ -725,6 +829,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   useEffect(() => {
     cargarInfoSpa();
     cargarReservas();
+    cargarConfigAnticipo();
   }, [complejoId]);
 
   // Sincronizar perfiles con IDs de las canchas en la BD
@@ -1658,6 +1763,8 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                             ? 'bg-gradient-to-r from-amber-50 to-orange-50/80 border-amber-300 shadow-amber-100/50'
                             : estaEnAtencion
                             ? 'bg-rose-50/90 border-[#8C243B] ring-2 ring-[#8C243B]/20 shadow-[#8C243B]/10'
+                            : cita.estado === 'pendiente_anticipo'
+                            ? 'bg-amber-50/80 border-amber-300 shadow-amber-100/40 text-amber-950'
                             : cita.estado === 'completada'
                             ? 'bg-emerald-50/80 border-emerald-300'
                             : cita.estado === 'cancelada'
@@ -1721,10 +1828,88 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                                   <span>Desbloquear</span>
                                 </button>
                               )
-                            ) : (
-                              <>
-                                <span
-                                  className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${
+                            ) : cita.estado === 'pendiente_anticipo' ? (
+                                  <>
+                                    {/* Badge de estado de anticipo */}
+                                    {cita.notas?.includes('[COMPROBANTE_VALIDO_IA]') ? (
+                                      <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-amber-500 text-white shadow-2xs animate-pulse">
+                                        📸 Comprobante en revisión
+                                      </span>
+                                    ) : (
+                                      (() => {
+                                        if (!cita.expiracion_reserva) {
+                                          return (
+                                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                                              ⏳ Esperando abono
+                                            </span>
+                                          );
+                                        }
+                                        const expMs = new Date(cita.expiracion_reserva).getTime();
+                                        const diffMin = Math.round((expMs - ahora.getTime()) / (1000 * 60));
+                                        return (
+                                          <span
+                                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                                              diffMin <= 0
+                                                ? 'bg-rose-100 text-rose-800 border-rose-300'
+                                                : 'bg-amber-100 text-amber-900 border-amber-300'
+                                            }`}
+                                          >
+                                            {diffMin <= 0 ? '⚠️ Expirado' : `⏳ Quedan ${diffMin} min`}
+                                          </span>
+                                        );
+                                      })()
+                                    )}
+
+                                    {telLimpio && (
+                                      <a
+                                        href={`https://wa.me/${telLimpio}?text=Hola%20${encodeURIComponent(
+                                          nombreClienta
+                                        )},%20te%20saludamos%20de%20JL%20M%C3%ADmate%20Nails%20respecto%20al%20abono%20de%20tu%20cita%20de%20las%20${horaInicio}.`}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        onClick={(ev) => ev.stopPropagation()}
+                                        className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold transition shadow-2xs"
+                                        title="Escribir por WhatsApp"
+                                      >
+                                        <IconBrandWhatsapp className="w-3.5 h-3.5" />
+                                        <span className="hidden sm:inline">WhatsApp</span>
+                                      </a>
+                                    )}
+
+                                    {esAdmin && (
+                                      <>
+                                        <button
+                                          disabled={procesandoAccionAnticipo === cita.id}
+                                          onClick={(ev) => {
+                                            ev.stopPropagation();
+                                            handleAprobarAnticipo(cita.id, nombreClienta);
+                                          }}
+                                          className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-2xs cursor-pointer active:scale-95 disabled:opacity-50"
+                                          title="Aprobar abono recibido y confirmar la cita"
+                                        >
+                                          <IconCheck className="w-3.5 h-3.5" />
+                                          <span>Aprobar Abono</span>
+                                        </button>
+
+                                        <button
+                                          disabled={procesandoAccionAnticipo === cita.id}
+                                          onClick={(ev) => {
+                                            ev.stopPropagation();
+                                            handleRechazarAnticipo(cita.id, nombreClienta);
+                                          }}
+                                          className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition shadow-2xs cursor-pointer active:scale-95 disabled:opacity-50"
+                                          title="Rechazar y liberar cupo"
+                                        >
+                                          <IconX className="w-3.5 h-3.5" />
+                                          <span>Rechazar</span>
+                                        </button>
+                                      </>
+                                    )}
+                                  </>
+                                ) : (
+                                  <>
+                                    <span
+                                      className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${
                                     cita.estado === 'completada'
                                       ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
                                       : cita.estado === 'cancelada'
@@ -2211,6 +2396,27 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
               </span>
               <span className="sm:hidden">Bloquear</span>
             </button>
+
+            {/* Botón Exclusivo para la Admin: Configuración de Anticipos (20%) */}
+            {esAdmin && (
+              <button
+                onClick={() => setModalConfigAnticipoAbierto(true)}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition shadow-xs cursor-pointer border ${
+                  configAnticipo.exigeAnticipo
+                    ? 'bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100'
+                    : 'bg-white border-[#F2C4D2] text-[#7D6870] hover:text-[#2D2529]'
+                }`}
+                title="Configurar anticipo del 20% y cuentas bancarias de recaudo"
+              >
+                <span>💵</span>
+                <span className="hidden sm:inline">
+                  Anticipos: {configAnticipo.exigeAnticipo ? `ON (${configAnticipo.porcentajeAnticipo}%)` : 'OFF'}
+                </span>
+                <span className="sm:hidden">
+                  {configAnticipo.exigeAnticipo ? 'Anticipo ON' : 'Anticipo OFF'}
+                </span>
+              </button>
+            )}
 
             {/* Botón Exclusivo para la Admin: Agendar Cita */}
             {esAdmin && (
@@ -3708,6 +3914,182 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
             </motion.div>
           </div>
         )}
+
+        {/* MODAL CONFIGURACIÓN DE ANTICIPOS (20%) & CUENTAS */}
+        {modalConfigAnticipoAbierto && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-3xl max-w-md w-full p-6 border border-[#F2C4D2] shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto"
+            >
+              <div className="flex items-center justify-between border-b border-[#FCE8EF] pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">💵</span>
+                  <div>
+                    <h3 className="font-bold text-base text-[#2D2529] font-serif">
+                      Anticipos & Cuentas Bancarias
+                    </h3>
+                    <p className="text-[11px] text-[#7D6870]">
+                      Configuración de reservas web para clientas
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setModalConfigAnticipoAbierto(false)}
+                  className="p-1 rounded-full text-[#7D6870] hover:text-[#2D2529] cursor-pointer"
+                >
+                  <IconX className="w-4 h-4" />
+                </button>
+              </div>
+
+              <form onSubmit={handleGuardarConfigAnticipo} className="space-y-4 text-xs">
+                {/* 1. SWITCH PRINCIPAL ACTIVAR / DESACTIVAR */}
+                <div className="p-3.5 rounded-2xl bg-[#FFF5F7] border border-[#F2C4D2] flex items-center justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <p className="font-bold text-[#8C243B] text-xs">
+                      ¿Exigir anticipo para reservas?
+                    </p>
+                    <p className="text-[11px] text-[#7D6870] leading-snug">
+                      {configAnticipo.exigeAnticipo
+                        ? 'Activado: Se pedirá abono del 20% y ventana de 60 min.'
+                        : 'Desactivado: Citas 100% directas pagaderas en el spa.'}
+                    </p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={configAnticipo.exigeAnticipo}
+                      onChange={(e) =>
+                        setConfigAnticipo((prev) => ({
+                          ...prev,
+                          exigeAnticipo: e.target.checked,
+                        }))
+                      }
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#8C243B]"></div>
+                  </label>
+                </div>
+
+                {/* SI ESTÁ ACTIVADO, MOSTRAR CAMPOS EDITABLES */}
+                {configAnticipo.exigeAnticipo && (
+                  <div className="space-y-3 pt-1 border-t border-[#FCE8EF]">
+                    <div>
+                      <label className="font-bold text-[#7D6870] block mb-1">
+                        Porcentaje de anticipo (% del valor del servicio)
+                      </label>
+                      <input
+                        type="number"
+                        min="5"
+                        max="100"
+                        value={configAnticipo.porcentajeAnticipo}
+                        onChange={(e) =>
+                          setConfigAnticipo((prev) => ({
+                            ...prev,
+                            porcentajeAnticipo: Number(e.target.value) || 20,
+                          }))
+                        }
+                        className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl font-bold text-[#2D2529] outline-none focus:border-[#8C243B]"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="font-bold text-[#7D6870] block mb-1">
+                        Número Nequi de recaudo
+                      </label>
+                      <input
+                        type="text"
+                        value={configAnticipo.nequiNumero}
+                        onChange={(e) =>
+                          setConfigAnticipo((prev) => ({
+                            ...prev,
+                            nequiNumero: e.target.value,
+                          }))
+                        }
+                        placeholder="321 961 0896"
+                        className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl font-medium text-[#2D2529] outline-none focus:border-[#8C243B]"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="font-bold text-[#7D6870] block mb-1">
+                        Cuenta Bancolombia / Daviplata
+                      </label>
+                      <input
+                        type="text"
+                        value={configAnticipo.bancolombiaNumero}
+                        onChange={(e) =>
+                          setConfigAnticipo((prev) => ({
+                            ...prev,
+                            bancolombiaNumero: e.target.value,
+                          }))
+                        }
+                        placeholder="Ahorros 245-000123-88"
+                        className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl font-medium text-[#2D2529] outline-none focus:border-[#8C243B]"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="font-bold text-[#7D6870] block mb-1">
+                        Titular de la cuenta
+                      </label>
+                      <input
+                        type="text"
+                        value={configAnticipo.titularCuenta}
+                        onChange={(e) =>
+                          setConfigAnticipo((prev) => ({
+                            ...prev,
+                            titularCuenta: e.target.value,
+                          }))
+                        }
+                        placeholder="JL Mímate Nails Spa"
+                        className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl font-medium text-[#2D2529] outline-none focus:border-[#8C243B]"
+                        required
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <p className="text-[11px] text-[#7D6870] leading-snug bg-slate-50 p-3 rounded-xl border border-slate-200">
+                  ℹ️ <strong>Cómo funciona:</strong> Al activar el anticipo, las clientas que reserven en la web verán el botón <em>"Confirmar pre-reserva"</em> con el desglose del 20% y tendrán 60 minutos para transferir y enviar el soporte por WhatsApp. La IA auditará el comprobante y podrás aprobarlo o rechazarlo con 1 clic.
+                </p>
+
+                {/* BOTONES */}
+                <div className="flex gap-2 pt-2 border-t border-[#FCE8EF]">
+                  <button
+                    type="button"
+                    onClick={() => setModalConfigAnticipoAbierto(false)}
+                    className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-[#7D6870] font-semibold rounded-xl transition cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={guardandoConfigAnticipo}
+                    className="flex-1 py-2.5 bg-gradient-to-r from-[#8C243B] to-[#C74B66] hover:from-[#731D30] hover:to-[#B03C54] text-white font-bold rounded-xl transition shadow-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    {guardandoConfigAnticipo ? (
+                      <>
+                        <IconLoader2 className="w-4 h-4 animate-spin" />
+                        <span>Guardando...</span>
+                      </>
+                    ) : (
+                      <>
+                        <IconCheck className="w-4 h-4 stroke-[3]" />
+                        <span>Guardar cambios</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
       </AnimatePresence>
 
             {/* ==================================================================== */}
@@ -4207,6 +4589,10 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                     <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${
                       esBloqueada
                         ? 'bg-amber-100 text-amber-900 border-amber-300'
+                        : cita.estado === 'pendiente_anticipo'
+                        ? cita.notas?.includes('[COMPROBANTE_VALIDO_IA]')
+                          ? 'bg-amber-500 text-white border-amber-600 animate-pulse'
+                          : 'bg-amber-100 text-amber-900 border-amber-300'
                         : cita.estado === 'completada'
                         ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
                         : cita.estado === 'cancelada'
@@ -4269,6 +4655,51 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                       <span>Desbloquear Horario</span>
                     </button>
                   )
+                ) : cita.estado === 'pendiente_anticipo' ? (
+                  <>
+                    {telLimpio && (
+                      <a
+                        href={`https://wa.me/${telLimpio}?text=Hola%20${encodeURIComponent(nombreClienta)},%20te%20saludamos%20de%20JL%20M%C3%ADmate%20Nails%20respecto%20al%20abono%20de%20tu%20cita%20de%20las%20${horaInicio}.`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex-1 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold transition flex items-center justify-center gap-1 shadow-2xs"
+                        title="Escribir por WhatsApp"
+                      >
+                        <IconBrandWhatsapp className="w-3.5 h-3.5" />
+                        <span>WhatsApp</span>
+                      </a>
+                    )}
+
+                    {esAdmin && (
+                      <>
+                        <button
+                          disabled={procesandoAccionAnticipo === cita.id}
+                          onClick={() => {
+                            handleAprobarAnticipo(cita.id, nombreClienta);
+                            setPopoverCita(null);
+                          }}
+                          className="flex-1 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center justify-center gap-1 shadow-2xs cursor-pointer active:scale-95 disabled:opacity-50"
+                          title="Aprobar abono recibido y confirmar la cita"
+                        >
+                          <IconCheck className="w-3.5 h-3.5" />
+                          <span>Aprobar Abono</span>
+                        </button>
+
+                        <button
+                          disabled={procesandoAccionAnticipo === cita.id}
+                          onClick={() => {
+                            handleRechazarAnticipo(cita.id, nombreClienta);
+                            setPopoverCita(null);
+                          }}
+                          className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition flex items-center justify-center gap-1 shadow-2xs cursor-pointer active:scale-95 disabled:opacity-50"
+                          title="Rechazar y liberar cupo"
+                        >
+                          <IconX className="w-3.5 h-3.5" />
+                          <span>Rechazar</span>
+                        </button>
+                      </>
+                    )}
+                  </>
                 ) : (
                   <>
                     {telLimpio && (

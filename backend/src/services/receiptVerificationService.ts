@@ -2,6 +2,7 @@ import axios from 'axios';
 import { supabase } from '../config/supabase.js';
 
 export interface ResultadoVerificacionIA {
+  es_comprobante_bancario?: boolean;
   es_valido: boolean;
   es_sospechoso_fraude: boolean;
   monto_detectado?: number;
@@ -175,6 +176,7 @@ RESPONDE EXCLUSIVAMENTE EN FORMATO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA:
       const esValidoFinal = Boolean(parsed.es_valido && montoOk && !parsed.es_sospechoso_fraude);
 
       return {
+        es_comprobante_bancario: parsed.es_comprobante_bancario !== false,
         es_valido: esValidoFinal,
         es_sospechoso_fraude: Boolean(parsed.es_sospechoso_fraude),
         monto_detectado: parsed.monto_detectado || undefined,

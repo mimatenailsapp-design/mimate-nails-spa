@@ -593,6 +593,69 @@ app.patch('/api/complejos/:id', async (req: Request, res: Response) => {
   }
 });
 
+// Consultar configuración actual de anticipos y cuentas del spa
+app.get('/api/spa/config', async (req: Request, res: Response) => {
+  try {
+    const { data: complejo, error } = await supabase
+      .from('complejos')
+      .select('*')
+      .eq('slug', 'mimate-nails')
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!complejo) return res.status(404).json({ error: 'Spa no encontrado' });
+
+    res.json({
+      exigeAnticipo: (complejo.porcentaje_anticipo_minimo || 0) > 0,
+      porcentajeAnticipo: complejo.porcentaje_anticipo_minimo || 20,
+      nequiNumero: complejo.nequi_numero || '321 961 0896',
+      bancolombiaNumero: complejo.daviplata_numero || 'Ahorros 245-000123-88',
+      titularCuenta: complejo.titular_cuenta || 'JL Mímate Nails Spa',
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Actualizar configuración de anticipos y cuentas del spa desde el Dashboard
+app.patch('/api/spa/config', async (req: Request, res: Response) => {
+  try {
+    const { exigeAnticipo, porcentajeAnticipo, nequiNumero, bancolombiaNumero, titularCuenta } = req.body;
+
+    const updateData: any = {};
+    if (exigeAnticipo !== undefined) {
+      updateData.porcentaje_anticipo_minimo = exigeAnticipo ? Number(porcentajeAnticipo || 20) : 0;
+    } else if (porcentajeAnticipo !== undefined) {
+      updateData.porcentaje_anticipo_minimo = Number(porcentajeAnticipo);
+    }
+    if (nequiNumero !== undefined) updateData.nequi_numero = String(nequiNumero).trim();
+    if (bancolombiaNumero !== undefined) updateData.daviplata_numero = String(bancolombiaNumero).trim();
+    if (titularCuenta !== undefined) updateData.titular_cuenta = String(titularCuenta).trim();
+
+    const { data, error } = await supabase
+      .from('complejos')
+      .update(updateData)
+      .eq('slug', 'mimate-nails')
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    res.json({
+      success: true,
+      config: {
+        exigeAnticipo: (data.porcentaje_anticipo_minimo || 0) > 0,
+        porcentajeAnticipo: data.porcentaje_anticipo_minimo || 20,
+        nequiNumero: data.nequi_numero || '321 961 0896',
+        bancolombiaNumero: data.daviplata_numero || 'Ahorros 245-000123-88',
+        titularCuenta: data.titular_cuenta || 'JL Mímate Nails Spa',
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Consultar base de conocimiento / FAQ personalizada de un complejo
 app.get('/api/complejos/:id/faq', async (req: Request, res: Response) => {
   const { id } = req.params;
@@ -848,6 +911,7 @@ app.patch('/api/reservas/:id/aprobar-anticipo', async (req: Request, res: Respon
       .from('reservas')
       .update({
         estado: 'confirmada',
+        expiracion_reserva: null,
         notas: notas_admin || 'Anticipo aprobado manualmente por administrador en Visor Web',
       })
       .eq('id', id)
@@ -1308,7 +1372,24 @@ app.post('/api/spa/reservar', async (req: Request, res: Response) => {
 
     const cliente = await BookingService.getOrCreateCliente(cleanPhone, cliente_nombre.trim());
 
-    const notas = `💅 Servicio: ${servicio_nombre || 'Uñas'} | Clienta: ${cliente_nombre.trim()} | Reserva Web JL Mímate Nails | Pago en el spa (Sin cobro anticipado)`;
+    // Determinar si el spa exige abono/anticipo para reservar
+    const porcentajeAnticipo = Number(complejo.porcentaje_anticipo_minimo) || 0;
+    const exigeAnticipo = porcentajeAnticipo > 0;
+
+    const numPrecio = Number(precio || 35000);
+    const anticipoCalculado = exigeAnticipo ? Math.round((numPrecio * porcentajeAnticipo) / 100) : 0;
+    const saldoRestante = numPrecio - anticipoCalculado;
+
+    const precioFmt = '$' + numPrecio.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    const anticipoFmt = '$' + anticipoCalculado.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    const saldoRestanteFmt = '$' + saldoRestante.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+
+    const estadoInicial = exigeAnticipo ? 'pendiente_anticipo' : 'confirmada';
+    const expiracionReserva = exigeAnticipo ? new Date(Date.now() + 60 * 60 * 1000).toISOString() : null;
+
+    const notas = exigeAnticipo
+      ? `💅 Servicio: ${servicio_nombre || 'Uñas'} | Clienta: ${cliente_nombre.trim()} | Pre-Reserva Web JL Mímate Nails | [PENDIENTE_ANTICIPO: ${anticipoFmt}]`
+      : `💅 Servicio: ${servicio_nombre || 'Uñas'} | Clienta: ${cliente_nombre.trim()} | Reserva Web JL Mímate Nails | Pago en el spa (Sin cobro anticipado)`;
 
     const { data: reserva, error: errRes } = await supabase
       .from('reservas')
@@ -1317,9 +1398,10 @@ app.post('/api/spa/reservar', async (req: Request, res: Response) => {
         cliente_id: cliente.id,
         fecha_inicio: dInicio.toISOString(),
         fecha_fin: dFin.toISOString(),
-        valor_total: precio || 35000,
-        valor_anticipo_requerido: 0,
-        estado: 'confirmada',
+        valor_total: numPrecio,
+        valor_anticipo_requerido: anticipoCalculado,
+        estado: estadoInicial,
+        expiracion_reserva: expiracionReserva,
         notas,
       })
       .select('*, canchas(*), clientes(*)')
@@ -1340,10 +1422,6 @@ app.post('/api/spa/reservar', async (req: Request, res: Response) => {
       }
     }
 
-    // Formatear precio en pesos colombianos ($25.000)
-    const numPrecio = Number(precio || 0);
-    const precioFmt = '$' + numPrecio.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-
     const fechaLegible = dInicio.toLocaleDateString('es-CO', {
       timeZone: 'America/Bogota',
       weekday: 'long',
@@ -1356,24 +1434,47 @@ app.post('/api/spa/reservar', async (req: Request, res: Response) => {
       ? `🔄 *Cita reagendada con éxito:* Tu cita anterior fue cancelada y actualizada a este nuevo horario.\n\n`
       : '';
 
-    const voucherWhatsApp =
-      `🌸 *JL MÍMATE NAILS* 🌸\n` +
-      `_Comprobante de Cita_\n` +
-      `───────────────\n\n` +
-      `¡Hola *${cliente_nombre.trim()}*! 💅 Tu cita ha sido agendada con éxito:\n\n` +
-      `💅 *Servicio:* ${servicio_nombre}\n` +
-      `👩‍🎨 *Especialista:* ${empleadaAsignada.nombre}\n` +
-      `📅 *Fecha:* ${fechaLegible}\n` +
-      `⏰ *Hora:* ${hora}\n` +
-      `⏱️ *Duración aprox:* ${duracion_minutos} min\n` +
-      `💰 *Valor a pagar:* ${precioFmt}\n\n` +
-      `📍 *Dirección:* Pereira, Cuba (Calle 66 bis #26-57)\n` +
-      `🗺️ *Ubicación Maps:* https://maps.app.goo.gl/KdSvqi1b2iAe5xgg8\n` +
-      `🏢 *Lugar:* JL Mímate Nails - Spa de Uñas\n\n` +
-      `───────────────\n` +
-      avisoReagendado +
-      `Si necesitas reprogramar o tienes alguna duda, puedes responder directamente a este mensaje.\n` +
-      `¡Nos vemos pronto para consentirte reina! 💕🌸`;
+    // Si exige anticipo: Mensaje de PRE-RESERVA con cuentas y 60 min límite
+    // Si no exige: Mensaje de CONFIRMACIÓN oficial definitivo
+    const voucherWhatsApp = exigeAnticipo
+      ? `🌸 *JL MÍMATE NAILS* 🌸\n` +
+        `_Pre-Reserva de Turno_\n` +
+        `───────────────\n\n` +
+        `¡Hola *${cliente_nombre.trim()}*! 💅 Tu turno ha sido *pre-apartado temporalmente*:\n\n` +
+        `💅 *Servicio:* ${servicio_nombre}\n` +
+        `👩‍🎨 *Especialista:* ${empleadaAsignada.nombre}\n` +
+        `📅 *Fecha:* ${fechaLegible}\n` +
+        `⏰ *Hora:* ${hora}\n` +
+        `⏱️ *Duración aprox:* ${duracion_minutos} min\n\n` +
+        `💰 *Total del servicio:* ${precioFmt}\n` +
+        `💳 *Abono requerido (${porcentajeAnticipo}%):* *${anticipoFmt}*\n` +
+        `🏠 *Saldo restante en el spa:* ${saldoRestanteFmt}\n\n` +
+        `───────────────\n` +
+        `*CUENTAS PARA TRANSFERIR:*\n` +
+        `📲 *Nequi:* ${complejo.nequi_numero || '321 961 0896'}\n` +
+        `🏦 *Bancolombia:* ${complejo.daviplata_numero || 'Ahorros 245-000123-88'}\n` +
+        `👤 *Titular:* ${complejo.titular_cuenta || 'JL Mímate Nails Spa'}\n\n` +
+        `⏳ *TIEMPO LÍMITE (60 MINUTOS):*\n` +
+        `Para asegurar tu cupo definitivo, por favor transfiere el abono de *${anticipoFmt}* y *envía la foto del comprobante por este mismo chat* dentro de los próximos 60 minutos.\n\n` +
+        `Pasado este tiempo, el espacio se liberará automáticamente para otra clienta.\n\n` +
+        `¡Quedamos atentas a tu comprobante reina! 💕🌸`
+      : `🌸 *JL MÍMATE NAILS* 🌸\n` +
+        `_Comprobante de Cita_\n` +
+        `───────────────\n\n` +
+        `¡Hola *${cliente_nombre.trim()}*! 💅 Tu cita ha sido agendada con éxito:\n\n` +
+        `💅 *Servicio:* ${servicio_nombre}\n` +
+        `👩‍🎨 *Especialista:* ${empleadaAsignada.nombre}\n` +
+        `📅 *Fecha:* ${fechaLegible}\n` +
+        `⏰ *Hora:* ${hora}\n` +
+        `⏱️ *Duración aprox:* ${duracion_minutos} min\n` +
+        `💰 *Valor a pagar:* ${precioFmt}\n\n` +
+        `📍 *Dirección:* Pereira, Cuba (Calle 66 bis #26-57)\n` +
+        `🗺️ *Ubicación Maps:* https://maps.app.goo.gl/KdSvqi1b2iAe5xgg8\n` +
+        `🏢 *Lugar:* JL Mímate Nails - Spa de Uñas\n\n` +
+        `───────────────\n` +
+        avisoReagendado +
+        `Si necesitas reprogramar o tienes alguna duda, puedes responder directamente a este mensaje.\n` +
+        `¡Nos vemos pronto para consentirte reina! 💕🌸`;
 
     let waEnviado = false;
     try {
@@ -1394,6 +1495,13 @@ app.post('/api/spa/reservar', async (req: Request, res: Response) => {
       empleada: empleadaAsignada.nombre,
       waEnviado,
       voucher: voucherWhatsApp,
+      esPreReserva: exigeAnticipo,
+      anticipoRequerido: anticipoCalculado,
+      saldoRestante,
+      porcentajeAnticipo,
+      nequiNumero: complejo.nequi_numero || '321 961 0896',
+      bancolombiaNumero: complejo.daviplata_numero || 'Ahorros 245-000123-88',
+      titularCuenta: complejo.titular_cuenta || 'JL Mímate Nails Spa',
     });
   } catch (error: any) {
     console.error('Error creando reserva web en spa:', error);

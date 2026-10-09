@@ -140,6 +140,14 @@ export class WhatsAppFlow {
         return resRecordatorio;
       }
 
+      // Detección de comprobante de pago cuando llega un archivo multimedia (mediaId) o el cliente está pendiente de pago
+      if (mediaId || session.paso === 'ESPERA_PAGO') {
+        const resComprobante = await this.manejarRecepcionComprobante(telefono, complejo, session, mediaId, mediaType, texto);
+        if (resComprobante) {
+          return resComprobante;
+        }
+      }
+
       if (
         input === 'menu' ||
         input === 'cancelar' ||
@@ -1163,6 +1171,172 @@ export class WhatsAppFlow {
         `Tu comprobante/referencia ha sido enviado al visor de control de *${complejo.nombre}*.\n\n` +
         `⏳ Un administrador lo validará en la cuenta bancaria y recibirás un mensaje de confirmación por este chat en cuanto sea aprobado.`,
     };
+  }
+
+  /**
+   * Procesa la recepción de comprobantes de anticipo enviados por WhatsApp (foto/captura)
+   * Verifica con IA (Gemini Vision) que sea un soporte bancario auténtico,
+   * pausa el temporizador de 60 minutos para proteger el cupo y notifica al administrador.
+   */
+  private static async manejarRecepcionComprobante(
+    telefono: string,
+    complejo: Complejo,
+    session: UserSession,
+    mediaId?: string,
+    mediaType?: string,
+    texto?: string
+  ): Promise<BotResponse | null> {
+    // 1. Buscar si el cliente tiene una reserva pendiente de anticipo
+    let reservaTarget: any = null;
+
+    if (session.reservaId) {
+      const { data } = await supabase
+        .from('reservas')
+        .select('*, canchas(*), clientes(*)')
+        .eq('id', session.reservaId)
+        .in('estado', ['pendiente_anticipo', 'pendiente_pago'])
+        .maybeSingle();
+      if (data) reservaTarget = data;
+    }
+
+    if (!reservaTarget) {
+      const cleanTel = telefono.replace(/\D/g, '');
+      const ultimos10 = cleanTel.slice(-10);
+
+      const { data: clientes } = await supabase
+        .from('clientes')
+        .select('id, telefono_wa');
+
+      const clienteIds = (clientes || [])
+        .filter((c) => {
+          if (!c.telefono_wa) return false;
+          const cClean = String(c.telefono_wa).replace(/\D/g, '');
+          return cClean.includes(ultimos10) || ultimos10.includes(cClean);
+        })
+        .map((c) => c.id);
+
+      if (clienteIds.length > 0) {
+        const { data: reservas } = await supabase
+          .from('reservas')
+          .select('*, canchas(*), clientes(*)')
+          .in('cliente_id', clienteIds)
+          .eq('complejo_id', complejo.id)
+          .in('estado', ['pendiente_anticipo', 'pendiente_pago'])
+          .order('created_at', { ascending: false });
+
+        if (reservas && reservas.length > 0) {
+          reservaTarget = reservas[0];
+        }
+      }
+    }
+
+    // Si no tiene reserva pendiente y no envió multimedia, continuar el flujo normal
+    if (!reservaTarget) {
+      if (mediaId) {
+        return {
+          texto: `🌸 ¡Hola! Recibimos tu imagen, pero en este momento no encontramos una cita pendiente de anticipo a tu nombre.\n\n` +
+            `Si deseas consultar servicios o apartar tu cita en *${complejo.nombre}*, escribe *HOLA* o *MENU* 💕💅.`,
+        };
+      }
+      return null;
+    }
+
+    // 2. Si envió una imagen (mediaId):
+    if (mediaId) {
+      const anticipoRequerido = reservaTarget.valor_anticipo_requerido || (reservaTarget.valor_total * 0.2);
+      const mediaDescargado = await ReceiptVerificationService.descargarImagenMeta(mediaId, complejo.whatsapp_token);
+
+      if (!mediaDescargado) {
+        return {
+          texto: `⚠️ No pudimos procesar la imagen enviada. Por favor asegúrate de enviar la captura de pantalla o foto del comprobante directamente por este chat 💕.`,
+        };
+      }
+
+      // Analizar con Gemini Vision
+      const analisis = await ReceiptVerificationService.analizarComprobante(
+        mediaDescargado.buffer,
+        mediaDescargado.mimeType,
+        anticipoRequerido,
+        complejo.nequi_numero,
+        complejo.titular_cuenta
+      );
+
+      // CASO 2.1: NO ES UN COMPROBANTE BANCARIO (selfie, sticker, uña, meme, etc.)
+      if (analisis.es_comprobante_bancario === false) {
+        return {
+          texto: `🌸 *Hola reina, recibimos tu foto:*\n\n` +
+            `Sin embargo, nuestro sistema no detectó que sea un comprobante de transferencia bancaria (Nequi o Bancolombia) 📄❌.\n\n` +
+            `👉 Por favor envíanos la *captura de pantalla o comprobante de pago oficial* para poder validar tu anticipo y asegurar tu cita.\n` +
+            `⏰ Recuerda que tienes hasta 1 hora desde tu solicitud antes de que el turno se libere automáticamente 💕💅.`,
+        };
+      }
+
+      // CASO 2.2: ES COMPROBANTE BANCARIO PERO SOSPECHOSO DE FRAUDE
+      if (analisis.es_sospechoso_fraude) {
+        const indicios = analisis.indicios_fraude.join(', ') || 'Inconsistencia detectada';
+        await supabase
+          .from('reservas')
+          .update({
+            notas: `⚠️ ALERTA FRAUDE IA: ${indicios} - ${analisis.explicacion}`,
+          })
+          .eq('id', reservaTarget.id);
+
+        return {
+          texto: `⚠️ *Comprobante en revisión especial*\n\n` +
+            `El sistema detectó inconsistencias visuales en el soporte de pago enviado.\n` +
+            `Un administrador de *${complejo.nombre}* revisará directamente la cuenta bancaria antes de confirmar. Te notificaremos en breve.`,
+        };
+      }
+
+      // CASO 2.3: ES COMPROBANTE BANCARIO VÁLIDO
+      // 1. Pausar el temporizador de 60 minutos estableciendo expiracion_reserva = null
+      // 2. Marcar en notas con la etiqueta [COMPROBANTE_VALIDO_IA]
+      const notasActualizadas = `[COMPROBANTE_VALIDO_IA] Ref: ${analisis.referencia_detectada || 'N/A'} - Monto: ${analisis.monto_detectado || anticipoRequerido} COP. ${reservaTarget.notas || ''}`.trim();
+
+      await supabase
+        .from('reservas')
+        .update({
+          expiracion_reserva: null,
+          notas: notasActualizadas,
+        })
+        .eq('id', reservaTarget.id);
+
+      // Registrar en pagos_anticipos
+      await supabase
+        .from('pagos_anticipos')
+        .insert({
+          reserva_id: reservaTarget.id,
+          metodo: 'transferencia_bancaria',
+          monto: analisis.monto_detectado || anticipoRequerido,
+          referencia_transaccion: analisis.referencia_detectada || `WA_${Date.now()}`,
+          estado: 'pendiente',
+          comprobante_url: mediaId,
+          notas_admin: `Auditado por IA: ${analisis.explicacion}`,
+        });
+
+      session.paso = 'INICIO';
+
+      const montoFmt = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(analisis.monto_detectado || anticipoRequerido);
+
+      return {
+        texto: `📸🌸 *¡COMPROBANTE RECIBIDO CON ÉXITO!* 💕\n\n` +
+          `✅ Nuestro sistema verificó tu soporte de pago bancario:\n` +
+          `• Monto: *${montoFmt}*\n` +
+          `${analisis.referencia_detectada ? `• Referencia: *#${analisis.referencia_detectada}*\n` : ''}` +
+          `\n🔒 *¡Tu turno está 100% protegido!* El límite de 1 hora ha sido pausado con éxito ⏳✅.\n\n` +
+          `La administración de *${complejo.nombre}* validará el abono y te llegará el mensaje de confirmación definitiva por este chat en breves minutos.\n\n` +
+          `¡Muchísimas gracias reina, te esperamos con amor! 💕💅`,
+      };
+    }
+
+    // 3. Si tiene reserva pendiente y sólo mandó texto:
+    if (texto && (texto.toLowerCase().includes('pague') || texto.toLowerCase().includes('abone') || texto.toLowerCase().includes('comprobante') || texto.toLowerCase().includes('transferi'))) {
+      return {
+        texto: `🌸 ¡Hola reina! Para proteger tu turno y pausar el límite de 1 hora, por favor *envía la foto o captura del comprobante de transferencia* directamente por este chat 📸💕.`,
+      };
+    }
+
+    return null;
   }
 
 
