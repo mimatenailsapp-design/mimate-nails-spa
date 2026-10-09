@@ -418,6 +418,17 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   const [errorBloquear, setErrorBloquear] = useState<string | null>(null);
   const [menuBloquearManiAbierto, setMenuBloquearManiAbierto] = useState(false);
 
+  // Modal de Confirmación Elegante para Eliminar Citas
+  const [citaAEliminar, setCitaAEliminar] = useState<{
+    id: string;
+    nombreClienta: string;
+    servicio?: string;
+    hora?: string;
+    fecha?: string;
+    especialista?: string;
+  } | null>(null);
+  const [eliminandoCita, setEliminandoCita] = useState(false);
+
 
 
   // Objeto de la manicurista actualmente seleccionada en el formulario
@@ -804,20 +815,50 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     }
   }, [ahora, reservas]);
 
-  // Eliminar una cita definitivamente (Solo Admin)
-  const handleEliminarCita = async (reservaId: string, nombreClienta: string) => {
-    if (!window.confirm(`¿Estás segura de eliminar la cita de "${nombreClienta}"?`)) return;
+  // Eliminar una cita definitivamente (Abre el Modal Estilizado de la App)
+  const handleEliminarCita = (reservaId: string, nombreClienta: string) => {
+    const cita = reservas.find((r) => r.id === reservaId);
+    const servicioNombre = cita ? obtenerServicioCita(cita) : 'Servicio de Spa';
+    const horaInicio = cita ? obtenerHoraMinutosBogota(cita.fecha_inicio) : '';
+    const horaFin = cita?.fecha_fin ? obtenerHoraMinutosBogota(cita.fecha_fin) : '';
+    const canchaCita = cita ? canchas.find((c) => c.id === cita.cancha_id) : undefined;
+
+    setCitaAEliminar({
+      id: reservaId,
+      nombreClienta,
+      servicio: servicioNombre,
+      hora: horaInicio ? `${horaInicio}${horaFin ? ` - ${horaFin}` : ''}` : undefined,
+      fecha: cita?.fecha_inicio
+        ? new Date(cita.fecha_inicio).toLocaleDateString('es-CO', {
+            weekday: 'long',
+            day: 'numeric',
+            month: 'long',
+          })
+        : fechaLegible,
+      especialista: canchaCita?.nombre || 'JL Mímate Nails',
+    });
+  };
+
+  // Confirmar y procesar la eliminación definitiva
+  const handleConfirmarEliminarCita = async () => {
+    if (!citaAEliminar) return;
+    setEliminandoCita(true);
     try {
-      const res = await fetch(`/api/reservas/${reservaId}`, {
+      const res = await fetch(`/api/reservas/${citaAEliminar.id}`, {
         method: 'DELETE',
       });
       if (res.ok) {
-        setReservas((prev) => prev.filter((r) => r.id !== reservaId));
+        setReservas((prev) => prev.filter((r) => r.id !== citaAEliminar.id));
+        setCitaAEliminar(null);
+        setPopoverCita(null);
       } else {
-        alert('No se pudo eliminar la cita.');
+        alert('No se pudo eliminar la cita en el servidor.');
       }
     } catch (e) {
       console.error('Error eliminando cita:', e);
+      alert('Error de conexión al eliminar la cita.');
+    } finally {
+      setEliminandoCita(false);
     }
   };
 
@@ -3510,6 +3551,129 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+            {/* ==================================================================== */}
+      {/* MODAL ELEGANTE: CONFIRMAR ELIMINACIÓN DE CITA                        */}
+      {/* ==================================================================== */}
+      <AnimatePresence>
+        {citaAEliminar && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-3xl max-w-md w-full p-6 border border-[#F2C4D2] shadow-2xl space-y-4 animate-in fade-in zoom-in-95"
+            >
+              {/* Cabecera del Modal con Colores de la App */}
+              <div className="flex items-center justify-between border-b border-[#FCE8EF] pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-[#FFF5F7] text-[#8C243B] border border-[#F2C4D2] flex items-center justify-center font-bold text-lg shadow-2xs">
+                    <IconTrash className="w-5 h-5 text-[#8C243B]" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-base text-[#2D2529] font-serif">
+                      ¿Eliminar esta Cita?
+                    </h3>
+                    <p className="text-[11px] text-[#7D6870]">
+                      Esta acción liberará el cupo en la agenda
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setCitaAEliminar(null)}
+                  className="p-1.5 rounded-full text-[#7D6870] hover:text-[#2D2529] hover:bg-[#FFF5F7] cursor-pointer transition"
+                >
+                  <IconX className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Tarjeta con los Datos de la Cita */}
+              <div className="bg-[#FFF5F7] border border-[#F2C4D2] rounded-2xl p-4 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-[#7D6870]">Clienta:</span>
+                  <span className="font-bold text-sm text-[#2D2529] font-serif">
+                    {citaAEliminar.nombreClienta}
+                  </span>
+                </div>
+
+                {citaAEliminar.servicio && (
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-[#7D6870]">Servicio:</span>
+                    <span className="font-semibold text-[#8C243B]">
+                      💅 {citaAEliminar.servicio}
+                    </span>
+                  </div>
+                )}
+
+                {citaAEliminar.hora && (
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-[#7D6870]">Horario:</span>
+                    <span className="font-mono font-bold text-[#8C243B] bg-white px-2 py-0.5 rounded-lg border border-[#F2C4D2]">
+                      ⏰ {citaAEliminar.hora}
+                    </span>
+                  </div>
+                )}
+
+                {citaAEliminar.especialista && (
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-[#7D6870]">Especialista:</span>
+                    <span className="font-medium text-[#2D2529]">
+                      ✨ {citaAEliminar.especialista}
+                    </span>
+                  </div>
+                )}
+
+                {citaAEliminar.fecha && (
+                  <div className="flex items-center justify-between text-xs border-t border-[#F2C4D2]/60 pt-2">
+                    <span className="text-[#7D6870]">Fecha:</span>
+                    <span className="text-[#7D6870] font-medium capitalize">
+                      📅 {citaAEliminar.fecha}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Alerta Informativa */}
+              <div className="p-3 rounded-2xl bg-amber-50/80 border border-amber-200 text-amber-900 text-xs flex items-center gap-2.5">
+                <IconAlertCircle className="w-4 h-4 text-amber-700 shrink-0" />
+                <span>
+                  Al eliminar la cita, el horario quedará nuevamente disponible para nuevas reservas.
+                </span>
+              </div>
+
+              {/* Botones Cancelar y Confirmar Eliminar con Colores de la Marca */}
+              <div className="flex gap-2.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setCitaAEliminar(null)}
+                  disabled={eliminandoCita}
+                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-[#7D6870] font-semibold text-xs rounded-xl transition cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmarEliminarCita}
+                  disabled={eliminandoCita}
+                  className="flex-1 py-2.5 bg-gradient-to-r from-[#8C243B] to-[#C74B66] hover:from-[#731D30] hover:to-[#B03C54] text-white font-bold text-xs rounded-xl transition shadow-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 active:scale-95"
+                >
+                  {eliminandoCita ? (
+                    <>
+                      <IconLoader2 className="w-4 h-4 animate-spin" />
+                      <span>Eliminando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <IconTrash className="w-4 h-4" />
+                      <span>Sí, Eliminar Cita</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </motion.div>
           </div>
         )}
