@@ -2373,18 +2373,29 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                       ) : (
                         citasCancha.map((cita) => {
                           const horaInicio = obtenerHoraMinutosBogota(cita.fecha_inicio);
+                          const horaFin = cita.fecha_fin ? obtenerHoraMinutosBogota(cita.fecha_fin) : '';
                           const esBloqueada = cita.estado === 'bloqueada';
                           const { motivo: motivoBloqueo, por: bloqueadoPor } = obtenerDetalleBloqueo(cita);
                           const nombreClienta = obtenerNombreClienta(cita);
                           const servicioNombre = obtenerServicioCita(cita);
                           const telLimpio = String(cita.clientes?.telefono_wa || '').replace(/\D/g, '');
 
+                          const inicioMs = new Date(cita.fecha_inicio).getTime();
+                          const finMs = cita.fecha_fin ? new Date(cita.fecha_fin).getTime() : inicioMs + 45 * 60000;
+                          const ahoraMs = ahora.getTime();
+                          const esHoy = fechaSeleccionada === hoyStr;
+                          const estaEnAtencion = esHoy && !esBloqueada && cita.estado !== 'completada' && cita.estado !== 'cancelada' && ahoraMs >= inicioMs && ahoraMs < finMs;
+
                           return (
                             <div
                               key={cita.id}
-                              className={`p-2.5 rounded-xl border text-xs space-y-1.5 transition ${
+                              onMouseEnter={(e) => abrirPopoverCita(cita, e)}
+                              onMouseLeave={cerrarPopoverCita}
+                              className={`p-2.5 rounded-xl border text-xs space-y-1.5 transition cursor-pointer hover:shadow-md hover:scale-[1.01] ${
                                 esBloqueada
                                   ? 'bg-gradient-to-r from-amber-50 to-orange-50/70 border-amber-300 shadow-2xs'
+                                  : estaEnAtencion
+                                  ? 'bg-rose-50/90 border-[#8C243B] ring-2 ring-[#8C243B]/20 shadow-[#8C243B]/10'
                                   : cita.estado === 'completada'
                                   ? 'bg-emerald-50/60 border-emerald-200'
                                   : cita.estado === 'cancelada'
@@ -2403,21 +2414,28 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                                   ) : (
                                     <IconClock className="w-3 h-3 text-[#C74B66]" />
                                   )}
-                                  {horaInicio}
+                                  {horaInicio}{horaFin ? ` - ${horaFin}` : ''}
                                 </span>
-                                <span
-                                  className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full border ${
-                                    esBloqueada
-                                      ? 'bg-amber-200/80 text-amber-900 border-amber-300'
-                                      : cita.estado === 'completada'
-                                      ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                                      : cita.estado === 'cancelada'
-                                      ? 'bg-rose-100 text-rose-800 border-rose-300'
-                                      : 'bg-[#FCE8EF] text-[#8C243B] border-[#F2C4D2]'
-                                  }`}
-                                >
-                                  {esBloqueada ? 'BLOQUEADO' : cita.estado.toUpperCase()}
-                                </span>
+                                {estaEnAtencion ? (
+                                  <span className="inline-flex items-center gap-1 text-[9px] font-extrabold px-1.5 py-0.2 rounded-full bg-rose-100 text-rose-800 border border-rose-300 shadow-2xs animate-pulse">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-rose-600" />
+                                    EN ATENCIÓN
+                                  </span>
+                                ) : (
+                                  <span
+                                    className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full border ${
+                                      esBloqueada
+                                        ? 'bg-amber-200/80 text-amber-900 border-amber-300'
+                                        : cita.estado === 'completada'
+                                        ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                        : cita.estado === 'cancelada'
+                                        ? 'bg-rose-100 text-rose-800 border-rose-300'
+                                        : 'bg-[#FCE8EF] text-[#8C243B] border-[#F2C4D2]'
+                                    }`}
+                                  >
+                                    {esBloqueada ? 'BLOQUEADO' : cita.estado.toUpperCase()}
+                                  </span>
+                                )}
                               </div>
 
                               <div>
@@ -2437,8 +2455,11 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                                 <div className="flex items-center gap-1">
                                   {esBloqueada ? (
                                     <button
-                                      onClick={() => handleDesbloquearHorario(cita.id, horaInicio)}
-                                      className="px-2 py-0.5 rounded-md bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-bold transition cursor-pointer"
+                                      onClick={(ev) => {
+                                        ev.stopPropagation();
+                                        handleDesbloquearHorario(cita.id, horaInicio);
+                                      }}
+                                      className="px-2 py-0.5 rounded-md bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-bold transition cursor-pointer active:scale-95"
                                       title="Desbloquear este horario"
                                     >
                                       Desbloquear
@@ -2453,6 +2474,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                                           )},%20te%20saludamos%20de%20JL%20M%C3%ADmate%20Nails%20respecto%20a%20tu%20cita%20de%20hoy.`}
                                           target="_blank"
                                           rel="noreferrer"
+                                          onClick={(ev) => ev.stopPropagation()}
                                           className="p-1 rounded-md bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition"
                                           title="Escribir por WhatsApp"
                                         >
@@ -2463,8 +2485,11 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                                       {/* Botón Marcar Completada */}
                                       {cita.estado !== 'completada' && cita.estado !== 'cancelada' && (
                                         <button
-                                          onClick={() => handleCambiarEstado(cita.id, 'completada')}
-                                          className="p-1 rounded-md bg-emerald-100 text-emerald-800 hover:bg-emerald-200 transition cursor-pointer"
+                                          onClick={(ev) => {
+                                            ev.stopPropagation();
+                                            handleCambiarEstado(cita.id, 'completada');
+                                          }}
+                                          className="p-1 rounded-md bg-emerald-100 text-emerald-800 hover:bg-emerald-200 transition cursor-pointer active:scale-95"
                                           title="Marcar como atendida / completada"
                                         >
                                           <IconCheck className="w-3.5 h-3.5" />
@@ -2474,8 +2499,11 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                                       {/* Botón Eliminar Cita (Admin) */}
                                       {esAdmin && (
                                         <button
-                                          onClick={() => handleEliminarCita(cita.id, nombreClienta)}
-                                          className="p-1 rounded-md bg-rose-50 text-rose-600 hover:bg-rose-100 transition cursor-pointer"
+                                          onClick={(ev) => {
+                                            ev.stopPropagation();
+                                            handleEliminarCita(cita.id, nombreClienta);
+                                          }}
+                                          className="p-1 rounded-md bg-rose-50 text-rose-600 hover:bg-rose-100 transition cursor-pointer active:scale-95"
                                           title="Eliminar cita definitivamente"
                                         >
                                           <IconTrash className="w-3.5 h-3.5" />
