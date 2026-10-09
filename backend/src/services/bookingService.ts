@@ -284,7 +284,7 @@ export class BookingService {
       const { data: expiradas } = await supabase
         .from('reservas')
         .select('*, canchas!inner(*, complejos!inner(*)), clientes(*)')
-        .in('estado', ['pendiente_anticipo', 'pendiente_pago'])
+        .eq('estado', 'pendiente_pago')
         .not('expiracion_reserva', 'is', null)
         .lt('expiracion_reserva', ahora);
 

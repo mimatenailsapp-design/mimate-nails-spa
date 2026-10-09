@@ -1203,60 +1203,58 @@ export class WhatsAppFlow {
     mediaType?: string,
     texto?: string
   ): Promise<BotResponse | null> {
-    // 1. Buscar si el cliente tiene una reserva pendiente de anticipo
+    // 1. Buscar si el cliente tiene una reserva pendiente de anticipo (priorizando la más reciente por teléfono)
     let reservaTarget: any = null;
+    const cleanTel = telefono.replace(/\D/g, '');
+    const ultimos10 = cleanTel.slice(-10);
 
-    if (session.reservaId) {
+    const { data: clientes } = await supabase
+      .from('clientes')
+      .select('id, telefono_wa');
+
+    const clienteIds = (clientes || [])
+      .filter((c) => {
+        if (!c.telefono_wa) return false;
+        const cClean = String(c.telefono_wa).replace(/\D/g, '');
+        return cClean.includes(ultimos10) || ultimos10.includes(cClean);
+      })
+      .map((c) => c.id);
+
+    if (clienteIds.length > 0) {
+      let { data: reservas, error: errRes } = await supabase
+        .from('reservas')
+        .select('*, canchas!inner(*), clientes(*)')
+        .in('cliente_id', clienteIds)
+        .eq('canchas.complejo_id', complejo.id)
+        .eq('estado', 'pendiente_pago')
+        .order('creado_en', { ascending: false });
+
+      if (errRes) {
+        console.error('[RECEPCION_COMPROBANTE] Error buscando por canchas.complejo_id:', errRes.message);
+        const { data: resFallback } = await supabase
+          .from('reservas')
+          .select('*, canchas(*), clientes(*)')
+          .in('cliente_id', clienteIds)
+          .eq('estado', 'pendiente_pago')
+          .order('creado_en', { ascending: false });
+        reservas = resFallback;
+      }
+
+      if (reservas && reservas.length > 0) {
+        reservaTarget = reservas[0];
+        session.reservaId = reservaTarget.id;
+      }
+    }
+
+    // Fallback: si no encontró por número pero la sesión tenía un reservaId previo
+    if (!reservaTarget && session.reservaId) {
       const { data } = await supabase
         .from('reservas')
         .select('*, canchas(*), clientes(*)')
         .eq('id', session.reservaId)
-        .in('estado', ['pendiente_anticipo', 'pendiente_pago'])
+        .eq('estado', 'pendiente_pago')
         .maybeSingle();
       if (data) reservaTarget = data;
-    }
-
-    if (!reservaTarget) {
-      const cleanTel = telefono.replace(/\D/g, '');
-      const ultimos10 = cleanTel.slice(-10);
-
-      const { data: clientes } = await supabase
-        .from('clientes')
-        .select('id, telefono_wa');
-
-      const clienteIds = (clientes || [])
-        .filter((c) => {
-          if (!c.telefono_wa) return false;
-          const cClean = String(c.telefono_wa).replace(/\D/g, '');
-          return cClean.includes(ultimos10) || ultimos10.includes(cClean);
-        })
-        .map((c) => c.id);
-
-      if (clienteIds.length > 0) {
-        let { data: reservas, error: errRes } = await supabase
-          .from('reservas')
-          .select('*, canchas!inner(*), clientes(*)')
-          .in('cliente_id', clienteIds)
-          .eq('canchas.complejo_id', complejo.id)
-          .in('estado', ['pendiente_anticipo', 'pendiente_pago'])
-          .order('created_at', { ascending: false });
-
-        if (errRes) {
-          console.error('[RECEPCION_COMPROBANTE] Error buscando por canchas.complejo_id:', errRes.message);
-          const { data: resFallback } = await supabase
-            .from('reservas')
-            .select('*, canchas(*), clientes(*)')
-            .in('cliente_id', clienteIds)
-            .in('estado', ['pendiente_anticipo', 'pendiente_pago'])
-            .order('created_at', { ascending: false });
-          reservas = resFallback;
-        }
-
-        if (reservas && reservas.length > 0) {
-          reservaTarget = reservas[0];
-          session.reservaId = reservaTarget.id;
-        }
-      }
     }
 
     // Si no tiene reserva pendiente y no envió multimedia, continuar el flujo normal
