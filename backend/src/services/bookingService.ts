@@ -132,7 +132,13 @@ export class BookingService {
     if (findError) throw findError;
 
     if (existing) {
-      // Retornar cliente existente sin sobreescribir su nombre histórico
+      if (nombre && nombre.trim() && nombre.trim() !== existing.nombre) {
+        await supabase
+          .from('clientes')
+          .update({ nombre: nombre.trim() })
+          .eq('id', existing.id);
+        existing.nombre = nombre.trim();
+      }
       return existing;
     }
 

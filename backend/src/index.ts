@@ -254,7 +254,21 @@ app.post('/api/debug/test-send', async (req: Request, res: Response) => {
   }
 });
 
+// Cache de deduplicación de mensajes de Meta (evita bucles por reintentos de Meta Cloud API)
+const processedMessageIds = new Map<string, number>();
+function cleanProcessedMessages() {
+  const now = Date.now();
+  for (const [id, timestamp] of processedMessageIds.entries()) {
+    if (now - timestamp > 15 * 60 * 1000) {
+      processedMessageIds.delete(id);
+    }
+  }
+}
+
 app.post('/webhook', async (req: Request, res: Response) => {
+  // 1. Responder de inmediato HTTP 200 a Meta para evitar reintentos automáticos cada minuto
+  res.status(200).send('EVENT_RECEIVED');
+
   try {
     const body = req.body;
 
@@ -268,6 +282,17 @@ app.post('/webhook', async (req: Request, res: Response) => {
         const value = body.entry[0].changes[0].value;
         const messageObj = value.messages[0];
         const contactObj = value.contacts?.[0];
+
+        // Deduplicación estricta de mensajes de Meta por messageId (wamid)
+        const messageId = messageObj.id;
+        if (messageId && processedMessageIds.has(messageId)) {
+          console.log(`[Webhook] Mensaje duplicado/reintento de Meta ignorado: ${messageId}`);
+          return;
+        }
+        if (messageId) {
+          processedMessageIds.set(messageId, Date.now());
+          if (processedMessageIds.size > 1000) cleanProcessedMessages();
+        }
 
         // 1. Identificar el número de teléfono del establecimiento que recibió el mensaje (Modelo A)
         const phoneId = value.metadata?.phone_number_id;
@@ -319,7 +344,7 @@ app.post('/webhook', async (req: Request, res: Response) => {
             motivo: 'NUMERO_EXCLUIDO_BOT_SILENCIADO',
             texto,
           });
-          return res.sendStatus(200);
+          return;
         }
 
         // 2. Procesar con las especialistas, tarifas, Nequi y comprobantes de ESE complejo
@@ -343,14 +368,10 @@ app.post('/webhook', async (req: Request, res: Response) => {
           addDebugLog('WEBHOOK_IN', { raw_entry: body.entry });
         }
       }
-      res.sendStatus(200);
-    } else {
-      res.sendStatus(404);
     }
   } catch (error: any) {
     console.error('Error procesando webhook multi-tenant:', error);
     addDebugLog('SEND_ERROR', { error: error?.message || error });
-    res.sendStatus(500);
   }
 });
 
