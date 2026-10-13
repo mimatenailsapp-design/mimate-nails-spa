@@ -1096,13 +1096,25 @@ export class WhatsAppFlow {
       const mediaDescargado = await ReceiptVerificationService.descargarImagenMeta(mediaId, complejo.whatsapp_token);
 
       if (mediaDescargado) {
+        const cuentasOficiales = [complejo.nequi_numero, complejo.daviplata_numero].filter(Boolean) as string[];
         const analisis = await ReceiptVerificationService.analizarComprobante(
           mediaDescargado.buffer,
           mediaDescargado.mimeType,
           anticipoRequerido,
-          complejo.nequi_numero,
+          cuentasOficiales,
           complejo.titular_cuenta
         );
+
+        // 1.0 DETECCIÓN DE CUENTA NO COINCIDENTE
+        if (analisis.cuenta_coincide === false) {
+          const cuentasTexto = cuentasOficiales.length > 0 ? cuentasOficiales.join(' / ') : (complejo.nequi_numero || '3219610896');
+          return {
+            texto: `⚠️ *Cuenta de destino no coincide* 🏦❌\n\n` +
+              `El comprobante enviado no corresponde a las cuentas oficiales de *${complejo.nombre}*.\n\n` +
+              `📌 Nuestras cuentas oficiales son:\n📲 Nequi / Bancolombia: *${cuentasTexto}*\n👤 Titular: *${complejo.titular_cuenta || 'JL Mímate Nails'}*\n\n` +
+              `Por favor verifica tu comprobante y reenvíalo 💕💅.`,
+          };
+        }
 
         // 1.1 DETECCIÓN DE FRAUDE / ALTERACIÓN
         if (analisis.es_sospechoso_fraude) {
@@ -1279,12 +1291,15 @@ export class WhatsAppFlow {
         };
       }
 
+      // Lista de cuentas oficiales configuradas para el negocio
+      const cuentasOficiales = [complejo.nequi_numero, complejo.daviplata_numero].filter(Boolean) as string[];
+
       // Analizar con Gemini Vision
       const analisis = await ReceiptVerificationService.analizarComprobante(
         mediaDescargado.buffer,
         mediaDescargado.mimeType,
         anticipoRequerido,
-        complejo.nequi_numero,
+        cuentasOficiales,
         complejo.titular_cuenta
       );
 
@@ -1316,7 +1331,21 @@ export class WhatsAppFlow {
         };
       }
 
-      // CASO 2.2: ES COMPROBANTE BANCARIO PERO SOSPECHOSO DE FRAUDE
+      // CASO 2.2: COMPROBANTE ENVIADO A UNA CUENTA DIFERENTE A LAS OFICIALES DEL SPA
+      if (analisis.cuenta_coincide === false) {
+        const cuentasTexto = cuentasOficiales.length > 0 ? cuentasOficiales.join(' / ') : (complejo.nequi_numero || '3219610896');
+        const titularTexto = complejo.titular_cuenta || 'JL Mímate Nails';
+        return {
+          texto: `⚠️ *Cuenta de destino no coincide* 🏦❌\n\n` +
+            `Detectamos que el comprobante enviado no corresponde a las cuentas oficiales de *${complejo.nombre}*.\n\n` +
+            `📌 *Nuestras cuentas oficiales autorizadas son:*\n` +
+            `📲 Nequi / Bancolombia: *${cuentasTexto}*\n` +
+            `👤 Titular: *${titularTexto}*\n\n` +
+            `👉 Por favor verifica que la transferencia se haya realizado a una de estas cuentas y envíanos el comprobante correcto para poder confirmar tu turno 💕💅.`,
+        };
+      }
+
+      // CASO 2.3: ES COMPROBANTE BANCARIO PERO SOSPECHOSO DE FRAUDE
       if (analisis.es_sospechoso_fraude) {
         const indicios = analisis.indicios_fraude.join(', ') || 'Inconsistencia detectada';
         await supabase
@@ -1333,7 +1362,7 @@ export class WhatsAppFlow {
         };
       }
 
-      // CASO 2.3: ES COMPROBANTE BANCARIO VÁLIDO
+      // CASO 2.4: ES COMPROBANTE BANCARIO VÁLIDO
       // 1. Pausar el temporizador de 60 minutos estableciendo expiracion_reserva = null
       // 2. Marcar en notas con la etiqueta [COMPROBANTE_VALIDO_IA]
       const notasActualizadas = `[COMPROBANTE_VALIDO_IA] Ref: ${analisis.referencia_detectada || 'N/A'} - Monto: ${analisis.monto_detectado || anticipoRequerido} COP. ${reservaTarget.notas || ''}`.trim();
@@ -1375,10 +1404,31 @@ export class WhatsAppFlow {
     }
 
     // 3. Si tiene reserva pendiente y sólo mandó texto:
-    if (texto && (texto.toLowerCase().includes('pague') || texto.toLowerCase().includes('abone') || texto.toLowerCase().includes('comprobante') || texto.toLowerCase().includes('transferi'))) {
-      return {
-        texto: `🌸 ¡Hola reina! Para proteger tu turno y pausar el límite de 1 hora, por favor *envía la foto o captura del comprobante de transferencia* directamente por este chat 📸💕.`,
-      };
+    if (texto) {
+      const tLower = texto.toLowerCase();
+      if (
+        tLower.includes('pague') ||
+        tLower.includes('abone') ||
+        tLower.includes('comprobante') ||
+        tLower.includes('transferi') ||
+        tLower.includes('consigne') ||
+        tLower.includes('confirm') ||
+        tLower === '1'
+      ) {
+        const anticipoRequerido = reservaTarget.valor_anticipo_requerido || (reservaTarget.valor_total * 0.2) || 5000;
+        const anticipoFmt = '$' + Number(anticipoRequerido).toLocaleString('es-CO');
+        const nequiNum = complejo.nequi_numero || '3219610896';
+        const titular = complejo.titular_cuenta || 'JL Mímate Nails';
+
+        return {
+          texto:
+            `🌸 ¡Hola reina! Tu cita está pre-apartada temporalmente 💕.\n\n` +
+            `👉 Para confirmarla y pausar el límite de 1 hora, por favor *envía la foto o captura del comprobante de transferencia* (${anticipoFmt}) directamente por este chat 📸💕.\n\n` +
+            `📲 Nequi / Bancolombia: *${nequiNum}*\n` +
+            `👤 Titular: *${titular}*\n\n` +
+            `¡Apenas envíes la foto del comprobante, nuestro sistema validará tu pago y confirmará tu cupo! 💅✨`,
+        };
+      }
     }
 
     return null;
@@ -1670,6 +1720,40 @@ export class WhatsAppFlow {
     // CASO 1: CONFIRMAR CITA
     if (esConfirmar) {
       const notasActuales = reserva.notas || '';
+
+      // Si la cita está en estado 'pendiente_pago' y aún no tiene comprobante aprobado por IA o por administración
+      const tieneComprobanteAprobado = notasActuales.includes('[COMPROBANTE_VALIDO_IA]') || notasActuales.includes('[PAGO_APROBADO]');
+      if (reserva.estado === 'pendiente_pago' && !tieneComprobanteAprobado) {
+        const anticipoRequerido = reserva.valor_anticipo_requerido || (reserva.valor_total * 0.2) || 5000;
+        const anticipoFmt = '$' + Number(anticipoRequerido).toLocaleString('es-CO');
+        const totalFmt = '$' + Number(reserva.valor_total || 25000).toLocaleString('es-CO');
+        const saldoFmt = '$' + Number((reserva.valor_total || 25000) - anticipoRequerido).toLocaleString('es-CO');
+
+        const cuentasOficiales = [complejoRes.nequi_numero, complejoRes.daviplata_numero].filter(Boolean);
+        const nequiNum = complejoRes.nequi_numero || '3219610896';
+        const daviNum = complejoRes.daviplata_numero || nequiNum;
+        const titular = complejoRes.titular_cuenta || 'JL Mímate Nails';
+
+        return {
+          texto:
+            `🌸 *Hola ${reserva.clientes?.nombre || 'reina'}, tu turno está pre-apartado* 💕\n\n` +
+            `📅 Fecha: *${fechaCita}*\n` +
+            `⏰ Hora: *${horaInicio}*\n` +
+            `👩‍🎨 Manicurista: *${cancha.nombre}*\n\n` +
+            `💰 Total del servicio: *${totalFmt}*\n` +
+            `💳 *Abono requerido:* *${anticipoFmt}*\n` +
+            `🏠 Saldo restante en el spa: *${saldoFmt}*\n\n` +
+            `───────────────\n` +
+            `📲 *CUENTAS OFICIALES PARA TRANSFERIR:*\n` +
+            `• Nequi: *${nequiNum}*\n` +
+            `• Bancolombia / Daviplata: *${daviNum}*\n` +
+            `• Titular: *${titular}*\n\n` +
+            `📸 *Para confirmar y asegurar tu cupo definitivamente:*\n` +
+            `Por favor realiza la transferencia de *${anticipoFmt}* y envía la *foto o captura de pantalla del comprobante* por este mismo chat 💕.\n\n` +
+            `¡Una vez recibamos tu comprobante, tu turno quedará 100% confirmado! 💅✨`,
+        };
+      }
+
       if (!notasActuales.includes('[CONFIRMADA_POR_CLIENTA]')) {
         await supabase
           .from('reservas')

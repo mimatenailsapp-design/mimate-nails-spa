@@ -3,6 +3,7 @@ import { supabase } from '../config/supabase.js';
 
 export interface ResultadoVerificacionIA {
   es_comprobante_bancario?: boolean;
+  cuenta_coincide?: boolean;
   es_valido: boolean;
   es_sospechoso_fraude: boolean;
   monto_detectado?: number;
@@ -55,7 +56,7 @@ export class ReceiptVerificationService {
     imageBuffer: Buffer,
     mimeType: string,
     montoEsperado: number,
-    cuentaEsperada?: string,
+    cuentasEsperadas?: string[] | string,
     titularEsperado?: string
   ): Promise<ResultadoVerificacionIA> {
     const apiKey = process.env.GEMINI_API_KEY;
@@ -64,6 +65,7 @@ export class ReceiptVerificationService {
     if (!apiKey) {
       return {
         es_valido: false,
+        cuenta_coincide: false,
         es_sospechoso_fraude: false,
         indicios_fraude: [],
         explicacion: 'No hay GEMINI_API_KEY configurada. Se deriva a verificación manual en visor.',
@@ -73,6 +75,15 @@ export class ReceiptVerificationService {
 
     try {
       const base64Data = imageBuffer.toString('base64');
+      const listaCuentas = Array.isArray(cuentasEsperadas)
+        ? cuentasEsperadas.filter(Boolean)
+        : cuentasEsperadas
+        ? [cuentasEsperadas]
+        : [];
+
+      const cuentasTexto = listaCuentas.length > 0
+        ? listaCuentas.map((c) => `"${c}"`).join(' o ')
+        : 'Nequi / Bancolombia oficial del spa';
 
       const prompt = `Eres un auditor bancario experto en detección de fraudes de comprobantes de pago en Colombia (especialmente Nequi, Daviplata, Bancolombia, dale!, Bre-B).
 Analiza detalladamente esta imagen de comprobante de transferencia y determina:
@@ -80,22 +91,27 @@ Analiza detalladamente esta imagen de comprobante de transferencia y determina:
 DATOS A EXTRAER:
 1. Monto transferido (número limpio, ej: 50000).
 2. Número de referencia / ID de transacción (ej: M1234567, 10982736, etc.).
-3. Nombre y número del destinatario / cuenta a la que llegó el dinero.
+3. Nombre y número del destinatario / cuenta a la que llegó el dinero (extrae exactamente el número de celular o número de cuenta de destino visible y el nombre del titular destino).
 4. Fecha y hora de la transacción.
 5. Estado de la transacción (¿Dice "Exitoso", "Envío exitoso", "Listo", etc.?).
 
-AUDITORÍA DE FRAUDE Y MANIPULACIÓN:
+AUDITORÍA DE FRAUDE, CUENTA DESTINO Y MANIPULACIÓN:
 - ¿Es un comprobante auténtico generado por la app oficial o es una plantilla falsa generada por webs/apps de comprobantes falsos?
 - Tipografía y Fuentes: ¿Hay fuentes desalineadas, fuentes genéricas como Arial/Helvetica superpuestas, grosores inconsistentes en el monto o la fecha?
 - Píxeles y Compresión: ¿Hay "ruido" o artefactos de compresión diferentes alrededor del valor o de la fecha respecto al resto del fondo?
+- VERIFICACIÓN OBLIGATORIA DE CUENTA DESTINO:
+  * El comprobante DEBE ser enviado a una de las cuentas oficiales del negocio: ${cuentasTexto}
+  * O al titular oficial del negocio: "${titularEsperado || 'JL Mímate Nails'}"
+  * Si el comprobante muestra una cuenta o persona completamente diferente ajena a estas cuentas oficiales, "cuenta_coincide" DEBE ser false.
 - Datos esperados:
   * Monto mínimo de anticipo esperado: $${montoEsperado} COP
-  ${cuentaEsperada ? `* Cuenta destino oficial esperada: "${cuentaEsperada}"` : ''}
+  * Cuentas oficiales autorizadas: ${cuentasTexto}
   ${titularEsperado ? `* Nombre titular esperado: "${titularEsperado}"` : ''}
 
 RESPONDE EXCLUSIVAMENTE EN FORMATO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA:
 {
   "es_comprobante_bancario": boolean,
+  "cuenta_coincide": boolean,
   "es_valido": boolean,
   "es_sospechoso_fraude": boolean,
   "monto_detectado": number | null,
@@ -173,10 +189,40 @@ RESPONDE EXCLUSIVAMENTE EN FORMATO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA:
 
       // Verificación de monto suficiente
       const montoOk = parsed.monto_detectado && parsed.monto_detectado >= montoEsperado * 0.95; // margen de tolerancia del 5%
-      const esValidoFinal = Boolean(parsed.es_valido && montoOk && !parsed.es_sospechoso_fraude);
+
+      // Doble verificación en código de la cuenta/destinatario detectado:
+      let cuentaOk = parsed.cuenta_coincide !== false;
+      if (listaCuentas.length > 0 && parsed.destinatario_detectado) {
+        const destLimpio = String(parsed.destinatario_detectado).replace(/\D/g, '');
+        const titularLimpio = (titularEsperado || '').toLowerCase().replace(/[\s\.\-_]/g, '');
+        const destTexto = String(parsed.destinatario_detectado).toLowerCase();
+
+        const coincideConCuentas = listaCuentas.some((cta) => {
+          const ctaLimpia = String(cta).replace(/\D/g, '');
+          return (
+            (ctaLimpia.length >= 7 && destLimpio.includes(ctaLimpia)) ||
+            (destLimpio.length >= 7 && ctaLimpia.includes(destLimpio)) ||
+            destTexto.includes(cta.toLowerCase().trim())
+          );
+        });
+
+        const coincideConTitular = titularLimpio.length >= 4 && (
+          destTexto.includes(titularLimpio) ||
+          destTexto.includes('mimate') ||
+          destTexto.includes('jl mimate')
+        );
+
+        // Si la IA dijo que no coincide, o no coincide ni por número ni por titular:
+        if (parsed.cuenta_coincide === false || (!coincideConCuentas && !coincideConTitular && destLimpio.length >= 7)) {
+          cuentaOk = false;
+        }
+      }
+
+      const esValidoFinal = Boolean(parsed.es_valido && montoOk && cuentaOk && !parsed.es_sospechoso_fraude);
 
       return {
         es_comprobante_bancario: parsed.es_comprobante_bancario !== false,
+        cuenta_coincide: cuentaOk,
         es_valido: esValidoFinal,
         es_sospechoso_fraude: Boolean(parsed.es_sospechoso_fraude),
         monto_detectado: parsed.monto_detectado || undefined,
@@ -191,6 +237,7 @@ RESPONDE EXCLUSIVAMENTE EN FORMATO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA:
       console.error('Error llamando a Gemini Flash Vision:', err.response?.data || err.message);
       return {
         es_valido: false,
+        cuenta_coincide: false,
         es_sospechoso_fraude: false,
         indicios_fraude: ['Fallo en servicio de visión IA'],
         explicacion: 'No se pudo procesar la imagen automáticamente. Se deriva al visor web.',
