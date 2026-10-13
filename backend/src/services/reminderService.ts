@@ -7,6 +7,15 @@ export class ReminderService {
    * 1. Recordatorio 1 día antes de la cita
    * 2. Recordatorio el mismo día de la cita
    */
+  /**
+   * Ejecuta la rutina periódica de recordatorios:
+   * Garantiza que a una clienta le llegue ÚNICAMENTE UN (1) recordatorio para evitar confusiones:
+   * 1. Citas programadas para días posteriores: Llega 1 día antes (víspera de la cita).
+   *    Incluso si agenda hoy a las 2:00 PM para mañana a las 8:00 AM, le llega el recordatorio de 1 día antes.
+   * 2. Citas programadas para el mismo día en que se agendan: Llega 3 horas antes de la cita.
+   * 3. Si ya recibió cualquiera de los dos recordatorios ([REC_ENVIADO] / [REC_1_DIA] / [REC_MISMO_DIA]),
+   *    NO se le vuelve a enviar ningún otro mensaje.
+   */
   static async procesarRecordatoriosProximos() {
     const resDiaAntes = await this.procesarRecordatoriosDiaAntes();
     const resMismoDia = await this.procesarRecordatoriosMismoDia();
@@ -19,11 +28,37 @@ export class ReminderService {
   }
 
   /**
-   * Envía recordatorio 1 DÍA ANTES de la cita/reserva (franja de 18 a 36 horas previas)
+   * Helper para obtener la fecha 'YYYY-MM-DD' en la zona horaria de Colombia
+   */
+  private static obtenerFechaCol(fechaDate: Date): string {
+    const partes = new Intl.DateTimeFormat('es-CO', {
+      timeZone: 'America/Bogota',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(fechaDate);
+
+    const year = partes.find((p) => p.type === 'year')?.value;
+    const month = partes.find((p) => p.type === 'month')?.value;
+    const day = partes.find((p) => p.type === 'day')?.value;
+    return `${year}-${month}-${day}`;
+  }
+
+  /**
+   * Envía recordatorio 1 DÍA ANTES de la cita:
+   * Aplica a citas cuya fecha de atención es MAÑANA (día calendario siguiente en Colombia)
+   * o citas en la franja de 10 a 36 horas previas, siempre que la fecha de la cita no sea hoy.
    */
   static async procesarRecordatoriosDiaAntes() {
     const ahora = new Date();
-    const desdeIso = new Date(ahora.getTime() + 18 * 60 * 60 * 1000).toISOString();
+    const fechaHoyCol = this.obtenerFechaCol(ahora);
+
+    // Calculamos la fecha de mañana en Colombia
+    const manana = new Date(ahora.getTime() + 24 * 60 * 60 * 1000);
+    const fechaMananaCol = this.obtenerFechaCol(manana);
+
+    // Franja amplia de búsqueda en UTC: desde ahora hasta 36 horas adelante
+    const desdeIso = ahora.toISOString();
     const hastaIso = new Date(ahora.getTime() + 36 * 60 * 60 * 1000).toISOString();
 
     const { data: reservas, error } = await supabase
@@ -38,8 +73,24 @@ export class ReminderService {
     let enviados = 0;
     for (const r of reservas) {
       const notas = r.notas || '';
-      if (notas.includes('[REC_1_DIA]')) continue;
+      // Si ya recibió recordatorio de cualquier tipo, NUNCA enviar otro
+      if (
+        notas.includes('[REC_1_DIA]') ||
+        notas.includes('[REC_MISMO_DIA]') ||
+        notas.includes('[REC_ENVIADO]')
+      ) {
+        continue;
+      }
 
+      const dInicio = new Date(r.fecha_inicio);
+      const fechaCitaCol = this.obtenerFechaCol(dInicio);
+
+      // Si la cita es para HOY en Colombia, este método NO la procesa (le corresponde al de 3 horas antes)
+      if (fechaCitaCol === fechaHoyCol) {
+        continue;
+      }
+
+      // Si la cita es para MAÑANA (o días posteriores dentro de la ventana de aviso):
       const cliente = r.clientes as any;
       const cancha = r.canchas as any;
       const complejo = cancha?.complejos as any;
@@ -50,23 +101,19 @@ export class ReminderService {
       const matchNom = notas.match(/Clienta:\s*([^|[\n]+)/i);
       if (matchNom && matchNom[1]) nombreCliente = matchNom[1].trim();
 
-      const fechaCita = new Date(r.fecha_inicio).toLocaleDateString('es-CO', {
+      const fechaCita = dInicio.toLocaleDateString('es-CO', {
         timeZone: 'America/Bogota',
         weekday: 'long',
         day: '2-digit',
         month: '2-digit',
         year: 'numeric',
       });
-      const horaInicio = new Date(r.fecha_inicio).toLocaleTimeString('es-CO', {
+      const horaInicio = dInicio.toLocaleTimeString('es-CO', {
         timeZone: 'America/Bogota',
         hour: '2-digit',
         minute: '2-digit',
         hour12: false,
       });
-
-      let mensaje = '';
-
-      let botonesOpciones: Array<{ id: string; title: string }> | undefined;
 
       let servicio = 'tu servicio de uñas';
       const matchSvc = notas.match(/Servicio:\s*([^|[\n]+)/i);
@@ -82,9 +129,15 @@ export class ReminderService {
         }
       }
 
-      mensaje =
-        `💅✨ *RECORDATORIO DE TU CITA MAÑANA - JL MÍMATE NAILS* 🌸\n\n` +
-        `¡Hola *${nombreCliente}*! Te recordamos con mucho cariño tu cita programada para *mañana*:\n\n` +
+      const esManana = fechaCitaCol === fechaMananaCol;
+      const encabezado = esManana
+        ? `💅✨ *RECORDATORIO DE TU CITA MAÑANA - JL MÍMATE NAILS* 🌸`
+        : `💅✨ *RECORDATORIO DE TU CITA - JL MÍMATE NAILS* 🌸`;
+      const saludoTiempo = esManana ? 'para *mañana*:' : `para el *${fechaCita}*:`;
+
+      const mensaje =
+        `${encabezado}\n\n` +
+        `¡Hola *${nombreCliente}*! Te recordamos con mucho cariño tu cita programada ${saludoTiempo}\n\n` +
         `💅 *Servicio:* ${servicio}\n` +
         `👩‍🎨 *Especialista:* ${cancha.nombre}\n` +
         `📅 *Fecha:* ${fechaCita}\n` +
@@ -95,9 +148,9 @@ export class ReminderService {
         `1️⃣ *Confirmar cita*\n` +
         `2️⃣ *Cancelar cita*\n` +
         `3️⃣ *Cambiar fecha (Reagendar)*\n\n` +
-        `¡Nos vemos mañana para consentirte reina! 💕`;
+        `¡Nos vemos pronto para consentirte reina! 💕`;
 
-      botonesOpciones = [
+      const botonesOpciones = [
         { id: `confirmar_cita_${r.id}`, title: '✅ Confirmar Cita' },
         { id: `cancelar_cita_${r.id}`, title: '❌ Cancelar Cita' },
         { id: `reagendar_cita_${r.id}`, title: '📅 Cambiar Fecha' },
@@ -113,7 +166,7 @@ export class ReminderService {
 
       await supabase
         .from('reservas')
-        .update({ notas: `${notas} [REC_1_DIA]`.trim() })
+        .update({ notas: `${notas} [REC_1_DIA] [REC_ENVIADO]`.trim() })
         .eq('id', r.id);
 
       enviados++;
@@ -123,26 +176,46 @@ export class ReminderService {
   }
 
   /**
-   * Envía recordatorio EL MISMO DÍA de la cita/reserva (franja de próximas 1 a 6 horas del día)
+   * Envía recordatorio EL MISMO DÍA ÚNICAMENTE para citas creadas para el mismo día
+   * o que no recibieron el recordatorio anterior, enviándose EXACTAMENTE 3 HORAS ANTES
+   * (ventana de entre 2 horas y 3.5 horas antes de la hora de la cita).
    */
   static async procesarRecordatoriosMismoDia() {
     const ahora = new Date();
-    const ahoraIso = ahora.toISOString();
-    const limiteSeisHoras = new Date(ahora.getTime() + 6 * 60 * 60 * 1000).toISOString();
+    const fechaHoyCol = this.obtenerFechaCol(ahora);
+
+    // Ventana de 3 horas antes: citas que comienzan entre 2 horas y 3.5 horas a partir de ahora
+    const desdeIso = new Date(ahora.getTime() + 2 * 60 * 60 * 1000).toISOString();
+    const hastaIso = new Date(ahora.getTime() + 3.5 * 60 * 60 * 1000).toISOString();
 
     const { data: reservas, error } = await supabase
       .from('reservas')
       .select('*, canchas!inner(*, complejos!inner(*)), clientes(*)')
       .eq('estado', 'confirmada')
-      .gte('fecha_inicio', ahoraIso)
-      .lte('fecha_inicio', limiteSeisHoras);
+      .gte('fecha_inicio', desdeIso)
+      .lte('fecha_inicio', hastaIso);
 
     if (error || !reservas) return { enviados: 0 };
 
     let enviados = 0;
     for (const r of reservas) {
       const notas = r.notas || '';
-      if (notas.includes('[REC_MISMO_DIA]')) continue;
+      // Si ya recibió recordatorio de 1 día antes o de mismo día, NUNCA volver a enviar
+      if (
+        notas.includes('[REC_1_DIA]') ||
+        notas.includes('[REC_MISMO_DIA]') ||
+        notas.includes('[REC_ENVIADO]')
+      ) {
+        continue;
+      }
+
+      const dInicio = new Date(r.fecha_inicio);
+      const fechaCitaCol = this.obtenerFechaCol(dInicio);
+
+      // Solo aplica si la cita ocurre HOY en Colombia
+      if (fechaCitaCol !== fechaHoyCol) {
+        continue;
+      }
 
       const cliente = r.clientes as any;
       const cancha = r.canchas as any;
@@ -156,7 +229,7 @@ export class ReminderService {
       const matchNom = notas.match(/Clienta:\s*([^|[\n]+)/i);
       if (matchNom && matchNom[1]) nombreCliente = matchNom[1].trim();
 
-      const horaInicio = new Date(r.fecha_inicio).toLocaleTimeString('es-CO', {
+      const horaInicio = dInicio.toLocaleTimeString('es-CO', {
         timeZone: 'America/Bogota',
         hour: '2-digit',
         minute: '2-digit',
@@ -172,8 +245,8 @@ export class ReminderService {
 
       if (esSpa) {
         mensaje =
-          `🔔 *RECORDATORIO DE TU CITA HOY - JL MÍMATE NAILS* 🌸\n\n` +
-          `¡Hola *${nombreCliente}*! Te recordamos con mucho amor tu cita programada para *hoy*:\n\n` +
+          `🔔 *RECORDATORIO DE TU CITA HOY (EN 3 HORAS) - JL MÍMATE NAILS* 🌸\n\n` +
+          `¡Hola *${nombreCliente}*! Te recordamos con mucho amor tu cita programada para *hoy a las ${horaInicio}*:\n\n` +
           `💅 *Servicio:* ${servicio}\n` +
           `👩‍🎨 *Especialista:* ${cancha.nombre}\n` +
           `⏰ *Hora:* ${horaInicio}\n` +
@@ -191,7 +264,7 @@ export class ReminderService {
         ];
       } else {
         mensaje =
-          `🔔 *RECORDATORIO DE TU TURNO HOY*\n\n` +
+          `🔔 *RECORDATORIO DE TU TURNO HOY (EN 3 HORAS)*\n\n` +
           `¡Hola *${nombreCliente}*! Te recordamos tu cita hoy en *${complejo.nombre}* a las *${horaInicio}* con ${cancha.nombre}.\n\n` +
           `Te esperamos puntualmente. ¡Que tengas un excelente día!`;
 
@@ -212,7 +285,7 @@ export class ReminderService {
 
       await supabase
         .from('reservas')
-        .update({ notas: `${notas} [REC_MISMO_DIA]`.trim() })
+        .update({ notas: `${notas} [REC_MISMO_DIA] [REC_ENVIADO]`.trim() })
         .eq('id', r.id);
 
       enviados++;
