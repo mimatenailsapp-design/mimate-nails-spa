@@ -72,6 +72,16 @@ export class ReminderService {
       const matchSvc = notas.match(/Servicio:\s*([^|[\n]+)/i);
       if (matchSvc && matchSvc[1]) servicio = matchSvc[1].trim();
 
+      const exigeAnticipo = Number(complejo?.porcentaje_anticipo_minimo) > 0;
+      let notaPago = '✨ *Nota:* Recuerda que cancelas el valor en el spa (sin cobros anticipados).';
+      if (exigeAnticipo) {
+        if (notas.includes('[COMPROBANTE_VALIDO_IA]') || notas.includes('[PAGO_APROBADO]')) {
+          notaPago = '✨ *Nota:* Tu abono de anticipo ya fue validado con éxito. El saldo restante lo cancelas en el spa.';
+        } else {
+          notaPago = '✨ *Nota:* Recuerda que tu cita cuenta con abono registrado.';
+        }
+      }
+
       mensaje =
         `💅✨ *RECORDATORIO DE TU CITA MAÑANA - JL MÍMATE NAILS* 🌸\n\n` +
         `¡Hola *${nombreCliente}*! Te recordamos con mucho cariño tu cita programada para *mañana*:\n\n` +
@@ -80,7 +90,7 @@ export class ReminderService {
         `📅 *Fecha:* ${fechaCita}\n` +
         `⏰ *Hora:* ${horaInicio}\n\n` +
         `📍 *Lugar:* Pereira, Cuba (Calle 66 bis #26-57)\n` +
-        `✨ *Nota:* Recuerda que cancelas el valor en el spa (sin cobros anticipados).\n\n` +
+        `${notaPago}\n\n` +
         `Por favor, confirma tu asistencia seleccionando una opción o respondiendo:\n` +
         `1️⃣ *Confirmar cita*\n` +
         `2️⃣ *Cancelar cita*\n` +
@@ -137,15 +147,15 @@ export class ReminderService {
       const cliente = r.clientes as any;
       const cancha = r.canchas as any;
       const complejo = cancha?.complejos as any;
-      // Para JL Mímate Nails (Spa de Uñas), el recordatorio se realiza ÚNICAMENTE 1 día antes
-      if (complejo?.slug === 'mimate-nails' || complejo?.tipo_negocio === 'belleza_unas') {
-        continue;
-      }
+      const esSpa = complejo?.slug === 'mimate-nails' || complejo?.tipo_negocio === 'belleza_unas';
 
       const telefono = cliente?.telefono_wa;
       if (!telefono) continue;
 
-      const nombreCliente = cliente.nombre || 'Cliente';
+      let nombreCliente = cliente.nombre || 'Cliente';
+      const matchNom = notas.match(/Clienta:\s*([^|[\n]+)/i);
+      if (matchNom && matchNom[1]) nombreCliente = matchNom[1].trim();
+
       const horaInicio = new Date(r.fecha_inicio).toLocaleTimeString('es-CO', {
         timeZone: 'America/Bogota',
         hour: '2-digit',
@@ -153,12 +163,52 @@ export class ReminderService {
         hour12: false,
       });
 
-      const mensaje =
-        `🔔 *RECORDATORIO DE TU TURNO HOY*\n\n` +
-        `¡Hola *${nombreCliente}*! Te recordamos tu cita hoy en *${complejo.nombre}* a las *${horaInicio}* con ${cancha.nombre}.\n\n` +
-        `Te esperamos puntualmente. ¡Que tengas un excelente día!`;
+      let servicio = 'tu servicio de uñas';
+      const matchSvc = notas.match(/Servicio:\s*([^|[\n]+)/i);
+      if (matchSvc && matchSvc[1]) servicio = matchSvc[1].trim();
 
-      await this.enviarWhatsApp(telefono, mensaje, complejo?.whatsapp_token, complejo?.whatsapp_phone_number_id);
+      let mensaje = '';
+      let botonesOpciones: Array<{ id: string; title: string }> | undefined;
+
+      if (esSpa) {
+        mensaje =
+          `🔔 *RECORDATORIO DE TU CITA HOY - JL MÍMATE NAILS* 🌸\n\n` +
+          `¡Hola *${nombreCliente}*! Te recordamos con mucho amor tu cita programada para *hoy*:\n\n` +
+          `💅 *Servicio:* ${servicio}\n` +
+          `👩‍🎨 *Especialista:* ${cancha.nombre}\n` +
+          `⏰ *Hora:* ${horaInicio}\n` +
+          `📍 *Lugar:* Pereira, Cuba (Calle 66 bis #26-57)\n\n` +
+          `Por favor, confirma tu asistencia o indícanos si necesitas cancelar o cambiar fecha:\n` +
+          `1️⃣ *Confirmar cita*\n` +
+          `2️⃣ *Cancelar cita*\n` +
+          `3️⃣ *Cambiar fecha (Reagendar)*\n\n` +
+          `¡Te esperamos con amor reina! 💕💅`;
+
+        botonesOpciones = [
+          { id: `confirmar_cita_${r.id}`, title: '✅ Confirmar Cita' },
+          { id: `cancelar_cita_${r.id}`, title: '❌ Cancelar Cita' },
+          { id: `reagendar_cita_${r.id}`, title: '📅 Cambiar Fecha' },
+        ];
+      } else {
+        mensaje =
+          `🔔 *RECORDATORIO DE TU TURNO HOY*\n\n` +
+          `¡Hola *${nombreCliente}*! Te recordamos tu cita hoy en *${complejo.nombre}* a las *${horaInicio}* con ${cancha.nombre}.\n\n` +
+          `Te esperamos puntualmente. ¡Que tengas un excelente día!`;
+
+        botonesOpciones = [
+          { id: `confirmar_cita_${r.id}`, title: '✅ Confirmar' },
+          { id: `cancelar_cita_${r.id}`, title: '❌ Cancelar' },
+          { id: `reagendar_cita_${r.id}`, title: '📅 Cambiar Fecha' },
+        ];
+      }
+
+      await this.enviarWhatsApp(
+        telefono,
+        mensaje,
+        complejo?.whatsapp_token,
+        complejo?.whatsapp_phone_number_id,
+        botonesOpciones
+      );
 
       await supabase
         .from('reservas')

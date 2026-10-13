@@ -1761,13 +1761,19 @@ export class WhatsAppFlow {
           .eq('id', reserva.id);
       }
 
+      const exigeAnticipo = Number(complejoRes.porcentaje_anticipo_minimo) > 0;
+      let detallePagoConfirmado = '';
+      if (exigeAnticipo) {
+        detallePagoConfirmado = `\n💳 Tu abono de anticipo se encuentra registrado y validado. El saldo restante lo pagas al finalizar tu servicio en el spa.\n`;
+      }
+
       return {
         texto:
           `🌸✨ *¡CITA CONFIRMADA EXITOSAMENTE!* ✨🌸\n\n` +
-          `¡Muchísimas gracias reina! Tu asistencia para el *${fechaCita}* a las *${horaInicio}* con *${cancha.nombre}* está 100% confirmada.\n\n` +
+          `¡Muchísimas gracias reina! Tu asistencia para el *${fechaCita}* a las *${horaInicio}* con *${cancha.nombre}* está 100% reconfirmada.${detallePagoConfirmado}\n` +
           `📍 Te esperamos con todo el amor en nuestro spa (Pereira, Cuba - Calle 66 bis #26-57).\n` +
           `🗺️ Cómo llegar: https://maps.app.goo.gl/KdSvqi1b2iAe5xgg8\n` +
-          `¡Nos vemos mañana para consentirte y dejarte hermosa! 💕💅`,
+          `¡Nos vemos para consentirte y dejarte hermosa! 💕💅`,
       };
     }
 
