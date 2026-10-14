@@ -8,6 +8,7 @@ import makeWASocket, {
   WAMessage,
 } from '@whiskeysockets/baileys';
 import pino from 'pino';
+// @ts-ignore
 import qrcode from 'qrcode-terminal';
 import path from 'path';
 import fs from 'fs';
