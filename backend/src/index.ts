@@ -1004,17 +1004,17 @@ app.patch('/api/reservas/:id/aprobar-anticipo', async (req: Request, res: Respon
         year: 'numeric',
         month: 'long',
         day: 'numeric',
-        timeZone: 'UTC',
+        timeZone: 'America/Bogota',
       });
       const horaInicio = new Date(reserva.fecha_inicio).toLocaleTimeString('es-CO', {
-        hour: '2-digit',
+        hour: 'numeric',
         minute: '2-digit',
-        timeZone: 'UTC',
+        timeZone: 'America/Bogota',
       });
       const horaFin = new Date(reserva.fecha_fin).toLocaleTimeString('es-CO', {
-        hour: '2-digit',
+        hour: 'numeric',
         minute: '2-digit',
-        timeZone: 'UTC',
+        timeZone: 'America/Bogota',
       });
 
       const saldoPendiente = (Number(reserva.valor_total) - Number(reserva.valor_anticipo_requerido)).toLocaleString('es-CO');
@@ -1504,6 +1504,18 @@ app.post('/api/spa/reservar', async (req: Request, res: Response) => {
       year: 'numeric',
     });
 
+    const horaInicioFmt = dInicio.toLocaleTimeString('es-CO', {
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZone: 'America/Bogota',
+    });
+
+    const horaFinFmt = dFin.toLocaleTimeString('es-CO', {
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZone: 'America/Bogota',
+    });
+
     const avisoReagendado = reagendar_reserva_id
       ? `🔄 *Cita reagendada con éxito:* Tu cita anterior fue cancelada y actualizada a este nuevo horario.\n\n`
       : '';
@@ -1518,7 +1530,7 @@ app.post('/api/spa/reservar', async (req: Request, res: Response) => {
         `💅 *Servicio:* ${servicio_nombre}\n` +
         `👩‍🎨 *Especialista:* ${empleadaAsignada.nombre}\n` +
         `📅 *Fecha:* ${fechaLegible}\n` +
-        `⏰ *Hora:* ${hora}\n` +
+        `⏰ *Horario:* ${horaInicioFmt} a ${horaFinFmt}\n` +
         `⏱️ *Duración aprox:* ${duracion_minutos} min\n\n` +
         `💰 *Total del servicio:* ${precioFmt}\n` +
         `💳 *Abono requerido (${porcentajeAnticipo}%):* *${anticipoFmt}*\n` +
@@ -1539,7 +1551,7 @@ app.post('/api/spa/reservar', async (req: Request, res: Response) => {
         `💅 *Servicio:* ${servicio_nombre}\n` +
         `👩‍🎨 *Especialista:* ${empleadaAsignada.nombre}\n` +
         `📅 *Fecha:* ${fechaLegible}\n` +
-        `⏰ *Hora:* ${hora}\n` +
+        `⏰ *Horario:* ${horaInicioFmt} a ${horaFinFmt}\n` +
         `⏱️ *Duración aprox:* ${duracion_minutos} min\n` +
         `💰 *Valor a pagar:* ${precioFmt}\n\n` +
         `📍 *Dirección:* Pereira, Cuba (Calle 66 bis #26-57)\n` +
