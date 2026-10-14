@@ -706,12 +706,12 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
 
         {/* SECCIÓN NUESTRO EQUIPO (4 EMPLEADAS) */}
         <section className="space-y-3">
-          <h2 className="text-lg font-bold text-[#2D2529] flex items-center gap-1.5">
+          <h2 className="text-lg font-bold text-[#2D2529] flex items-center justify-center gap-1.5">
             <span>Nuestro</span>
             <span className="italic text-[#C74B66] font-serif font-bold">equipo</span>
           </h2>
 
-          <div className="flex items-center gap-4 overflow-x-auto pb-2">
+          <div className="flex items-center justify-center gap-4 sm:gap-6 overflow-x-auto pb-2">
             {empleadas.map((emp, i) => (
               <div key={emp.id} className="text-center w-20 shrink-0 space-y-1.5">
                 <div className="w-14 h-14 mx-auto rounded-full bg-gradient-to-tr from-[#C74B66] to-[#F2C4D2] p-0.5 shadow-xs">
@@ -729,7 +729,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
 
         {/* SECCIÓN ELIGE TU SERVICIO + CATEGORÍAS */}
         <section className="space-y-4">
-          <h2 className="text-lg font-bold text-[#2D2529] flex items-center gap-1.5">
+          <h2 className="text-lg font-bold text-[#2D2529] flex items-center justify-center gap-1.5">
             <span>Elige tu</span>
             <span className="italic text-[#C74B66] font-serif font-bold">servicio</span>
           </h2>
