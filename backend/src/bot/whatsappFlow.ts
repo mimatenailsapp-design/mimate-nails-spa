@@ -1105,42 +1105,29 @@ export class WhatsAppFlow {
 
         // 0. VERIFICAR QUE SEA UN COMPROBANTE BANCARIO (NO UNA FOTO CUALQUIERA)
         if (analisis.es_comprobante_bancario === false) {
-          const anticipoFmt = '$' + Number(anticipoRequerido).toLocaleString('es-CO');
           return {
-            texto: `🌸 *Hola reina, recibimos tu imagen:* 💕\n\n` +
-              `Sin embargo, nuestro sistema no detectó que sea un comprobante de transferencia bancaria de Nequi o Bancolombia 📄❌.\n\n` +
-              `👉 Para confirmar tu cita, por favor envíanos la *foto o captura de pantalla clara del comprobante de abono* (${anticipoFmt}) 💕💅.`,
+            texto: `⚠️ *Comprobante no válido* 📄❌\n\nNo detectamos que la imagen enviada corresponda a un comprobante de transferencia bancaria válido.`,
           };
         }
 
         // 1. FILTRO 1: CUENTA DE DESTINO
         if (analisis.cuenta_coincide === false) {
-          const cuentasTexto = cuentasOficiales.length > 0 ? cuentasOficiales.join(' / ') : (complejo.nequi_numero || '3219610896');
           return {
-            texto: `⚠️ *Cuenta de destino no coincide* 🏦❌\n\n` +
-              `El comprobante enviado no corresponde a las cuentas oficiales de *${complejo.nombre}*.\n\n` +
-              `📌 Nuestras cuentas oficiales autorizadas son:\n📲 Nequi / Bancolombia: *${cuentasTexto}*\n👤 Titular: *${complejo.titular_cuenta || 'JL Mímate Nails'}*\n\n` +
-              `Por favor verifica tu transferencia y reenvía el comprobante correcto 💕💅.`,
+            texto: `⚠️ *Cuenta no válida* 🏦❌\n\nEste comprobante fue enviado a una cuenta diferente a las autorizadas por *${complejo.nombre}*.`,
           };
         }
 
-        // 2. FILTRO 2: FECHA ACTUAL (Transferencia del día de hoy)
+        // 2. FILTRO 2: FECHA ACTUAL
         if (analisis.fecha_coincide === false) {
           return {
-            texto: `⚠️ *Fecha del comprobante no válida* 📅❌\n\n` +
-              `El comprobante enviado no corresponde al día de hoy (${analisis.fecha_detectada ? `detectamos fecha: *${analisis.fecha_detectada}*` : 'fecha no actual'}).\n\n` +
-              `👉 Para confirmar tu reserva, la transferencia del abono debe realizarse el día de hoy. Por favor verifica y envía el soporte correspondiente 💕.`,
+            texto: `⚠️ *Fecha no válida* 📅❌\n\nEste comprobante es de otra fecha. La transferencia debe corresponder al día de hoy.`,
           };
         }
 
         // 3. FILTRO 3: MONTO SOLICITADO
         if (analisis.monto_coincide === false) {
-          const anticipoFmt = '$' + Number(anticipoRequerido).toLocaleString('es-CO');
-          const detectadoFmt = analisis.monto_detectado ? '$' + Number(analisis.monto_detectado).toLocaleString('es-CO') : 'monto insuficiente';
           return {
-            texto: `⚠️ *Monto de abono insuficiente* 💰❌\n\n` +
-              `Detectamos un valor transferido de *${detectadoFmt}*, pero el anticipo requerido para confirmar tu cita es de *${anticipoFmt}*.\n\n` +
-              `👉 Por favor completa el valor del abono y envíanos el soporte para asegurar tu turno 💕💅.`,
+            texto: `⚠️ *Monto no válido* 💰❌\n\nEl monto de este comprobante no cubre el abono solicitado para confirmar la cita.`,
           };
         }
 
@@ -1179,7 +1166,7 @@ export class WhatsAppFlow {
           const yaUsada = await ReceiptVerificationService.esReferenciaDuplicada(analisis.referencia_detectada);
           if (yaUsada) {
             return {
-              texto: `⚠️ *Comprobante ya utilizado:*\nEl número de referencia *${analisis.referencia_detectada}* ya fue registrado en otra reserva previa. Por favor envía un comprobante nuevo o contacta a la administración de ${complejo.nombre}.`,
+              texto: `⚠️ *Comprobante ya utilizado* 📄❌\n\nEste comprobante ya fue registrado en otra reserva previa. Por favor envía un comprobante válido.`,
             };
           }
         }
@@ -1353,44 +1340,28 @@ export class WhatsAppFlow {
         }
 
         return {
-          texto: `🌸 *Hola ${clienteNombre}, recibimos tu imagen:* 💕\n\n` +
-            `Sin embargo, nuestro sistema no detectó que sea un comprobante de transferencia bancaria de Nequi o Bancolombia 📄❌.\n\n` +
-            `👉 Para confirmar tu cita de las *${horaInicio}* con *${nombreManicurista}*, por favor envíanos la *foto o captura de pantalla clara del comprobante de abono* (${anticipoFmt}).\n\n` +
-            `⏰ Recuerda que ${tiempoRestanteMsg} 💕💅.`,
+          texto: `⚠️ *Comprobante no válido* 📄❌\n\nNo detectamos que la imagen enviada corresponda a un comprobante de transferencia bancaria válido.`,
         };
       }
 
-      // CASO 2.2: FILTRO 1 - COMPROBANTE ENVIADO A UNA CUENTA DIFERENTE A LAS OFICIALES DEL SPA
+      // CASO 2.2: FILTRO 1 - CUENTA DE DESTINO
       if (analisis.cuenta_coincide === false) {
-        const cuentasTexto = cuentasOficiales.length > 0 ? cuentasOficiales.join(' / ') : (complejo.nequi_numero || '3219610896');
-        const titularTexto = complejo.titular_cuenta || 'JL Mímate Nails';
         return {
-          texto: `⚠️ *Cuenta de destino no coincide* 🏦❌\n\n` +
-            `Detectamos que el comprobante enviado no corresponde a las cuentas oficiales de *${complejo.nombre}*.\n\n` +
-            `📌 *Nuestras cuentas oficiales autorizadas son:*\n` +
-            `📲 Nequi / Bancolombia: *${cuentasTexto}*\n` +
-            `👤 Titular: *${titularTexto}*\n\n` +
-            `👉 Por favor verifica que la transferencia se haya realizado a una de estas cuentas y envíanos el comprobante correcto para poder confirmar tu turno 💕💅.`,
+          texto: `⚠️ *Cuenta no válida* 🏦❌\n\nEste comprobante fue enviado a una cuenta diferente a las autorizadas por *${complejo.nombre}*.`,
         };
       }
 
-      // CASO 2.3: FILTRO 2 - FECHA DE LA TRANSFERENCIA NO ES LA FECHA ACTUAL
+      // CASO 2.3: FILTRO 2 - FECHA DE LA TRANSFERENCIA
       if (analisis.fecha_coincide === false) {
         return {
-          texto: `⚠️ *Fecha del comprobante no válida* 📅❌\n\n` +
-            `El comprobante enviado no corresponde al día de hoy (${analisis.fecha_detectada ? `detectamos fecha: *${analisis.fecha_detectada}*` : 'fecha no actual'}).\n\n` +
-            `👉 Para confirmar tu reserva, la transferencia del abono debe realizarse el día de hoy. Por favor verifica y envía el soporte correspondiente 💕.`,
+          texto: `⚠️ *Fecha no válida* 📅❌\n\nEste comprobante es de otra fecha. La transferencia debe corresponder al día de hoy.`,
         };
       }
 
-      // CASO 2.4: FILTRO 3 - MONTO TRANSFERIDO INSUFICIENTE
+      // CASO 2.4: FILTRO 3 - MONTO TRANSFERIDO
       if (analisis.monto_coincide === false) {
-        const anticipoFmt = '$' + Number(anticipoRequerido).toLocaleString('es-CO');
-        const detectadoFmt = analisis.monto_detectado ? '$' + Number(analisis.monto_detectado).toLocaleString('es-CO') : 'monto insuficiente';
         return {
-          texto: `⚠️ *Monto de abono insuficiente* 💰❌\n\n` +
-            `Detectamos un valor transferido de *${detectadoFmt}*, pero el anticipo requerido para confirmar tu turno es de *${anticipoFmt}*.\n\n` +
-            `👉 Por favor completa el valor del abono y envíanos el soporte para asegurar tu cita 💕💅.`,
+          texto: `⚠️ *Monto no válido* 💰❌\n\nEl monto de este comprobante no cubre el abono solicitado para confirmar la cita.`,
         };
       }
 
@@ -1433,7 +1404,7 @@ export class WhatsAppFlow {
         const yaUsada = await ReceiptVerificationService.esReferenciaDuplicada(analisis.referencia_detectada);
         if (yaUsada) {
           return {
-            texto: `⚠️ *Comprobante ya utilizado:*\nEl número de referencia *${analisis.referencia_detectada}* ya fue registrado en otra reserva previa. Por favor envía un comprobante nuevo o contacta a la administración de ${complejo.nombre}.`,
+            texto: `⚠️ *Comprobante ya utilizado* 📄❌\n\nEste comprobante ya fue registrado en otra reserva previa. Por favor envía un comprobante válido.`,
           };
         }
       }
