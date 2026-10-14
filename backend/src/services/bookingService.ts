@@ -214,7 +214,7 @@ export class BookingService {
     valorTotal: number;
     porcentajeAnticipo?: number;
   }) {
-    const porcentaje = params.porcentajeAnticipo ?? 50;
+    const porcentaje = Number(params.porcentajeAnticipo) || 0;
     const anticipoRequerido = (params.valorTotal * porcentaje) / 100;
     const esConfirmadaDirecta = porcentaje === 0;
     const expiracion = esConfirmadaDirecta ? null : new Date(Date.now() + 15 * 60 * 1000).toISOString();

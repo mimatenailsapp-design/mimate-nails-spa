@@ -472,7 +472,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     }
   };
 
-  // Configuración de Anticipos (20%), Cuentas y Horario de Trabajo (Modal de Configuración)
+  // Configuración de Anticipos, Cuentas y Horario de Trabajo (Modal de Configuración)
   const [configAnticipo, setConfigAnticipo] = useState<{
     exigeAnticipo: boolean;
     porcentajeAnticipo: number;
@@ -483,7 +483,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     horaCierre: string;
   }>({
     exigeAnticipo: false,
-    porcentajeAnticipo: 20,
+    porcentajeAnticipo: 0,
     nequiNumero: '321 961 0896',
     bancolombiaNumero: 'Ahorros 245-000123-88',
     titularCuenta: 'JL Mímate Nails Spa',
@@ -501,7 +501,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
         const d = await res.json();
         setConfigAnticipo({
           exigeAnticipo: Boolean(d.exigeAnticipo),
-          porcentajeAnticipo: Number(d.porcentajeAnticipo) || 20,
+          porcentajeAnticipo: Number(d.porcentajeAnticipo) || 0,
           nequiNumero: d.nequiNumero || '321 961 0896',
           bancolombiaNumero: d.bancolombiaNumero || 'Ahorros 245-000123-88',
           titularCuenta: d.titularCuenta || 'JL Mímate Nails Spa',
@@ -4273,7 +4273,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                     </p>
                     <p className="text-[11px] text-[#7D6870] leading-snug">
                       {configAnticipo.exigeAnticipo
-                        ? 'Activado: Se pedirá abono del 20% y ventana de 60 min.'
+                        ? `Activado: Se pedirá abono del ${configAnticipo.porcentajeAnticipo || 20}% y ventana de 60 min.`
                         : 'Desactivado: Citas 100% directas pagaderas en el spa.'}
                     </p>
                   </div>
@@ -4285,6 +4285,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                         setConfigAnticipo((prev) => ({
                           ...prev,
                           exigeAnticipo: e.target.checked,
+                          porcentajeAnticipo: prev.porcentajeAnticipo || 20,
                         }))
                       }
                       className="sr-only peer"
@@ -4376,7 +4377,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                 )}
 
                 <p className="text-[11px] text-[#7D6870] leading-snug bg-slate-50 p-3 rounded-xl border border-slate-200">
-                  ℹ️ <strong>Cómo funciona:</strong> Al activar el anticipo, las clientas que reserven en la web verán el botón <em>"Confirmar pre-reserva"</em> con el desglose del 20% y tendrán 60 minutos para transferir y enviar el soporte por WhatsApp. La IA auditará el comprobante y podrás aprobarlo o rechazarlo con 1 clic.
+                  ℹ️ <strong>Cómo funciona:</strong> Al activar el anticipo, las clientas que reserven en la web verán el botón <em>"Confirmar pre-reserva"</em> con el desglose del {configAnticipo.porcentajeAnticipo || 20}% y tendrán 60 minutos para transferir y enviar el soporte por WhatsApp. La IA auditará el comprobante y podrás aprobarlo o rechazarlo con 1 clic.
                 </p>
 
                 {/* BOTONES */}

@@ -635,9 +635,12 @@ app.get('/api/spa/config', async (req: Request, res: Response) => {
     if (error) throw error;
     if (!complejo) return res.status(404).json({ error: 'Spa no encontrado' });
 
+    const porcentajeMin = Number(complejo.porcentaje_anticipo_minimo) || 0;
+    const exigeAnticipo = porcentajeMin > 0;
+
     res.json({
-      exigeAnticipo: (complejo.porcentaje_anticipo_minimo || 0) > 0,
-      porcentajeAnticipo: complejo.porcentaje_anticipo_minimo || 20,
+      exigeAnticipo,
+      porcentajeAnticipo: porcentajeMin,
       nequiNumero: complejo.nequi_numero || '321 961 0896',
       bancolombiaNumero: complejo.daviplata_numero || 'Ahorros 245-000123-88',
       titularCuenta: complejo.titular_cuenta || 'JL Mímate Nails Spa',
@@ -664,9 +667,13 @@ app.patch('/api/spa/config', async (req: Request, res: Response) => {
 
     const updateData: any = {};
     if (exigeAnticipo !== undefined) {
-      updateData.porcentaje_anticipo_minimo = exigeAnticipo ? Number(porcentajeAnticipo || 20) : 0;
+      if (!exigeAnticipo) {
+        updateData.porcentaje_anticipo_minimo = 0;
+      } else {
+        updateData.porcentaje_anticipo_minimo = Math.max(1, Number(porcentajeAnticipo) || 20);
+      }
     } else if (porcentajeAnticipo !== undefined) {
-      updateData.porcentaje_anticipo_minimo = Number(porcentajeAnticipo);
+      updateData.porcentaje_anticipo_minimo = Math.max(0, Number(porcentajeAnticipo));
     }
     if (nequiNumero !== undefined) updateData.nequi_numero = String(nequiNumero).trim();
     if (bancolombiaNumero !== undefined) updateData.daviplata_numero = String(bancolombiaNumero).trim();
@@ -694,11 +701,13 @@ app.patch('/api/spa/config', async (req: Request, res: Response) => {
 
     if (error) throw error;
 
+    const porcResult = Number(data.porcentaje_anticipo_minimo) || 0;
+
     res.json({
       success: true,
       config: {
-        exigeAnticipo: (data.porcentaje_anticipo_minimo || 0) > 0,
-        porcentajeAnticipo: data.porcentaje_anticipo_minimo || 20,
+        exigeAnticipo: porcResult > 0,
+        porcentajeAnticipo: porcResult,
         nequiNumero: data.nequi_numero || '321 961 0896',
         bancolombiaNumero: data.daviplata_numero || 'Ahorros 245-000123-88',
         titularCuenta: data.titular_cuenta || 'JL Mímate Nails Spa',

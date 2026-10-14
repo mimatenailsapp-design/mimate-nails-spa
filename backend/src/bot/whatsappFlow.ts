@@ -955,7 +955,7 @@ export class WhatsAppFlow {
         };
       }
 
-      const porcentaje = complejo.porcentaje_anticipo_minimo ?? 50;
+      const porcentaje = Number(complejo.porcentaje_anticipo_minimo) || 0;
       const exigeAnticipo = porcentaje > 0;
 
       const reserva = await BookingService.crearPreReserva({
@@ -1084,7 +1084,7 @@ export class WhatsAppFlow {
       return { texto: 'No hay ninguna reserva en proceso. Escribe *HOLA* para iniciar una nueva.' };
     }
 
-    const porcentaje = complejo.porcentaje_anticipo_minimo ?? 50;
+    const porcentaje = Number(complejo.porcentaje_anticipo_minimo) || 0;
     const anticipoRequerido = (session.horarioSeleccionado?.precio || 0) * (porcentaje / 100);
 
     // ==============================================================================
