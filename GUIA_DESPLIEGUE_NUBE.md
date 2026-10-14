@@ -1,6 +1,6 @@
 # 💅 Guía de Despliegue en la Nube - JL Mímate Nails Spa ($0 USD)
 
-Esta guía explica paso a paso cómo desplegar en producción el sistema de citas y bot de WhatsApp exclusivo para **JL Mímate Nails Spa**.
+Esta guía explica paso a paso cómo desplegar en producción el sistema de citas y bot de WhatsApp con **Baileys (conexión directa sin intermediarios de Meta)** para **JL Mímate Nails Spa**.
 
 ---
 
@@ -8,10 +8,10 @@ Esta guía explica paso a paso cómo desplegar en producción el sistema de cita
 
 | Servicio | Proveedor | Función |
 | :--- | :--- | :--- |
-| **Base de Datos** | [Supabase](https://supabase.com) | PostgreSQL en la nube, citas en tiempo real |
+| **Base de Datos** | [Supabase](https://supabase.com) | PostgreSQL en la nube, citas en tiempo real y persistencia de sesión Baileys |
 | **Visor Web (Frontend)** | [Vercel](https://vercel.com) | Web pública de reservas (`/`) y Panel de turnos (`/admin`) |
-| **Bot API (Backend)** | [Render](https://render.com) | API Express, Webhook de WhatsApp y recordatorios |
-| **Canal WhatsApp** | [Meta Developers](https://developers.facebook.com) | WhatsApp Cloud API oficial |
+| **Bot API (Backend)** | [Render](https://render.com) | API Express, motor de Baileys, IA Gemini y recordatorios automáticos |
+| **Canal WhatsApp** | [Baileys Directo](https://github.com/WhiskeySockets/Baileys) | Conexión directa a WhatsApp Web sin intermediarios ni costos de Meta |
 
 ---
 
@@ -20,7 +20,7 @@ Esta guía explica paso a paso cómo desplegar en producción el sistema de cita
 ### A. Base de Datos en Supabase
 1. Crea un proyecto nuevo en [Supabase](https://supabase.com) llamado `mimate-nails`.
 2. Ve a **SQL Editor** y ejecuta todo el contenido de `database/mimate_schema.sql`.
-   - Creará automáticamente las tablas y las 4 manicuristas con sus turnos de 60 min.
+   - Creará automáticamente las tablas y las especialistas con sus turnos.
 3. Copia de **Project Settings > API**:
    - `Project URL`
    - `anon public key`
@@ -38,20 +38,17 @@ Esta guía explica paso a paso cómo desplegar en producción el sistema de cita
    - `NODE_ENV`: `production`
    - `SUPABASE_URL`: *(Tu URL de Supabase)*
    - `SUPABASE_SERVICE_ROLE_KEY`: *(Tu service_role key)*
-   - `WHATSAPP_TOKEN`: *(Token permanente de Meta)*
-   - `WHATSAPP_PHONE_NUMBER_ID`: *(ID de teléfono de Meta)*
-   - `WHATSAPP_VERIFY_TOKEN`: `token_secreto_mimate_2026`
-   - `GEMINI_API_KEY`: *(Tu API key de Google)*
+   - `GEMINI_API_KEY`: *(Tu API key de Google Gemini para IA y comprobantes)*
+   - `BAILEYS_WHITELIST_NUMBERS`: *(Opcional: números autorizados separados por coma para modo blindado de pruebas)*
 4. Al desplegar obtendrás tu URL: `https://mimate-nails-api.onrender.com`.
 
-### C. WhatsApp Oficial en Meta Developers
-1. En [Meta for Developers](https://developers.facebook.com), crea una app tipo **Negocios**.
-2. Agrega el producto **WhatsApp**.
-3. En **Configuración > Webhook**:
-   - **Callback URL:** `https://mimate-nails-api.onrender.com/webhook`
-   - **Verify Token:** `token_secreto_mimate_2026`
-   - Haz clic en **Verificar y Guardar**.
-   - Suscríbete al evento **`messages`**.
+### C. Vinculación de WhatsApp con Baileys (QR)
+1. Con el backend desplegado, abre en tu navegador:
+   - `https://mimate-nails-api.onrender.com/qr`
+2. En tu teléfono:
+   - Abre WhatsApp > **Ajustes** / **Menú (⋮)** > **Dispositivos Vinculados** > **Vincular un dispositivo**.
+3. Escanea el código QR que se muestra en pantalla.
+4. ¡Listo! La sesión se respalda automáticamente en la base de datos de Supabase para que Render la mantenga viva incluso tras reinicios.
 
 ### D. Frontend en Vercel
 1. En [Vercel](https://vercel.com), importa tu repositorio de GitHub.

@@ -1,5 +1,5 @@
-import axios from 'axios';
 import { supabase } from '../config/supabase.js';
+import { BaileysService } from './baileysService.js';
 
 export interface Complejo {
   id: string;
@@ -334,25 +334,12 @@ export class BookingService {
             `Si aún deseas apartar tu espacio, con gusto puedes volver a agendar en nuestra agenda web:\n` +
             `👉 https://mimate-nails-spa.vercel.app 💕💅`;
 
-          const token = complejo?.whatsapp_token || process.env.WHATSAPP_TOKEN;
-          const phoneId = complejo?.whatsapp_phone_number_id || process.env.WHATSAPP_PHONE_NUMBER_ID;
-          if (token && phoneId) {
-            try {
-              let cleanPhone = String(cliente.telefono_wa).replace(/\D/g, '');
-              if (cleanPhone.length === 10 && cleanPhone.startsWith('3')) cleanPhone = `57${cleanPhone}`;
-              await axios.post(
-                `https://graph.facebook.com/v21.0/${phoneId}/messages`,
-                {
-                  messaging_product: 'whatsapp',
-                  to: cleanPhone,
-                  type: 'text',
-                  text: { body: msgAviso },
-                },
-                { headers: { Authorization: `Bearer ${token}` } }
-              );
-            } catch (e: any) {
-              console.warn('Error enviando aviso de liberación por WhatsApp:', e.message);
-            }
+          let cleanPhone = String(cliente.telefono_wa).replace(/\D/g, '');
+          if (cleanPhone.length === 10 && cleanPhone.startsWith('3')) cleanPhone = `57${cleanPhone}`;
+          try {
+            await BaileysService.enviarMensajeDirecto(cleanPhone, msgAviso);
+          } catch (e: any) {
+            console.warn('Error enviando aviso de liberación por Baileys:', e.message);
           }
         }
       }

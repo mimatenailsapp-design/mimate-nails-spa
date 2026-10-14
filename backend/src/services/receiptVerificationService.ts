@@ -19,36 +19,10 @@ export interface ResultadoVerificacionIA {
 
 export class ReceiptVerificationService {
   /**
-   * Descarga la imagen enviada por el cliente desde los servidores de Meta
+   * Deprecado: Las imágenes ahora se reciben y descargan directamente desde Baileys
    */
-  static async descargarImagenMeta(mediaId: string, customToken?: string): Promise<{ buffer: Buffer; mimeType: string } | null> {
-    const token = customToken || process.env.WHATSAPP_TOKEN;
-    if (!token || !mediaId) return null;
-
-    try {
-      // 1. Obtener la URL temporal de descarga del medio en Meta Graph API
-      const metaRes = await axios.get(`https://graph.facebook.com/v21.0/${mediaId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      const mediaUrl = metaRes.data?.url;
-      const mimeType = metaRes.data?.mime_type || 'image/jpeg';
-      if (!mediaUrl) return null;
-
-      // 2. Descargar los bytes binarios de la imagen
-      const imgRes = await axios.get(mediaUrl, {
-        headers: { Authorization: `Bearer ${token}` },
-        responseType: 'arraybuffer',
-      });
-
-      return {
-        buffer: Buffer.from(imgRes.data),
-        mimeType,
-      };
-    } catch (error: any) {
-      console.error('Error descargando imagen de comprobante desde Meta:', error.response?.data || error.message);
-      return null;
-    }
+  static async descargarImagenMeta(_mediaId: string, _customToken?: string): Promise<{ buffer: Buffer; mimeType: string } | null> {
+    return null;
   }
 
   /**

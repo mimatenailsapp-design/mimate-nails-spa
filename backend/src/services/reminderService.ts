@@ -1,5 +1,4 @@
 import { supabase } from '../config/supabase.js';
-import axios from 'axios';
 import { BaileysService } from './baileysService.js';
 
 export class ReminderService {
@@ -298,8 +297,8 @@ export class ReminderService {
   private static async enviarWhatsApp(
     to: string,
     message: string,
-    tokenOverride?: string,
-    phoneIdOverride?: string,
+    _tokenOverride?: string,
+    _phoneIdOverride?: string,
     botones?: Array<{ id: string; title: string }>
   ) {
     let cleanPhone = to.replace(/\D/g, '');
@@ -307,92 +306,17 @@ export class ReminderService {
       cleanPhone = `57${cleanPhone}`;
     }
 
-    // 0. Si el proveedor activo es Baileys, enviar a través de Baileys
-    if (process.env.WHATSAPP_PROVIDER === 'baileys' || process.env.USE_BAILEYS === 'true') {
-      let textoCompleto = message;
-      if (botones && botones.length > 0) {
-        const opciones = botones.map((b, i) => `${i + 1}️⃣ ${b.title}`).join('\n');
-        textoCompleto += `\n\n${opciones}\n\n👉 Responde con el número de tu opción.`;
-      }
-      const enviado = await BaileysService.enviarMensajeDirecto(cleanPhone, textoCompleto);
-      if (enviado) {
-        console.log(`✅ [RECORDATORIO BAILEYS ENVIADO a ${cleanPhone}]`);
-        return;
-      }
-    }
-
-    const token = tokenOverride || process.env.WHATSAPP_TOKEN;
-    const phoneId = phoneIdOverride || process.env.WHATSAPP_PHONE_NUMBER_ID;
-
-    if (!token || !phoneId) {
-      console.log(`[RECORDATORIO AUTOMÁTICO WHATSAPP a ${cleanPhone}]:\n${message}`);
-      if (botones && botones.length > 0) {
-        console.log(`[BOTONES DE RESPUESTA]:`, botones);
-      }
-      return;
-    }
-
-    // 1. Si hay botones interactivos disponibles, intentar enviar formato interactivo
+    let textoCompleto = message;
     if (botones && botones.length > 0) {
-      try {
-        const payloadInteractivo = {
-          messaging_product: 'whatsapp',
-          recipient_type: 'individual',
-          to: cleanPhone,
-          type: 'interactive',
-          interactive: {
-            type: 'button',
-            body: { text: message },
-            action: {
-              buttons: botones.map((b) => ({
-                type: 'reply',
-                reply: {
-                  id: String(b.id || '').slice(0, 200),
-                  title: String(b.title || '').slice(0, 20),
-                },
-              })),
-            },
-          },
-        };
-
-        const res = await axios.post(
-          `https://graph.facebook.com/v21.0/${phoneId}/messages`,
-          payloadInteractivo,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              'Content-Type': 'application/json',
-            },
-          }
-        );
-        console.log(`✅ [RECORDATORIO INTERACTIVO WHATSAPP ENVIADO a ${cleanPhone}]: ID ${res.data?.messages?.[0]?.id}`);
-        return;
-      } catch (errInteractivo: any) {
-        console.warn(`⚠️ Error enviando botones interactivos de WhatsApp (${errInteractivo.message}), recurriendo a mensaje de texto estándar...`);
-      }
+      const opciones = botones.map((b, i) => `${i + 1}️⃣ ${b.title}`).join('\n');
+      textoCompleto += `\n\n${opciones}\n\n👉 Responde con el número de tu opción.`;
     }
 
-    // 2. Envío en texto estándar como fallback
-    try {
-      const res = await axios.post(
-        `https://graph.facebook.com/v21.0/${phoneId}/messages`,
-        {
-          messaging_product: 'whatsapp',
-          recipient_type: 'individual',
-          to: cleanPhone,
-          type: 'text',
-          text: { body: message },
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-      console.log(`✅ [RECORDATORIO WHATSAPP ENVIADO a ${cleanPhone}]: ID ${res.data?.messages?.[0]?.id}`);
-    } catch (err: any) {
-      console.error(`❌ [ERROR RECORDATORIO WHATSAPP a ${cleanPhone}]:`, err.response?.data || err.message);
+    const enviado = await BaileysService.enviarMensajeDirecto(cleanPhone, textoCompleto);
+    if (enviado) {
+      console.log(`✅ [RECORDATORIO BAILEYS ENVIADO a ${cleanPhone}]`);
+    } else {
+      console.warn(`⚠️ [RECORDATORIO BAILEYS NO ENVIADO a ${cleanPhone}]: No conectado o número fuera de lista blanca.`);
     }
   }
 }

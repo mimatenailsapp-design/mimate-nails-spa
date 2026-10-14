@@ -1,6 +1,6 @@
 # 💅 JL Mímate Nails Spa - Sistema de Reservas & Bot WhatsApp
 
-Sistema web de reservas de citas y gestión de turnos para el salón y spa de uñas **JL Mímate Nails**. Cuenta con bot interactivo de WhatsApp (Meta Cloud API), gestión de agendas para manicuristas y verificación de pagos.
+Sistema web de reservas de citas y gestión de turnos para el salón y spa de uñas **JL Mímate Nails**. Cuenta con bot inteligente de WhatsApp conectado directamente mediante **Baileys**, gestión de agendas para manicuristas, recepción con IA y verificación automática de anticipos.
 
 ---
 
@@ -10,9 +10,10 @@ Sistema web de reservas de citas y gestión de turnos para el salón y spa de u�
   - `/` o `/reservar`: Página web pública de reservas para clientas.
   - `/admin` o `/mimate-admin`: Dashboard de gestión de turnos y agenda para las manicuristas (PIN por defecto: `1234`).
 - **`backend/`**: Servidor API con Express, TypeScript y Node.js.
-  - Webhooks de WhatsApp Cloud API.
-  - Sincronización en tiempo real con Supabase.
-  - Notificaciones y recordatorios automáticos 24 horas antes de cada cita.
+  - Bot de WhatsApp nativo con Baileys (sin intermediarios de Meta).
+  - Escáner visual de código QR en `/qr`.
+  - Persistencia y restauración de sesión automática en Supabase.
+  - Notificaciones y recordatorios automáticos de citas.
 - **`database/`**:
   - `mimate_schema.sql`: Script listo para ejecutar en el SQL Editor de tu proyecto en Supabase.
 
@@ -26,6 +27,7 @@ cd backend
 npm install
 npm run dev
 # Servidor corriendo en http://localhost:3000
+# Para vincular WhatsApp, visita http://localhost:3000/qr
 ```
 
 ### 2. Frontend:
@@ -48,14 +50,12 @@ NODE_ENV=development
 SUPABASE_URL=https://TU_PROYECTO.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=tu_secret_service_role_key
 
-# Configuración de WhatsApp Cloud API (Meta Developers)
-WHATSAPP_TOKEN=tu_token_permanente
-WHATSAPP_PHONE_NUMBER_ID=tu_phone_number_id
-WHATSAPP_VERIFY_TOKEN=token_secreto_mimate_2026
-
 # ID del negocio Mímate Nails
-DEFAULT_COMPLEJO_ID=id_uuid_mimate_nails
+DEFAULT_COMPLEJO_ID=3bd1708c-21de-42a8-a529-d7c91fd41ed2
 
-# Google Gemini AI Vision (Gratis)
+# Google Gemini AI Vision
 GEMINI_API_KEY=tu_api_key_de_gemini
+
+# Lista blanca opcional de números autorizados para pruebas
+# BAILEYS_WHITELIST_NUMBERS=573022779797,573223739845
 ```

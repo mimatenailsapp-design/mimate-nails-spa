@@ -1092,10 +1092,8 @@ export class WhatsAppFlow {
     // ==============================================================================
     // CASO 1: EL CLIENTE ENVIÓ UNA IMAGEN (COMPROBANTE MULTIMEDIA -> OPCIÓN B CON IA)
     // ==============================================================================
-    if (mediaId || directImageBuffer) {
-      const mediaDescargado = directImageBuffer
-        ? { buffer: directImageBuffer, mimeType: mediaType || 'image/jpeg' }
-        : (mediaId ? await ReceiptVerificationService.descargarImagenMeta(mediaId, complejo.whatsapp_token) : null);
+    if (directImageBuffer) {
+      const mediaDescargado = { buffer: directImageBuffer, mimeType: mediaType || 'image/jpeg' };
 
       if (mediaDescargado) {
         const cuentasOficiales = [complejo.nequi_numero, complejo.daviplata_numero].filter(Boolean) as string[];
@@ -1301,12 +1299,10 @@ export class WhatsAppFlow {
       return null;
     }
 
-    // 2. Si envió una imagen (mediaId o directImageBuffer):
-    if (mediaId || directImageBuffer) {
+    // 2. Si envió una imagen (directImageBuffer):
+    if (directImageBuffer) {
       const anticipoRequerido = reservaTarget.valor_anticipo_requerido || (reservaTarget.valor_total * 0.2);
-      const mediaDescargado = directImageBuffer
-        ? { buffer: directImageBuffer, mimeType: mediaType || 'image/jpeg' }
-        : (mediaId ? await ReceiptVerificationService.descargarImagenMeta(mediaId, complejo.whatsapp_token) : null);
+      const mediaDescargado = { buffer: directImageBuffer, mimeType: mediaType || 'image/jpeg' };
 
       if (!mediaDescargado) {
         return {

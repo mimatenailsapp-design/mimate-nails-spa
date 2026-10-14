@@ -1,7 +1,6 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import axios from 'axios';
 import { supabase } from './config/supabase.js';
 import { WhatsAppFlow, BotResponse } from './bot/whatsappFlow.js';
 import { ReminderService } from './services/reminderService.js';
@@ -84,33 +83,8 @@ app.get('/politica-de-privacidad', (req: Request, res: Response) => {
 });
 
 // ==============================================================================
-// 2. WHATSAPP CLOUD API - WEBHOOK (META MULTI-EMPRESA)
+// 2. WHATSAPP BAILEYS - SERVICIO Y ENDPOINTS
 // ==============================================================================
-
-app.get('/webhook', (req: Request, res: Response) => {
-  const mode = req.query['hub.mode'];
-  const token = req.query['hub.verify_token'];
-  const challenge = req.query['hub.challenge'];
-
-  const configuredToken = (process.env.WHATSAPP_VERIFY_TOKEN || '').trim().replace(/^["']|["']$/g, '');
-  const defaultToken = 'token_secreto_para_webhook_12345';
-  const cleanIncoming = String(token || '').trim().replace(/^["']|["']$/g, '');
-
-  if (mode && token) {
-    if (
-      mode === 'subscribe' &&
-      (cleanIncoming === defaultToken || (configuredToken && cleanIncoming === configuredToken))
-    ) {
-      console.log('✅ Webhook de WhatsApp verificado con éxito');
-      return res.status(200).send(challenge);
-    } else {
-      console.warn(`❌ Intento de verificación fallido. Esperado: '${configuredToken || defaultToken}', recibido: '${cleanIncoming}'`);
-      return res.sendStatus(403);
-    }
-  } else {
-    return res.sendStatus(400);
-  }
-});
 
 interface DebugLog {
   timestamp: string;
@@ -123,404 +97,196 @@ function addDebugLog(type: DebugLog['type'], detalles: any) {
   if (debugLogs.length > 50) debugLogs.pop();
 }
 
-app.get('/api/debug/whatsapp', (req: Request, res: Response) => {
-  const token = (process.env.WHATSAPP_TOKEN || '').trim();
-  const phoneId = (process.env.WHATSAPP_PHONE_NUMBER_ID || '').trim();
-  const verifyToken = (process.env.WHATSAPP_VERIFY_TOKEN || '').trim();
+// Endpoint de compatibilidad / webhook (Informativo, Baileys no necesita webhooks externos)
+app.all('/webhook', (req: Request, res: Response) => {
+  res.json({
+    status: 'activo',
+    proveedor: 'baileys',
+    mensaje: 'El bot opera de forma nativa a través de Baileys (WhatsApp Web directo). No requiere webhooks externos de Meta.',
+  });
+});
 
+// Diagnóstico general del servicio WhatsApp Baileys
+app.get('/api/debug/whatsapp', (req: Request, res: Response) => {
   res.json({
     status: 'ok',
+    proveedor: 'baileys',
+    baileys: BaileysService.getEstado(),
     environment_variables: {
-      has_whatsapp_token: token.length > 0,
-      whatsapp_token_length: token.length,
-      whatsapp_token_preview: token.length > 10 ? `${token.slice(0, 7)}...${token.slice(-5)}` : null,
-      whatsapp_phone_number_id: phoneId || 'NO_CONFIGURADO_EN_RENDER',
-      has_whatsapp_verify_token: verifyToken.length > 0,
       has_supabase_url: !!process.env.SUPABASE_URL,
       has_supabase_service_key: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+      has_gemini_key: !!process.env.GEMINI_API_KEY,
+      whitelist_numbers: process.env.BAILEYS_WHITELIST_NUMBERS || 'MODO_ABIERTO_TODOS_LOS_NUMEROS',
     },
     total_logs: debugLogs.length,
     recent_logs: debugLogs.slice(0, 20),
   });
 });
 
-app.get('/api/debug/phone-info', async (req: Request, res: Response) => {
-  const token = (process.env.WHATSAPP_TOKEN || '').trim();
-  const phoneId = (process.env.WHATSAPP_PHONE_NUMBER_ID || '').trim();
-
-  if (!token || !phoneId) {
-    return res.status(500).json({ error: 'Faltan credenciales en Render' });
-  }
-
-  try {
-    const metaRes = await axios.get(
-      `https://graph.facebook.com/v21.0/${phoneId}?fields=verified_name,display_phone_number,quality_rating,code_verification_status,throughput`,
-      {
-        headers: { Authorization: `Bearer ${token}` },
-      }
-    );
-    return res.json({ success: true, phone_info: metaRes.data });
-  } catch (err: any) {
-    return res.status(err.response?.status || 500).json({
-      success: false,
-      error: err.response?.data || err.message,
-    });
-  }
-});
-
-app.get('/api/debug/subscribe-waba', async (req: Request, res: Response) => {
-  const token = (process.env.WHATSAPP_TOKEN || '').trim();
-  const phoneId = (process.env.WHATSAPP_PHONE_NUMBER_ID || '').trim();
-
-  if (!token || !phoneId) {
-    return res.status(500).json({ error: 'Faltan credenciales en Render' });
-  }
-
-  const targetWabaId = (req.query.waba_id as string) || '1417768020334062';
-
-  try {
-    // 1. Suscribir la nueva App a la WABA (Activa la entrega de Webhooks de WhatsApp)
-    const subRes = await axios.post(
-      `https://graph.facebook.com/v21.0/${targetWabaId}/subscribed_apps`,
-      {},
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
-
-    // 2. Comprobar las apps suscritas a la WABA
-    const checkRes = await axios.get(
-      `https://graph.facebook.com/v21.0/${targetWabaId}/subscribed_apps`,
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
-
-    return res.json({
-      success: true,
-      target_waba_id: targetWabaId,
-      subscripcion_result: subRes.data,
-      apps_suscritas: checkRes.data,
-    });
-  } catch (err: any) {
-    return res.status(err.response?.status || 500).json({
-      success: false,
-      target_waba_id: targetWabaId,
-      error: err.response?.data || err.message,
-    });
-  }
-});
-
+// Prueba de envío directo con Baileys
 app.post('/api/debug/test-send', async (req: Request, res: Response) => {
   const { to, text } = req.body;
   if (!to) {
     return res.status(400).json({ error: 'Falta parametro "to" (ej. "573219610896")' });
   }
 
-  const token = (process.env.WHATSAPP_TOKEN || '').trim();
-  const phoneId = (process.env.WHATSAPP_PHONE_NUMBER_ID || '').trim();
-
-  if (!token || !phoneId) {
-    return res.status(500).json({
-      error: 'Variables no configuradas en Render',
-      has_token: !!token,
-      has_phone_id: !!phoneId,
-    });
-  }
-
   let cleanTo = String(to).replace(/\D/g, '');
   if (cleanTo.length === 10 && cleanTo.startsWith('3')) {
     cleanTo = `57${cleanTo}`;
   }
 
-  try {
-    const apiRes = await axios.post(
-      `https://graph.facebook.com/v21.0/${phoneId}/messages`,
-      {
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
-        to: cleanTo,
-        type: 'text',
-        text: { body: text || 'Prueba de conexión directa con Meta Cloud API' },
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-    addDebugLog('SEND_SUCCESS', { to: cleanTo, data: apiRes.data });
-    return res.json({ success: true, meta_response: apiRes.data });
-  } catch (err: any) {
-    const errorData = err.response?.data || err.message;
-    addDebugLog('SEND_ERROR', { to: cleanTo, error: errorData });
-    return res.status(err.response?.status || 500).json({ success: false, error: errorData });
-  }
+  const enviado = await BaileysService.enviarMensajeDirecto(
+    cleanTo,
+    text || '🌸 Mensaje de prueba desde el bot Baileys de JL Mímate Nails Spa 💕'
+  );
+
+  return res.json({
+    success: enviado,
+    proveedor: 'baileys',
+    destinatario: cleanTo,
+    estado_baileys: BaileysService.getEstado(),
+  });
 });
 
-// Cache de deduplicación de mensajes de Meta (evita bucles por reintentos de Meta Cloud API)
-const processedMessageIds = new Map<string, number>();
-function cleanProcessedMessages() {
-  const now = Date.now();
-  for (const [id, timestamp] of processedMessageIds.entries()) {
-    if (now - timestamp > 15 * 60 * 1000) {
-      processedMessageIds.delete(id);
-    }
-  }
-}
+// Interfaz web visual para escanear el código QR fácilmente desde el celular
+app.get(['/qr', '/api/baileys/qr'], (req: Request, res: Response) => {
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(`<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vincular WhatsApp - JL Mímate Nails Spa</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #fff5f8; color: #2d2529; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
+    .card { background: white; border-radius: 24px; padding: 32px; max-width: 440px; width: 100%; box-shadow: 0 10px 30px rgba(219, 39, 119, 0.08); text-align: center; border: 1px solid #fce7f3; }
+    .logo { font-size: 38px; margin-bottom: 8px; }
+    h1 { color: #db2777; font-size: 22px; font-weight: 800; margin-bottom: 6px; }
+    p.sub { font-size: 14px; color: #7d6870; margin-bottom: 24px; }
+    #qr-container { display: flex; justify-content: center; align-items: center; min-height: 260px; padding: 16px; background: #fafafa; border-radius: 16px; border: 2px dashed #fbcfe8; margin-bottom: 20px; position: relative; }
+    #qrcode img { margin: 0 auto; border-radius: 8px; }
+    .status-badge { display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; border-radius: 999px; font-size: 13px; font-weight: 700; margin-bottom: 16px; }
+    .status-esperando { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+    .status-conectado { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+    .status-conectando { background: #e0f2fe; color: #075985; border: 1px solid #7dd3fc; }
+    .instructions { text-align: left; background: #fff1f2; border-radius: 14px; padding: 14px 16px; font-size: 13px; color: #9f1239; line-height: 1.5; }
+    .instructions ol { margin-left: 20px; }
+    .instructions li { margin-bottom: 4px; }
+    .footer { margin-top: 18px; font-size: 12px; color: #a1a1aa; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">💅</div>
+    <h1>JL Mímate Nails Spa</h1>
+    <p class="sub">Vinculación de WhatsApp (Baileys)</p>
 
-app.post('/webhook', async (req: Request, res: Response) => {
-  // 1. Responder de inmediato HTTP 200 a Meta para evitar reintentos automáticos cada minuto
-  res.status(200).send('EVENT_RECEIVED');
+    <div id="status-container">
+      <div class="status-badge status-conectando" id="status-badge">🔄 Consultando estado...</div>
+    </div>
 
-  try {
-    const body = req.body;
+    <div id="qr-container">
+      <div id="qrcode"></div>
+      <div id="msg-placeholder" style="color: #9ca3af; font-size: 14px;">Cargando código QR...</div>
+    </div>
 
-    if (body.object) {
-      if (
-        body.entry &&
-        body.entry[0].changes &&
-        body.entry[0].changes[0].value.messages &&
-        body.entry[0].changes[0].value.messages[0]
-      ) {
-        const value = body.entry[0].changes[0].value;
-        const messageObj = value.messages[0];
-        const contactObj = value.contacts?.[0];
+    <div class="instructions" id="instructions">
+      <strong>📱 Cómo vincular:</strong>
+      <ol>
+        <li>Abre WhatsApp en tu teléfono</li>
+        <li>Toca <strong>Ajustes</strong> o <strong>Menú (⋮)</strong></li>
+        <li>Selecciona <strong>Dispositivos vinculados</strong></li>
+        <li>Toca <strong>Vincular un dispositivo</strong> y escanea el código</li>
+      </ol>
+    </div>
 
-        // Deduplicación estricta de mensajes de Meta por messageId (wamid)
-        const messageId = messageObj.id;
-        if (messageId && processedMessageIds.has(messageId)) {
-          console.log(`[Webhook] Mensaje duplicado/reintento de Meta ignorado: ${messageId}`);
-          return;
-        }
-        if (messageId) {
-          processedMessageIds.set(messageId, Date.now());
-          if (processedMessageIds.size > 1000) cleanProcessedMessages();
-        }
+    <p class="footer">Se actualiza automáticamente cada 3 segundos</p>
+  </div>
 
-        // 1. Identificar el número de teléfono del establecimiento que recibió el mensaje (Modelo A)
-        const phoneId = value.metadata?.phone_number_id;
-        const displayPhone = value.metadata?.display_phone_number;
+  <script>
+    let ultimoQr = '';
+    let qrInstancia = null;
 
-        const telefonoCliente = messageObj.from;
-        let texto = messageObj.text?.body || '';
-        const nombrePush = contactObj?.profile?.name;
+    async function actualizarEstado() {
+      try {
+        const res = await fetch('/api/baileys/status');
+        const data = await res.json();
+        const badge = document.getElementById('status-badge');
+        const placeholder = document.getElementById('msg-placeholder');
+        const qrDiv = document.getElementById('qrcode');
+        const instructions = document.getElementById('instructions');
 
-        addDebugLog('WEBHOOK_IN', {
-          telefonoCliente,
-          nombrePush,
-          phoneId,
-          displayPhone,
-          tipoMensaje: messageObj.type,
-          texto,
-        });
+        if (data.status === 'CONECTADO') {
+          badge.className = 'status-badge status-conectado';
+          badge.innerHTML = '✅ WhatsApp Conectado';
+          placeholder.style.display = 'block';
+          placeholder.innerHTML = '🎉 ¡El bot está 100% activo y respondiendo chats!<br><br><strong>Usuario:</strong> ' + (data.usuarioConectado || 'Sesión Activa');
+          qrDiv.style.display = 'none';
+          instructions.style.display = 'none';
+        } else if (data.status === 'ESPERANDO_QR' && data.qr) {
+          badge.className = 'status-badge status-esperando';
+          badge.innerHTML = '⏳ Esperando que escanees el QR';
+          placeholder.style.display = 'none';
+          qrDiv.style.display = 'block';
+          instructions.style.display = 'block';
 
-        // Buscar a qué empresa le pertenece este número de WhatsApp
-        const complejo = await BookingService.getComplejoByPhone(phoneId, displayPhone);
-
-        // Soporte para respuestas interactivas de WhatsApp (Menú desplegable / Botones)
-        if (messageObj.type === 'interactive' && messageObj.interactive) {
-          if (messageObj.interactive.type === 'list_reply' && messageObj.interactive.list_reply) {
-            texto = messageObj.interactive.list_reply.id || messageObj.interactive.list_reply.title || '';
-          } else if (messageObj.interactive.type === 'button_reply' && messageObj.interactive.button_reply) {
-            texto = messageObj.interactive.button_reply.id || messageObj.interactive.button_reply.title || '';
+          if (ultimoQr !== data.qr) {
+            ultimoQr = data.qr;
+            qrDiv.innerHTML = '';
+            qrInstancia = new QRCode(qrDiv, {
+              text: data.qr,
+              width: 230,
+              height: 230,
+              colorDark: '#000000',
+              colorLight: '#ffffff',
+              correctLevel: QRCode.CorrectLevel.M
+            });
           }
-        } else if (messageObj.type === 'button' && messageObj.button) {
-          texto = messageObj.button.payload || messageObj.button.text || '';
-        }
-
-        let mediaId: string | undefined;
-        let mediaType: string | undefined;
-
-        if (messageObj.type === 'image') {
-          mediaId = messageObj.image?.id;
-          mediaType = messageObj.image?.mime_type;
-          texto = messageObj.image?.caption || 'comprobante_imagen';
-        }
-
-        // Verificar si el número está en la lista de exclusión (atención humana / bot silenciado)
-        const esExcluido = await BotExclusionsService.esNumeroExcluido(telefonoCliente);
-        if (esExcluido) {
-          console.log(`[Bot WhatsApp] Mensaje de ${telefonoCliente} IGNORADO (Número en lista de atención humana).`);
-          addDebugLog('WEBHOOK_IN', {
-            telefonoCliente,
-            nombrePush,
-            motivo: 'NUMERO_EXCLUIDO_BOT_SILENCIADO',
-            texto,
-          });
-          return;
-        }
-
-        // Si el cliente envió una imagen (posible comprobante), enviar de inmediato mensaje de espera antes de la revisión por IA
-        if (messageObj.type === 'image') {
-          const nombreDest = nombrePush ? ` ${nombrePush}` : '';
-          const msgEspera = `🌸 *¡Hola${nombreDest}!* Recibimos tu comprobante de pago 💕.\n\n` +
-            `⏳ Estamos confirmando tu transferencia, por favor espera un momento mientras validamos los datos... 🔍✨`;
-
-          await enviarMensajeWhatsApp(telefonoCliente, msgEspera, complejo.whatsapp_token, phoneId);
-        }
-
-        // 2. Procesar con las especialistas, tarifas, Nequi y comprobantes de ESE complejo
-        const respuestaBot = await WhatsAppFlow.procesarMensaje(
-          telefonoCliente,
-          texto,
-          nombrePush,
-          complejo,
-          mediaId,
-          mediaType
-        );
-
-        // 3. Responder al cliente usando el token y número de ese complejo (con menú desplegable si aplica)
-        await enviarMensajeWhatsApp(telefonoCliente, respuestaBot, complejo.whatsapp_token, phoneId);
-      } else {
-        // Puede ser un status update (delivered, read, sent)
-        const change = body.entry?.[0]?.changes?.[0];
-        if (change?.value?.statuses) {
-          // Status update ignorado silenciosamente
         } else {
-          addDebugLog('WEBHOOK_IN', { raw_entry: body.entry });
+          badge.className = 'status-badge status-conectando';
+          badge.innerHTML = '🔄 ' + data.status;
+          placeholder.style.display = 'block';
+          placeholder.textContent = 'Generando nuevo código QR...';
+          qrDiv.style.display = 'none';
         }
+      } catch (e) {
+        console.error('Error consultando estado:', e);
       }
     }
-  } catch (error: any) {
-    console.error('Error procesando webhook multi-tenant:', error);
-    addDebugLog('SEND_ERROR', { error: error?.message || error });
-  }
+
+    actualizarEstado();
+    setInterval(actualizarEstado, 3000);
+  </script>
+</body>
+</html>`);
 });
 
+/**
+ * Función central de despacho de mensajes de WhatsApp
+ * Utiliza Baileys exclusivamente simulando tipeo humano y respetando lista blanca.
+ */
 async function enviarMensajeWhatsApp(
   to: string,
   message: string | BotResponse,
-  customToken?: string,
-  customPhoneId?: string
-) {
+  _customToken?: string,
+  _customPhoneId?: string
+): Promise<boolean> {
   let cleanTo = String(to).replace(/\D/g, '');
   if (cleanTo.length === 10 && cleanTo.startsWith('3')) {
     cleanTo = `57${cleanTo}`;
   }
 
-  // Si Baileys está habilitado, despachar a través de Baileys
-  if (process.env.WHATSAPP_PROVIDER === 'baileys' || process.env.USE_BAILEYS === 'true') {
-    const enviado = await BaileysService.enviarMensajeDirecto(cleanTo, message);
-    if (enviado) return;
-  }
-
-  const token = customToken || process.env.WHATSAPP_TOKEN;
-  const phoneId = customPhoneId || process.env.WHATSAPP_PHONE_NUMBER_ID;
-
-  let payload: any;
-  if (typeof message === 'object' && message.interactive) {
-    if (message.interactive.type === 'cta_url') {
-      const ctaAction = message.interactive.action as any;
-      payload = {
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
-        to: cleanTo,
-        type: 'interactive',
-        interactive: {
-          type: 'cta_url',
-          ...(message.interactive.header ? { header: { type: 'text', text: message.interactive.header.slice(0, 60) } } : {}),
-          body: { text: message.interactive.body.slice(0, 1024) },
-          ...(message.interactive.footer ? { footer: { text: message.interactive.footer.slice(0, 60) } } : {}),
-          action: {
-            name: 'cta_url',
-            parameters: {
-              display_text: (ctaAction.parameters?.display_text || 'Abrir Agenda').slice(0, 20),
-              url: ctaAction.parameters?.url,
-            },
-          },
-        },
-      };
-    } else {
-      const sanitizedSections = (message.interactive.action?.sections || []).map((sec: any) => ({
-        title: (sec.title || 'Opciones').slice(0, 24),
-        rows: (sec.rows || []).map((row: any) => ({
-          id: String(row.id || '').slice(0, 200),
-          title: String(row.title || '').slice(0, 24),
-          ...(row.description ? { description: String(row.description).slice(0, 72) } : {}),
-        })),
-      }));
-
-      payload = {
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
-        to: cleanTo,
-        type: 'interactive',
-        interactive: {
-          type: message.interactive.type,
-          ...(message.interactive.header ? { header: { type: 'text', text: message.interactive.header.slice(0, 60) } } : {}),
-          body: { text: message.interactive.body.slice(0, 1024) },
-          ...(message.interactive.footer ? { footer: { text: message.interactive.footer.slice(0, 60) } } : {}),
-          action: {
-            button: (message.interactive.action?.button || 'Elegir').slice(0, 20),
-            sections: sanitizedSections,
-          },
-        },
-      };
-    }
+  const enviado = await BaileysService.enviarMensajeDirecto(cleanTo, message);
+  if (enviado) {
+    console.log(`✅ [WHATSAPP BAILEYS ENVIADO a ${cleanTo}]`);
+    addDebugLog('SEND_SUCCESS', { to: cleanTo, provider: 'baileys' });
   } else {
-    const textBody = typeof message === 'string' ? message : message.texto;
-    payload = {
-      messaging_product: 'whatsapp',
-      recipient_type: 'individual',
-      to: cleanTo,
-      type: 'text',
-      text: { body: textBody },
-    };
+    console.warn(`⚠️ [WHATSAPP BAILEYS NO ENVIADO a ${cleanTo}]: No conectado o número no autorizado por lista blanca`);
+    addDebugLog('SEND_ERROR', { to: cleanTo, provider: 'baileys', motivo: 'No conectado o bloqueado por lista blanca' });
   }
-
-  if (!token || !phoneId) {
-    console.warn(`[WHATSAPP MENSAJE NO ENVIADO a ${cleanTo}]: Faltan credenciales (token: ${!!token}, phoneId: ${phoneId || 'null'})`);
-    addDebugLog('SEND_ERROR', {
-      to: cleanTo,
-      motivo: 'Faltan credenciales en Render o Complejo',
-      has_token: !!token,
-      phone_id: phoneId || null,
-    });
-    return;
-  }
-
-  try {
-    const res = await axios.post(
-      `https://graph.facebook.com/v21.0/${phoneId}/messages`,
-      payload,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-    console.log(`✅ [WHATSAPP ENVIADO EXITOSAMENTE a ${cleanTo}]: ID ${res.data?.messages?.[0]?.id}`);
-    addDebugLog('SEND_SUCCESS', { to: cleanTo, messageId: res.data?.messages?.[0]?.id });
-  } catch (err: any) {
-    const errorMeta = err.response?.data || err.message;
-    console.error(`❌ [ERROR WHATSAPP a ${cleanTo}]:`, errorMeta);
-    addDebugLog('SEND_ERROR', { to: cleanTo, error: errorMeta });
-
-    if (typeof message === 'object' && message.interactive) {
-      try {
-        console.log(`[WHATSAPP FALLBACK]: Enviando mensaje en texto plano a ${cleanTo}`);
-        const fallbackRes = await axios.post(
-          `https://graph.facebook.com/v21.0/${phoneId}/messages`,
-          {
-            messaging_product: 'whatsapp',
-            recipient_type: 'individual',
-            to: cleanTo,
-            type: 'text',
-            text: { body: message.texto },
-          },
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              'Content-Type': 'application/json',
-            },
-          }
-        );
-        console.log(`✅ [WHATSAPP FALLBACK ENVIADO a ${cleanTo}]: ID ${fallbackRes.data?.messages?.[0]?.id}`);
-        addDebugLog('SEND_SUCCESS', { to: cleanTo, fallback: true, messageId: fallbackRes.data?.messages?.[0]?.id });
-      } catch (fallbackErr: any) {
-        console.error('Error en fallback de texto WhatsApp:', fallbackErr.response?.data || fallbackErr.message);
-      }
-    }
-  }
+  return enviado;
 }
 
 // ==============================================================================
@@ -1669,20 +1435,15 @@ app.get('/api/baileys/status', (req: Request, res: Response) => {
 // Iniciar Servidor
 app.listen(PORT, async () => {
   console.log(`🚀 Servidor ejecutándose en http://localhost:${PORT}`);
-  console.log(`📡 Webhook WhatsApp listo en: http://localhost:${PORT}/webhook`);
+  console.log(`📲 Vinculación de WhatsApp (QR) disponible en: http://localhost:${PORT}/qr`);
   console.log(`💬 Simulador del Bot listo en: POST http://localhost:${PORT}/api/bot/simulate`);
   console.log(`⏰ Cron Recordatorios listo en: POST http://localhost:${PORT}/api/cron/recordatorios`);
 
-  // Inicializar Baileys si está activo en el entorno
-  const usarBaileys = process.env.WHATSAPP_PROVIDER === 'baileys' || process.env.USE_BAILEYS === 'true';
-  if (usarBaileys) {
-    try {
-      await BaileysService.iniciar();
-    } catch (baileysErr) {
-      console.error('❌ Error iniciando servicio de Baileys:', baileysErr);
-    }
-  } else {
-    console.log('ℹ️  Modo WhatsApp: Meta Cloud API (Oficial). Para activar Baileys, define WHATSAPP_PROVIDER=baileys en .env');
+  // Inicializar Baileys como proveedor único y exclusivo de WhatsApp
+  try {
+    await BaileysService.iniciar();
+  } catch (baileysErr) {
+    console.error('❌ Error iniciando servicio de Baileys:', baileysErr);
   }
 
   setInterval(async () => {
