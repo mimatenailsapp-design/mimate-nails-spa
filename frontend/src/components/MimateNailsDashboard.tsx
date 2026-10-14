@@ -835,6 +835,33 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     return ocupadas;
   }, [reservas, bloquearFecha, bloquearManicuristaId, horasOpcionesBloqueoDinamicas]);
 
+  // Horas que ya han pasado para el modal de Bloquear Horario (no se pueden bloquear)
+  const horasYaPasadasBloqueo = useMemo(() => {
+    if (!bloquearFecha) return new Set<string>();
+    const pasadas = new Set<string>();
+    const ahoraMs = ahora.getTime();
+    const esFechaPasada = bloquearFecha < hoyStr;
+    const esHoy = bloquearFecha === hoyStr;
+
+    if (esFechaPasada) {
+      for (const h of horasOpcionesBloqueoDinamicas) {
+        pasadas.add(h);
+      }
+      return pasadas;
+    }
+
+    if (esHoy) {
+      for (const h of horasOpcionesBloqueoDinamicas) {
+        const slotStartMs = new Date(`${bloquearFecha}T${h}:00-05:00`).getTime();
+        if (slotStartMs <= ahoraMs) {
+          pasadas.add(h);
+        }
+      }
+    }
+
+    return pasadas;
+  }, [bloquearFecha, hoyStr, horasOpcionesBloqueoDinamicas, ahora]);
+
   // 1. Cargar datos del Spa (Equipo, Servicios)
   const cargarInfoSpa = async () => {
     try {
@@ -1226,9 +1253,19 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
         (especialistaSeleccionadaId !== 'todas' ? especialistaSeleccionadaId : canchas[0]?.id || '')
       );
     }
-    setBloquearFecha(fechaInicial || fechaSeleccionada);
+    const fechaElegida = fechaInicial || fechaSeleccionada;
+    const fechaValida = fechaElegida < hoyStr ? hoyStr : fechaElegida;
+    setBloquearFecha(fechaValida);
+
     if (horaInicial) {
-      setBloquearHorasSeleccionadas([horaInicial]);
+      const ahoraMs = Date.now();
+      const slotMs = new Date(`${fechaValida}T${horaInicial}:00-05:00`).getTime();
+      const horaYaPaso = fechaValida < hoyStr || (fechaValida === hoyStr && slotMs <= ahoraMs);
+      if (!horaYaPaso) {
+        setBloquearHorasSeleccionadas([horaInicial]);
+      } else {
+        setBloquearHorasSeleccionadas([]);
+      }
     } else {
       setBloquearHorasSeleccionadas([]);
     }
@@ -1241,6 +1278,9 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
   // Toggle de selección de horas para bloqueo múltiple
   const toggleHoraBloqueo = (hora: string) => {
+    if (horasYaPasadasBloqueo.has(hora) || horasYaOcupadasBloqueo.has(hora)) {
+      return;
+    }
     setBloquearHorasSeleccionadas((prev) =>
       prev.includes(hora) ? prev.filter((h) => h !== hora) : [...prev, hora].sort()
     );
@@ -1251,6 +1291,25 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     e.preventDefault();
     if (bloquearHorasSeleccionadas.length === 0) {
       setErrorBloquear('Por favor selecciona al menos una hora para bloquear.');
+      return;
+    }
+
+    if (bloquearFecha < hoyStr) {
+      setErrorBloquear('No es posible bloquear fechas pasadas.');
+      return;
+    }
+
+    const ahoraMs = Date.now();
+    const horasPasadas = bloquearHorasSeleccionadas.filter((h) => {
+      if (bloquearFecha === hoyStr) {
+        const slotStartMs = new Date(`${bloquearFecha}T${h}:00-05:00`).getTime();
+        return slotStartMs <= ahoraMs;
+      }
+      return false;
+    });
+
+    if (horasPasadas.length > 0) {
+      setErrorBloquear('No es posible bloquear horarios que ya han pasado.');
       return;
     }
 
@@ -1737,6 +1796,8 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                 <div className="absolute inset-0 flex flex-col pointer-events-none">
                   {HORAS_TIMELINE.map((h) => {
                     const hStr = `${String(h).padStart(2, '0')}:00`;
+                    const horaSlotMs = new Date(`${fechaActualTimeline}T${hStr}:00-05:00`).getTime();
+                    const esHoraPasadaTimeline = fechaActualTimeline < hoyStr || (esHoy && horaSlotMs <= ahoraMs);
                     return (
                       <div
                         key={h}
@@ -1747,7 +1808,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
                         {/* Botones de acción rápida al pasar el cursor */}
                         <div className="absolute right-3 top-2 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition z-10 pointer-events-auto">
-                          {canchaId && (
+                          {canchaId && !esHoraPasadaTimeline && (
                             <button
                               onClick={() => abrirModalBloquear(canchaId, hStr, fechaActualTimeline)}
                               className="px-2 py-0.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-bold hover:bg-amber-100 cursor-pointer shadow-2xs active:scale-95 flex items-center gap-1"
@@ -1757,7 +1818,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                               <span>Bloquear</span>
                             </button>
                           )}
-                          {puedeAgendar && (
+                          {puedeAgendar && !esHoraPasadaTimeline && (
                             <button
                               onClick={() => abrirModalAgendar(canchaId || undefined, hStr, fechaActualTimeline)}
                               className="px-2 py-0.5 rounded-lg bg-white border border-[#F2C4D2] text-[#8C243B] text-[10px] font-bold hover:bg-[#FCE8EF] cursor-pointer shadow-2xs active:scale-95 flex items-center gap-1"
@@ -3797,8 +3858,23 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                   <label className="font-bold text-[#7D6870] block mb-1">Fecha</label>
                   <input
                     type="date"
+                    min={hoyStr}
                     value={bloquearFecha}
-                    onChange={(e) => setBloquearFecha(e.target.value)}
+                    onChange={(e) => {
+                      const nuevaFecha = e.target.value;
+                      if (nuevaFecha < hoyStr) return;
+                      setBloquearFecha(nuevaFecha);
+                      setBloquearHorasSeleccionadas((prev) => {
+                        const ahoraMs = Date.now();
+                        return prev.filter((h) => {
+                          if (nuevaFecha === hoyStr) {
+                            const slotMs = new Date(`${nuevaFecha}T${h}:00-05:00`).getTime();
+                            return slotMs > ahoraMs;
+                          }
+                          return true;
+                        });
+                      });
+                    }}
                     className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl font-bold text-[#2D2529] outline-none cursor-pointer hover:border-[#8C243B]"
                     required
                   />
@@ -3815,7 +3891,9 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                         type="button"
                         onClick={() =>
                           setBloquearHorasSeleccionadas(
-                            horasOpcionesBloqueoDinamicas.filter((h) => !horasYaOcupadasBloqueo.has(h))
+                            horasOpcionesBloqueoDinamicas.filter(
+                              (h) => !horasYaOcupadasBloqueo.has(h) && !horasYaPasadasBloqueo.has(h)
+                            )
                           )
                         }
                         className="text-[#8C243B] font-bold hover:underline cursor-pointer"
@@ -3839,16 +3917,18 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
                   <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
                     {horasOpcionesBloqueoDinamicas.map((h) => {
+                      const yaPasada = horasYaPasadasBloqueo.has(h);
                       const yaOcupada = horasYaOcupadasBloqueo.has(h);
+                      const deshabilitada = yaPasada || yaOcupada;
                       const estaMarcada = bloquearHorasSeleccionadas.includes(h);
                       return (
                         <button
                           key={h}
                           type="button"
-                          disabled={yaOcupada}
-                          onClick={() => !yaOcupada && toggleHoraBloqueo(h)}
+                          disabled={deshabilitada}
+                          onClick={() => !deshabilitada && toggleHoraBloqueo(h)}
                           className={`py-2 px-2 rounded-xl font-mono text-xs font-bold transition flex flex-col items-center justify-center gap-0.5 border ${
-                            yaOcupada
+                            deshabilitada
                               ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-60'
                               : estaMarcada
                               ? 'bg-amber-500 text-white border-amber-600 shadow-2xs scale-102 ring-2 ring-amber-300 cursor-pointer'
@@ -3859,14 +3939,17 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                             <IconClock className="w-3 h-3 opacity-75" />
                             <span>{h}</span>
                           </div>
-                          {yaOcupada && (
+                          {yaPasada ? (
+                            <span className="text-[9px] font-sans font-bold text-slate-400 uppercase tracking-tighter">
+                              Ya pasó
+                            </span>
+                          ) : yaOcupada ? (
                             <span className="text-[9px] font-sans font-bold text-slate-500 uppercase tracking-tighter">
                               Ocupada
                             </span>
-                          )}
-                          {estaMarcada && !yaOcupada && (
+                          ) : estaMarcada ? (
                             <IconCheck className="w-3.5 h-3.5 stroke-[3]" />
-                          )}
+                          ) : null}
                         </button>
                       );
                     })}

@@ -856,6 +856,16 @@ app.post('/api/bloqueos', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Faltan parámetros de fecha y horario para realizar el bloqueo.' });
     }
 
+    const ahoraMs = Date.now();
+    const hayHorariosPasados = registrosAInsertar.some(
+      (r) => new Date(r.fecha_inicio).getTime() <= ahoraMs
+    );
+    if (hayHorariosPasados) {
+      return res.status(400).json({
+        error: 'No es posible bloquear un horario que ya pasó.',
+      });
+    }
+
     const { data, error } = await supabase
       .from('reservas')
       .insert(registrosAInsertar)
