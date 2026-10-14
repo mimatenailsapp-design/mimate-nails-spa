@@ -146,12 +146,10 @@ export class WhatsAppFlow {
         return resRecordatorio;
       }
 
-      // Detección de comprobante de pago cuando llega un archivo multimedia (mediaId) o el cliente está pendiente de pago
-      if (mediaId || session.paso === 'ESPERA_PAGO') {
-        const resComprobante = await this.manejarRecepcionComprobante(telefono, complejo, session, mediaId, mediaType, texto);
-        if (resComprobante) {
-          return resComprobante;
-        }
+      // Detección de comprobante de pago o seguimiento de pre-reserva pendiente
+      const resComprobante = await this.manejarRecepcionComprobante(telefono, complejo, session, mediaId, mediaType, texto);
+      if (resComprobante) {
+        return resComprobante;
       }
 
       if (
@@ -1443,30 +1441,66 @@ export class WhatsAppFlow {
       };
     }
 
-    // 3. Si tiene reserva pendiente y sólo mandó texto:
+    // 3. Si tiene reserva pendiente y mandó texto (incluso un saludo como "hola", "buenas", preguntas o aviso de pago):
     if (texto) {
-      const tLower = texto.toLowerCase();
-      if (
+      const tLower = texto.toLowerCase().trim();
+      const esSaludo = ['hola', 'buenas', 'buen dia', 'buenos dias', 'buenas tardes', 'buenas noches', 'hey'].includes(tLower);
+      const mencionaPago =
         tLower.includes('pague') ||
         tLower.includes('abone') ||
         tLower.includes('comprobante') ||
         tLower.includes('transferi') ||
         tLower.includes('consigne') ||
         tLower.includes('confirm') ||
-        tLower === '1'
-      ) {
+        tLower === '1';
+
+      // Si es saludo o mención de pago o cualquier texto durante la espera del comprobante:
+      if (mencionaPago || esSaludo || session.paso === 'ESPERA_PAGO' || tLower.length > 0) {
         const anticipoRequerido = reservaTarget.valor_anticipo_requerido || (reservaTarget.valor_total * 0.2) || 5000;
         const anticipoFmt = '$' + Number(anticipoRequerido).toLocaleString('es-CO');
         const nequiNum = complejo.nequi_numero || '3219610896';
+        const daviNum = complejo.daviplata_numero || nequiNum;
         const titular = complejo.titular_cuenta || 'JL Mímate Nails';
+        const clienteNombre = reservaTarget.clientes?.nombre || 'reina';
+        const nombreManicurista = reservaTarget.canchas?.nombre || 'tu manicurista';
+
+        const horaInicio = new Date(reservaTarget.fecha_inicio).toLocaleTimeString('es-CO', {
+          timeZone: 'America/Bogota',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        });
+
+        const fechaCita = new Date(reservaTarget.fecha_inicio).toLocaleDateString('es-CO', {
+          timeZone: 'America/Bogota',
+          weekday: 'long',
+          day: '2-digit',
+          month: '2-digit',
+        });
+
+        let tiempoRestanteMsg = 'tienes 60 minutos desde tu pre-reserva para enviar el comprobante';
+        if (reservaTarget.expiracion_reserva) {
+          const expMs = new Date(reservaTarget.expiracion_reserva).getTime();
+          const diffMin = Math.round((expMs - Date.now()) / (1000 * 60));
+          if (diffMin > 0) {
+            tiempoRestanteMsg = `te quedan aproximadamente *${diffMin} minutos* antes de que el turno se libere`;
+          }
+        }
 
         return {
           texto:
-            `🌸 ¡Hola reina! Tu cita está pre-apartada temporalmente 💕.\n\n` +
-            `👉 Para confirmarla y pausar el límite de 1 hora, por favor *envía la foto o captura del comprobante de transferencia* (${anticipoFmt}) directamente por este chat 📸💕.\n\n` +
-            `📲 Nequi / Bancolombia: *${nequiNum}*\n` +
-            `👤 Titular: *${titular}*\n\n` +
-            `¡Apenas envíes la foto del comprobante, nuestro sistema validará tu pago y confirmará tu cupo! 💅✨`,
+            `🌸 *¡Hola ${clienteNombre}! Seguimos con tu turno pre-apartado* 💕\n\n` +
+            `💅 Especialista: *${nombreManicurista}*\n` +
+            `📅 Fecha: *${fechaCita}* a las *${horaInicio}*\n` +
+            `💳 Abono requerido: *${anticipoFmt}*\n\n` +
+            `───────────────\n` +
+            `📲 *CUENTAS PARA TRANSFERIR:*\n` +
+            `• Nequi: *${nequiNum}*\n` +
+            `• Bancolombia / Daviplata: *${daviNum}*\n` +
+            `• Titular: *${titular}*\n\n` +
+            `📸 *Para confirmar definitivamente tu cita:*\n` +
+            `Por favor envía la foto o captura del comprobante por este mismo chat 📄💕 (${tiempoRestanteMsg}).\n\n` +
+            `*(Si deseas cancelar esta pre-reserva para iniciar otra, escribe CANCELAR)*`,
         };
       }
     }
