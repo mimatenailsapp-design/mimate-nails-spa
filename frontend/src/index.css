@@ -49,3 +49,12 @@
   );
 }
 
+/* Ocultar barra de desplazamiento manteniendo funcionalidad de scroll táctil */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+

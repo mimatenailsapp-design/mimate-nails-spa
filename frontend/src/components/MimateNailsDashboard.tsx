@@ -1757,11 +1757,11 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
         </div>
 
         {/* Grilla de Tiempo Continua y Fiel a los Minutos */}
-        <div className="relative p-4 sm:p-6 overflow-x-auto">
-          <div className="min-w-[650px] relative">
+        <div className="relative p-2.5 sm:p-6 overflow-x-auto">
+          <div className="min-w-full sm:min-w-[600px] relative">
             <div className="flex relative" style={{ height: `${ALTURA_TOTAL_TIMELINE}px` }}>
               {/* Columna de Horas a la izquierda (8 a 19) */}
-              <div className="w-16 sm:w-24 pr-3 flex-shrink-0 relative select-none">
+              <div className="w-14 sm:w-24 pr-2 sm:pr-3 flex-shrink-0 relative select-none">
                 {HORAS_TIMELINE.map((h, index) => (
                   <div
                     key={h}
@@ -2435,89 +2435,232 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     <div className="min-h-screen bg-[#FFF5F7] text-[#2D2529] flex flex-col font-sans">
       {/* BARRA SUPERIOR ELEGANTE */}
       <header className="bg-white/95 backdrop-blur-md sticky top-0 z-40 border-b border-[#F2C4D2] shadow-xs">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="max-w-7xl mx-auto px-3.5 sm:px-4 py-2.5 sm:py-3">
           
-          {/* Logo, Nombre del Negocio y Botones de Acción */}
-          <div className="flex flex-wrap items-center gap-3 sm:gap-4">
-            {/* Logo y Nombre */}
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-[#FFF5F7] p-1 border border-[#F2C4D2] overflow-hidden shrink-0 flex items-center justify-center">
-                <img
-                  src="/mimate-nails-logo.png"
-                  alt="Logo JL Mímate Nails"
-                  className="w-full h-full object-contain"
-                  onError={(e) => {
-                    (e.target as HTMLElement).style.display = 'none';
-                  }}
-                />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="font-bold text-sm sm:text-base text-[#2D2529] font-serif leading-none">
-                    JL Mímate Nails
-                  </h1>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${perfilActual.colorBadge}`}>
-                    {perfilActual.avatar} {esAdmin ? 'Administradora' : perfilActual.nombre}
-                  </span>
+          {/* FILA PRINCIPAL: Marca/Perfil a la izquierda, Controles a la derecha */}
+          <div className="flex items-center justify-between gap-3">
+            
+            {/* Lado Izquierdo: Logo, Nombre y Botones Operativos en Desktop */}
+            <div className="flex items-center gap-3 md:gap-4 min-w-0">
+              {/* Logo y Nombre */}
+              <div className="flex items-center gap-2.5 shrink-0">
+                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#FFF5F7] p-1 border border-[#F2C4D2] overflow-hidden shrink-0 flex items-center justify-center">
+                  <img
+                    src="/mimate-nails-logo.png"
+                    alt="Logo JL Mímate Nails"
+                    className="w-full h-full object-contain"
+                    onError={(e) => {
+                      (e.target as HTMLElement).style.display = 'none';
+                    }}
+                  />
                 </div>
-                <p className="text-[11px] text-[#7D6870] mt-0.5 hidden sm:block">
-                  Pereira, Cuba · Panel de Control de Turnos
-                </p>
+                <div>
+                  <div className="flex items-center gap-1.5 sm:gap-2">
+                    <h1 className="font-bold text-sm sm:text-base text-[#2D2529] font-serif leading-none truncate">
+                      JL Mímate Nails
+                    </h1>
+                    <span className={`text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full border shrink-0 ${perfilActual.colorBadge}`}>
+                      {perfilActual.avatar} {esAdmin ? 'Admin' : perfilActual.nombre}
+                    </span>
+                  </div>
+                  <p className="text-[10px] sm:text-[11px] text-[#7D6870] mt-0.5 hidden sm:block">
+                    Pereira, Cuba · Panel de Control de Turnos
+                  </p>
+                </div>
+              </div>
+
+              {/* Botones Operativos en DESKTOP (Ocultos en móvil para mantener la vista limpia) */}
+              <div className="hidden md:flex items-center gap-2 pl-2">
+                {/* Botón Bloquear Horario */}
+                <button
+                  onClick={() => abrirModalBloquear()}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-xl transition shadow-xs cursor-pointer active:scale-95"
+                  title="Bloquear una o varias horas para que las clientas no puedan reservar"
+                >
+                  <IconLock className="w-3.5 h-3.5 stroke-[2.5]" />
+                  <span>{esAdmin ? 'Bloquear Horario' : 'Bloquear Mi Horario'}</span>
+                </button>
+
+                {/* Botón Exclusivo para la Admin: Configuración de Horario de Trabajo y Anticipos */}
+                {esAdmin && (
+                  <button
+                    onClick={() => setModalConfigAnticipoAbierto(true)}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition shadow-xs cursor-pointer border bg-white border-[#F2C4D2] text-[#8C243B] hover:bg-[#FCE8EF]"
+                    title="Configuración general del spa: horarios de trabajo, anticipos y cuentas de recaudo"
+                  >
+                    <IconSettings className="w-3.5 h-3.5 text-[#C74B66]" />
+                    <span>Configuración del Spa</span>
+                  </button>
+                )}
+
+                {/* Botón Exclusivo para la Admin: Agendar Cita */}
+                {esAdmin && (
+                  <button
+                    onClick={() => abrirModalAgendar()}
+                    className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-[#8C243B] to-[#C74B66] hover:from-[#731D30] hover:to-[#B03C54] text-white text-xs font-bold rounded-xl transition shadow-xs cursor-pointer active:scale-95"
+                  >
+                    <IconPlus className="w-4 h-4 stroke-[3]" />
+                    <span>Agendar Cita</span>
+                  </button>
+                )}
+
+                {/* Botón Exclusivo para la Admin: Clientes con Bot Silenciado (Atención Humana) */}
+                {esAdmin && (
+                  <button
+                    onClick={abrirModalExclusiones}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2] text-xs font-bold rounded-xl transition shadow-xs cursor-pointer active:scale-95"
+                    title="Gestionar clientes con bot silenciado para atención humana personalizada"
+                  >
+                    <IconLock className="w-3.5 h-3.5 text-[#8C243B]" />
+                    <span>Número Restringido</span>
+                    {exclusionesBot.length > 0 && (
+                      <span className="px-1.5 py-0.2 rounded-full bg-[#8C243B] text-white text-[10px] font-mono font-bold">
+                        {exclusionesBot.length}
+                      </span>
+                    )}
+                  </button>
+                )}
               </div>
             </div>
 
-            {/* Botones Operativos de Acción */}
-            <div className="flex flex-wrap items-center gap-2">
-              {/* Botón Bloquear Horario (Disponible para Administradora y Manicuristas) */}
-              <button
-                onClick={() => abrirModalBloquear()}
-                className="flex items-center gap-1.5 px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-xl transition shadow-xs cursor-pointer active:scale-95"
-                title="Bloquear una o varias horas para que las clientas no puedan reservar"
-              >
-                <IconLock className="w-3.5 h-3.5 stroke-[2.5]" />
-                <span className="hidden sm:inline">
-                  {esAdmin ? 'Bloquear Horario' : 'Bloquear Mi Horario'}
-                </span>
-                <span className="sm:hidden">Bloquear</span>
-              </button>
-
-              {/* Botón Exclusivo para la Admin: Configuración de Horario de Trabajo y Anticipos */}
-              {esAdmin && (
+            {/* Lado Derecho: Recargar, Volver Web y Salir ARRIBA; Agenda de Turnos y Métricas DEBAJO (con más separación) */}
+            <div className="flex flex-col items-end gap-3 shrink-0">
+              {/* Arriba a la derecha: 3 botones */}
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                {/* Recargar datos */}
                 <button
-                  onClick={() => setModalConfigAnticipoAbierto(true)}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition shadow-xs cursor-pointer border bg-white border-[#F2C4D2] text-[#8C243B] hover:bg-[#FCE8EF]"
-                  title="Configuración general del spa: horarios de trabajo, anticipos y cuentas de recaudo"
+                  onClick={() => cargarReservas()}
+                  disabled={cargando}
+                  className="p-1.5 sm:p-2 rounded-xl border border-[#F2C4D2] hover:bg-[#FCE8EF] text-[#7D6870] hover:text-[#8C243B] transition cursor-pointer"
+                  title="Actualizar datos"
                 >
-                  <IconSettings className="w-3.5 h-3.5 text-[#C74B66]" />
-                  <span className="hidden sm:inline">Configuración del Spa</span>
-                  <span className="sm:hidden">Config. Spa</span>
+                  <IconRefresh className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${cargando ? 'animate-spin' : ''}`} />
                 </button>
-              )}
 
-              {/* Botón Exclusivo para la Admin: Agendar Cita */}
+                {/* Volver a la página principal */}
+                <button
+                  onClick={onIrAWebReservas}
+                  className="p-1.5 sm:p-2 rounded-xl border border-[#F2C4D2] hover:bg-[#FCE8EF] text-[#7D6870] hover:text-[#8C243B] transition cursor-pointer"
+                  title="Volver a la página principal (Reservas de clientas)"
+                >
+                  <IconExternalLink className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                </button>
+
+                {/* Salir */}
+                <button
+                  onClick={handleCerrarSesion}
+                  className="flex items-center gap-1 p-1.5 sm:px-2.5 sm:py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-[#7D6870] text-xs font-semibold transition cursor-pointer"
+                  title="Cambiar de perfil / Cerrar sesión"
+                >
+                  <IconLogout className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  <span className="hidden sm:inline">Salir</span>
+                </button>
+              </div>
+
+              {/* Debajo de los 3 botones, a la derecha en DESKTOP: Agenda de Turnos y Métricas */}
+              {esAdmin && (
+                <div className="hidden md:flex items-center bg-[#FCE8EF] p-1 rounded-xl border border-[#F2C4D2]">
+                  <button
+                    onClick={() => setTabAdmin('agenda')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                      tabAdmin === 'agenda'
+                        ? 'bg-white text-[#8C243B] shadow-xs'
+                        : 'text-[#7D6870] hover:text-[#2D2529]'
+                    }`}
+                  >
+                    <IconCalendar className="w-3.5 h-3.5" />
+                    <span>Agenda de Turnos</span>
+                  </button>
+                  <button
+                    onClick={() => setTabAdmin('metricas')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                      tabAdmin === 'metricas'
+                        ? 'bg-white text-[#8C243B] shadow-xs'
+                        : 'text-[#7D6870] hover:text-[#2D2529]'
+                    }`}
+                  >
+                    <IconChartBar className="w-3.5 h-3.5" />
+                    <span>Métricas</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+          </div>
+
+          {/* FILA EXCLUSIVA PARA MÓVIL (< md): Segmented Tabs & Barra de Acciones Deslizable */}
+          <div className="md:hidden mt-2 pt-2 border-t border-[#F2C4D2]/40 space-y-2">
+            {/* Pestañas Agenda / Métricas a ancho completo en móvil */}
+            {esAdmin && (
+              <div className="grid grid-cols-2 bg-[#FCE8EF] p-1 rounded-xl border border-[#F2C4D2]">
+                <button
+                  onClick={() => setTabAdmin('agenda')}
+                  className={`flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                    tabAdmin === 'agenda'
+                      ? 'bg-white text-[#8C243B] shadow-xs'
+                      : 'text-[#7D6870]'
+                  }`}
+                >
+                  <IconCalendar className="w-3.5 h-3.5" />
+                  <span>Agenda de Turnos</span>
+                </button>
+                <button
+                  onClick={() => setTabAdmin('metricas')}
+                  className={`flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                    tabAdmin === 'metricas'
+                      ? 'bg-white text-[#8C243B] shadow-xs'
+                      : 'text-[#7D6870]'
+                  }`}
+                >
+                  <IconChartBar className="w-3.5 h-3.5" />
+                  <span>Métricas</span>
+                </button>
+              </div>
+            )}
+
+            {/* Barra de Acciones Deslizable y Limpia para Móvil */}
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5">
+              {/* Agendar */}
               {esAdmin && (
                 <button
                   onClick={() => abrirModalAgendar()}
-                  className="flex items-center gap-1 px-3.5 py-2 bg-gradient-to-r from-[#8C243B] to-[#C74B66] hover:from-[#731D30] hover:to-[#B03C54] text-white text-xs font-bold rounded-xl transition shadow-xs cursor-pointer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-[#8C243B] to-[#C74B66] text-white text-xs font-bold rounded-xl transition shadow-xs shrink-0 cursor-pointer active:scale-95"
                 >
-                  <IconPlus className="w-4 h-4 stroke-[3]" />
-                  <span className="hidden sm:inline">Agendar Cita</span>
-                  <span className="sm:hidden">Agendar</span>
+                  <IconPlus className="w-3.5 h-3.5 stroke-[3]" />
+                  <span>Agendar Cita</span>
                 </button>
               )}
 
-              {/* Botón Exclusivo para la Admin: Clientes con Bot Silenciado (Atención Humana) */}
+              {/* Bloquear */}
+              <button
+                onClick={() => abrirModalBloquear()}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 text-white text-xs font-bold rounded-xl transition shadow-xs shrink-0 cursor-pointer active:scale-95"
+              >
+                <IconLock className="w-3.5 h-3.5 stroke-[2.5]" />
+                <span>{esAdmin ? 'Bloquear Horario' : 'Bloquear Mi Horario'}</span>
+              </button>
+
+              {/* Configuración Spa */}
+              {esAdmin && (
+                <button
+                  onClick={() => setModalConfigAnticipoAbierto(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-[#8C243B] border border-[#F2C4D2] text-xs font-bold rounded-xl transition shadow-xs shrink-0 cursor-pointer active:scale-95"
+                >
+                  <IconSettings className="w-3.5 h-3.5 text-[#C74B66]" />
+                  <span>Config. Spa</span>
+                </button>
+              )}
+
+              {/* Números Restringidos */}
               {esAdmin && (
                 <button
                   onClick={abrirModalExclusiones}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2] text-xs font-bold rounded-xl transition shadow-xs cursor-pointer active:scale-95"
-                  title="Gestionar clientes con bot silenciado para atención humana personalizada"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-[#8C243B] border border-[#F2C4D2] text-xs font-bold rounded-xl transition shadow-xs shrink-0 cursor-pointer active:scale-95"
                 >
                   <IconLock className="w-3.5 h-3.5 text-[#8C243B]" />
-                  <span className="hidden sm:inline">Número Restringido</span>
-                  <span className="sm:hidden">Restringidos</span>
+                  <span>Restringidos</span>
                   {exclusionesBot.length > 0 && (
-                    <span className="px-1.5 py-0.2 rounded-full bg-[#8C243B] text-white text-[10px] font-mono font-bold">
+                    <span className="px-1.5 py-0.2 rounded-full bg-[#8C243B] text-white text-[9px] font-mono font-bold">
                       {exclusionesBot.length}
                     </span>
                   )}
@@ -2526,79 +2669,17 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
             </div>
           </div>
 
-          {/* DERECHA: Recargar, Volver a la página principal y Salir ARRIBA; Agenda de Turnos y Métricas DEBAJO */}
-          <div className="flex flex-col items-end gap-1.5 ml-auto">
-            {/* Arriba a la derecha: 3 botones */}
-            <div className="flex items-center gap-2">
-              {/* Recargar datos */}
-              <button
-                onClick={() => cargarReservas()}
-                disabled={cargando}
-                className="p-1.5 sm:p-2 rounded-xl border border-[#F2C4D2] hover:bg-[#FCE8EF] text-[#7D6870] hover:text-[#8C243B] transition cursor-pointer"
-                title="Actualizar datos"
-              >
-                <IconRefresh className={`w-4 h-4 ${cargando ? 'animate-spin' : ''}`} />
-              </button>
-
-              {/* Volver a la página principal */}
-              <button
-                onClick={onIrAWebReservas}
-                className="p-1.5 sm:p-2 rounded-xl border border-[#F2C4D2] hover:bg-[#FCE8EF] text-[#7D6870] hover:text-[#8C243B] transition cursor-pointer"
-                title="Volver a la página principal (Reservas de clientas)"
-              >
-                <IconExternalLink className="w-4 h-4" />
-              </button>
-
-              {/* Salir */}
-              <button
-                onClick={handleCerrarSesion}
-                className="flex items-center gap-1.5 p-1.5 sm:px-2.5 sm:py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-[#7D6870] text-xs font-semibold transition cursor-pointer"
-                title="Cambiar de perfil / Cerrar sesión"
-              >
-                <IconLogout className="w-4 h-4" />
-                <span className="hidden sm:inline">Salir</span>
-              </button>
-            </div>
-
-            {/* Debajo de los 3 botones, a la derecha: Agenda de Turnos y Métricas */}
-            {esAdmin && (
-              <div className="flex items-center bg-[#FCE8EF] p-1 rounded-xl border border-[#F2C4D2]">
-                <button
-                  onClick={() => setTabAdmin('agenda')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
-                    tabAdmin === 'agenda'
-                      ? 'bg-white text-[#8C243B] shadow-xs'
-                      : 'text-[#7D6870] hover:text-[#2D2529]'
-                  }`}
-                >
-                  <IconCalendar className="w-3.5 h-3.5" />
-                  <span>Agenda de Turnos</span>
-                </button>
-                <button
-                  onClick={() => setTabAdmin('metricas')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
-                    tabAdmin === 'metricas'
-                      ? 'bg-white text-[#8C243B] shadow-xs'
-                      : 'text-[#7D6870] hover:text-[#2D2529]'
-                  }`}
-                >
-                  <IconChartBar className="w-3.5 h-3.5" />
-                  <span>Métricas</span>
-                </button>
-              </div>
-            )}
-          </div>
         </div>
       </header>
 
       {/* CONTENIDO PRINCIPAL */}
-      <main className="max-w-7xl mx-auto w-full p-4 sm:p-6 space-y-6 flex-1">
+      <main className="max-w-7xl mx-auto w-full p-3 sm:p-6 space-y-4 sm:space-y-6 flex-1">
         
         {/* BARRA DE FECHA CON FLECHAS DÍA ANTERIOR / SIGUIENTE (Solo en vista de agenda) */}
         {(!esAdmin || tabAdmin === 'agenda') && (
-          <div className="bg-white rounded-2xl p-4 border border-[#F2C4D2] shadow-xs flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-[#FCE8EF] text-[#8C243B] flex items-center justify-center shrink-0">
+          <div className="bg-white rounded-2xl p-3 sm:p-4 border border-[#F2C4D2] shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 sm:gap-3">
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-[#FCE8EF] text-[#8C243B] flex items-center justify-center shrink-0">
                 <IconClock className="w-4 h-4" />
               </div>
               <div>
@@ -2607,7 +2688,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                     ? 'Agenda General del Spa'
                     : `Mi Agenda Personal (${perfilActual.nombre})`}
                 </p>
-                <p className="text-[11px] text-[#7D6870]">
+                <p className="text-[10px] sm:text-[11px] text-[#7D6870]">
                   {vistaAgenda === 'dia' ? (
                     <>
                       {fechaLegible} · <strong className="text-[#8C243B]">{citasClientesDelDia.length} citas</strong>
@@ -2635,12 +2716,12 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
             </div>
 
             {/* CONTROLES DE VISTA Y FECHA */}
-            <div className="flex flex-wrap items-center gap-2.5">
+            <div className="flex flex-wrap items-center justify-between md:justify-end gap-2">
               {/* SELECTOR DE VISTA: DÍA VS SEMANA */}
-              <div className="flex items-center bg-[#FCE8EF] p-1 rounded-2xl border border-[#F2C4D2]">
+              <div className="flex items-center bg-[#FCE8EF] p-1 rounded-xl border border-[#F2C4D2]">
                 <button
                   onClick={() => setVistaAgenda('dia')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs ${
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer shadow-2xs ${
                     vistaAgenda === 'dia'
                       ? 'bg-[#8C243B] text-white shadow-xs'
                       : 'text-[#7D6870] hover:text-[#2D2529]'
@@ -2652,7 +2733,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                 </button>
                 <button
                   onClick={() => setVistaAgenda('semana')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs ${
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer shadow-2xs ${
                     vistaAgenda === 'semana'
                       ? 'bg-[#8C243B] text-white shadow-xs'
                       : 'text-[#7D6870] hover:text-[#2D2529]'
@@ -2666,97 +2747,97 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
               {/* CONTROLES DE FECHA SEGÚN MODO DÍA O SEMANA */}
               {vistaAgenda === 'dia' ? (
-                <div className="flex items-center gap-1.5 bg-[#FFF5F7] p-1.5 rounded-2xl border border-[#F2C4D2]">
+                <div className="flex items-center gap-1 sm:gap-1.5 bg-[#FFF5F7] p-1 sm:p-1.5 rounded-xl border border-[#F2C4D2]">
                   {/* ACCESO RÁPIDO: Volver a Hoy a la izquierda */}
                   {fechaSeleccionada !== hoyStr && (
                     <button
                       onClick={() => setFechaSeleccionada(hoyStr)}
-                      className="px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-white text-[#8C243B] hover:bg-[#FCE8EF] border border-[#F2C4D2] transition cursor-pointer shadow-2xs animate-in fade-in"
+                      className="px-2 py-1 rounded-lg text-xs font-semibold bg-white text-[#8C243B] hover:bg-[#FCE8EF] border border-[#F2C4D2] transition cursor-pointer shadow-2xs animate-in fade-in"
                       title="Volver a la fecha actual"
                     >
-                      Ir a Hoy
+                      Hoy
                     </button>
                   )}
 
                   <button
                     onClick={() => cambiarDia(-1)}
-                    className="p-2 rounded-xl bg-white hover:bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2] transition cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
+                    className="p-1.5 rounded-lg bg-white hover:bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2] transition cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
                     title="Día anterior"
                   >
-                    <IconChevronLeft className="w-4 h-4 stroke-[2.5]" />
+                    <IconChevronLeft className="w-3.5 h-3.5 stroke-[2.5]" />
                   </button>
 
                   {/* BOTÓN/ETIQUETA DINÁMICA: Hoy, Mañana, Ayer o Sáb, 10 oct */}
                   <button
                     onClick={() => setFechaSeleccionada(hoyStr)}
                     title={fechaSeleccionada === hoyStr ? 'Estás en el día de hoy' : 'Clic para volver al día de hoy'}
-                    className="px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs bg-[#8C243B] text-white min-w-[70px] text-center hover:opacity-95 active:scale-95"
+                    className="px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer shadow-2xs bg-[#8C243B] text-white min-w-[65px] text-center hover:opacity-95 active:scale-95"
                   >
                     {etiquetaFechaRelativa}
                   </button>
 
                   <button
                     onClick={() => cambiarDia(1)}
-                    className="p-2 rounded-xl bg-white hover:bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2] transition cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
+                    className="p-1.5 rounded-lg bg-white hover:bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2] transition cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
                     title="Día siguiente"
                   >
-                    <IconChevronRight className="w-4 h-4 stroke-[2.5]" />
+                    <IconChevronRight className="w-3.5 h-3.5 stroke-[2.5]" />
                   </button>
 
-                  <div className="relative pl-1">
+                  <div className="relative pl-0.5">
                     <input
                       type="date"
                       value={fechaSeleccionada}
                       onChange={(e) => setFechaSeleccionada(e.target.value)}
-                      className="px-3 py-1.5 bg-white border border-[#F2C4D2] rounded-xl text-xs font-bold text-[#2D2529] outline-none cursor-pointer hover:border-[#8C243B] transition shadow-2xs"
+                      className="px-2 py-1 bg-white border border-[#F2C4D2] rounded-lg text-xs font-bold text-[#2D2529] outline-none cursor-pointer hover:border-[#8C243B] transition shadow-2xs"
                     />
                   </div>
                 </div>
               ) : (
-                <div className="flex items-center gap-1.5 bg-[#FFF5F7] p-1.5 rounded-2xl border border-[#F2C4D2]">
+                <div className="flex items-center gap-1 sm:gap-1.5 bg-[#FFF5F7] p-1 sm:p-1.5 rounded-xl border border-[#F2C4D2]">
                   {/* ACCESO RÁPIDO: Volver a la Semana Actual */}
                   {!diasDeLaSemana.some((d) => d.esHoy) && (
                     <button
                       onClick={() => setFechaSeleccionada(hoyStr)}
-                      className="px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-white text-[#8C243B] hover:bg-[#FCE8EF] border border-[#F2C4D2] transition cursor-pointer shadow-2xs animate-in fade-in"
+                      className="px-2 py-1 rounded-lg text-xs font-semibold bg-white text-[#8C243B] hover:bg-[#FCE8EF] border border-[#F2C4D2] transition cursor-pointer shadow-2xs animate-in fade-in"
                       title="Volver a la semana actual"
                     >
-                      Esta Semana
+                      Hoy
                     </button>
                   )}
 
                   <button
                     onClick={() => cambiarSemana(-1)}
-                    className="p-2 rounded-xl bg-white hover:bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2] transition cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
+                    className="p-1.5 rounded-lg bg-white hover:bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2] transition cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
                     title="Semana anterior"
                   >
-                    <IconChevronLeft className="w-4 h-4 stroke-[2.5]" />
+                    <IconChevronLeft className="w-3.5 h-3.5 stroke-[2.5]" />
                   </button>
 
                   <button
                     onClick={() => setFechaSeleccionada(hoyStr)}
                     title="Semana activa. Clic para volver a la actual"
-                    className="px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs bg-[#8C243B] text-white min-w-[100px] text-center hover:opacity-95 active:scale-95"
+                    className="px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer shadow-2xs bg-[#8C243B] text-white min-w-[90px] text-center hover:opacity-95 active:scale-95"
                   >
                     {diasDeLaSemana.some((d) => d.esHoy)
-                      ? 'Semana Actual'
+                      ? 'Esta Semana'
                       : `Semana ${diasDeLaSemana[0]?.diaNum} - ${diasDeLaSemana[6]?.diaNum}`}
                   </button>
 
                   <button
                     onClick={() => cambiarSemana(1)}
-                    className="p-2 rounded-xl bg-white hover:bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2] transition cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
+                    className="p-1.5 rounded-lg bg-white hover:bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2] transition cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
                     title="Semana siguiente"
                   >
-                    <IconChevronRight className="w-4 h-4 stroke-[2.5]" />
+                    <IconChevronRight className="w-3.5 h-3.5 stroke-[2.5]" />
                   </button>
 
-                  <div className="relative pl-1">
+                  <div className="relative pl-0.5">
                     <input
                       type="date"
                       value={fechaSeleccionada}
                       onChange={(e) => setFechaSeleccionada(e.target.value)}
-                      className="px-3 py-1.5 bg-white border border-[#F2C4D2] rounded-xl text-xs font-bold text-[#2D2529] outline-none cursor-pointer hover:border-[#8C243B] transition shadow-2xs"
+                      className="px-2 py-1 bg-white border border-[#F2C4D2] rounded-lg text-xs font-bold text-[#2D2529] outline-none cursor-pointer hover:border-[#8C243B] transition shadow-2xs"
                       title="Selecciona cualquier fecha para ver su semana"
                     />
                   </div>
@@ -2783,10 +2864,10 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
             </div>
 
             {/* SELECTOR DE VISTA EN ADMINISTRADORA: 4 Columnas vs Timeline por Especialista */}
-            <div className="flex flex-wrap items-center gap-2 pb-1">
+            <div className="flex items-center gap-2 pb-1 overflow-x-auto no-scrollbar -mx-3 px-3 sm:mx-0 sm:px-0 sm:flex-wrap">
               <button
                 onClick={() => setEspecialistaSeleccionadaId('todas')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs flex items-center gap-1.5 ${
+                className={`px-3 sm:px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs flex items-center gap-1.5 shrink-0 ${
                   especialistaSeleccionadaId === 'todas'
                     ? 'bg-[#8C243B] text-white shadow-xs'
                     : 'bg-white text-[#7D6870] hover:text-[#2D2529] border border-[#F2C4D2]'
@@ -2808,7 +2889,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                   <button
                     key={cancha.id}
                     onClick={() => setEspecialistaSeleccionadaId(cancha.id)}
-                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs flex items-center gap-1.5 ${
+                    className={`px-3 sm:px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs flex items-center gap-1.5 shrink-0 ${
                       especialistaSeleccionadaId === cancha.id
                         ? 'bg-[#8C243B] text-white shadow-xs'
                         : 'bg-white text-[#7D6870] hover:text-[#2D2529] border border-[#F2C4D2]'
@@ -3349,7 +3430,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
         {/* ==================================================================== */}
         {!esAdmin && (
           <div className="space-y-4">
-            <div className="bg-gradient-to-r from-[#FFF5F7] to-[#FCE8EF] border border-[#F2C4D2] rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="bg-gradient-to-r from-[#FFF5F7] to-[#FCE8EF] border border-[#F2C4D2] rounded-2xl p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <h2 className="text-base sm:text-lg font-bold text-[#2D2529] font-serif">
                   ¡Hola, {perfilActual.nombre}! 💅
@@ -3360,7 +3441,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                     : `Planificación semanal de tus turnos del ${etiquetaSemana}.`}
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   onClick={() => abrirModalBloquear(perfilActual.canchaId)}
                   className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white text-xs font-bold rounded-xl transition shadow-xs cursor-pointer active:scale-95"
