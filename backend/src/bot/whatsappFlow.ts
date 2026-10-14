@@ -80,7 +80,8 @@ export class WhatsAppFlow {
     nombrePush?: string,
     complejoDirecto?: Complejo,
     mediaId?: string,
-    mediaType?: string
+    mediaType?: string,
+    directImageBuffer?: Buffer
   ): Promise<BotResponse> {
     try {
       const ahora = Date.now();
@@ -147,7 +148,7 @@ export class WhatsAppFlow {
       }
 
       // Detección de comprobante de pago o seguimiento de pre-reserva pendiente
-      const resComprobante = await this.manejarRecepcionComprobante(telefono, complejo, session, mediaId, mediaType, texto);
+      const resComprobante = await this.manejarRecepcionComprobante(telefono, complejo, session, mediaId, mediaType, texto, directImageBuffer);
       if (resComprobante) {
         return resComprobante;
       }
@@ -220,7 +221,7 @@ export class WhatsAppFlow {
           return await this.manejarSeleccionHora(input, session, telefono, complejo);
 
         case 'ESPERA_PAGO':
-          return await this.manejarEsperaPago(input, session, complejo, mediaId, mediaType);
+          return await this.manejarEsperaPago(input, session, complejo, mediaId, mediaType, directImageBuffer);
 
         default:
           session.paso = 'INICIO';
@@ -1077,7 +1078,8 @@ export class WhatsAppFlow {
     session: UserSession,
     complejo: Complejo,
     mediaId?: string,
-    mediaType?: string
+    mediaType?: string,
+    directImageBuffer?: Buffer
   ): Promise<BotResponse> {
     if (!session.reservaId) {
       session.paso = 'INICIO';
@@ -1090,8 +1092,10 @@ export class WhatsAppFlow {
     // ==============================================================================
     // CASO 1: EL CLIENTE ENVIÓ UNA IMAGEN (COMPROBANTE MULTIMEDIA -> OPCIÓN B CON IA)
     // ==============================================================================
-    if (mediaId) {
-      const mediaDescargado = await ReceiptVerificationService.descargarImagenMeta(mediaId, complejo.whatsapp_token);
+    if (mediaId || directImageBuffer) {
+      const mediaDescargado = directImageBuffer
+        ? { buffer: directImageBuffer, mimeType: mediaType || 'image/jpeg' }
+        : (mediaId ? await ReceiptVerificationService.descargarImagenMeta(mediaId, complejo.whatsapp_token) : null);
 
       if (mediaDescargado) {
         const cuentasOficiales = [complejo.nequi_numero, complejo.daviplata_numero].filter(Boolean) as string[];
@@ -1229,7 +1233,8 @@ export class WhatsAppFlow {
     session: UserSession,
     mediaId?: string,
     mediaType?: string,
-    texto?: string
+    texto?: string,
+    directImageBuffer?: Buffer
   ): Promise<BotResponse | null> {
     // 1. Buscar si el cliente tiene una reserva pendiente de anticipo (priorizando la más reciente por teléfono)
     let reservaTarget: any = null;
@@ -1287,7 +1292,7 @@ export class WhatsAppFlow {
 
     // Si no tiene reserva pendiente y no envió multimedia, continuar el flujo normal
     if (!reservaTarget) {
-      if (mediaId) {
+      if (mediaId || directImageBuffer) {
         return {
           texto: `🌸 ¡Hola! Recibimos tu imagen, pero en este momento no encontramos una cita pendiente de anticipo a tu nombre.\n\n` +
             `Si deseas consultar servicios o apartar tu cita en *${complejo.nombre}*, escribe *HOLA* o *MENU* 💕💅.`,
@@ -1296,10 +1301,12 @@ export class WhatsAppFlow {
       return null;
     }
 
-    // 2. Si envió una imagen (mediaId):
-    if (mediaId) {
+    // 2. Si envió una imagen (mediaId o directImageBuffer):
+    if (mediaId || directImageBuffer) {
       const anticipoRequerido = reservaTarget.valor_anticipo_requerido || (reservaTarget.valor_total * 0.2);
-      const mediaDescargado = await ReceiptVerificationService.descargarImagenMeta(mediaId, complejo.whatsapp_token);
+      const mediaDescargado = directImageBuffer
+        ? { buffer: directImageBuffer, mimeType: mediaType || 'image/jpeg' }
+        : (mediaId ? await ReceiptVerificationService.descargarImagenMeta(mediaId, complejo.whatsapp_token) : null);
 
       if (!mediaDescargado) {
         return {

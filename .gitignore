@@ -19,3 +19,7 @@ yarn-error.log*
 # SO
 .DS_Store
 Thumbs.db
+
+# Baileys WhatsApp Session Data
+baileys_auth_info/
+*baileys_auth*

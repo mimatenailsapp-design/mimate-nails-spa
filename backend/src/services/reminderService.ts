@@ -1,5 +1,6 @@
 import { supabase } from '../config/supabase.js';
 import axios from 'axios';
+import { BaileysService } from './baileysService.js';
 
 export class ReminderService {
   /**
@@ -304,6 +305,20 @@ export class ReminderService {
     let cleanPhone = to.replace(/\D/g, '');
     if (cleanPhone.length === 10 && cleanPhone.startsWith('3')) {
       cleanPhone = `57${cleanPhone}`;
+    }
+
+    // 0. Si el proveedor activo es Baileys, enviar a través de Baileys
+    if (process.env.WHATSAPP_PROVIDER === 'baileys' || process.env.USE_BAILEYS === 'true') {
+      let textoCompleto = message;
+      if (botones && botones.length > 0) {
+        const opciones = botones.map((b, i) => `${i + 1}️⃣ ${b.title}`).join('\n');
+        textoCompleto += `\n\n${opciones}\n\n👉 Responde con el número de tu opción.`;
+      }
+      const enviado = await BaileysService.enviarMensajeDirecto(cleanPhone, textoCompleto);
+      if (enviado) {
+        console.log(`✅ [RECORDATORIO BAILEYS ENVIADO a ${cleanPhone}]`);
+        return;
+      }
     }
 
     const token = tokenOverride || process.env.WHATSAPP_TOKEN;

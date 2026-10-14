@@ -8,6 +8,7 @@ import { ReminderService } from './services/reminderService.js';
 import { BookingService } from './services/bookingService.js';
 import { AIReceptionistService } from './services/aiReceptionistService.js';
 import { BotExclusionsService } from './services/botExclusionsService.js';
+import { BaileysService } from './services/baileysService.js';
 
 dotenv.config();
 
@@ -393,6 +394,12 @@ async function enviarMensajeWhatsApp(
   let cleanTo = String(to).replace(/\D/g, '');
   if (cleanTo.length === 10 && cleanTo.startsWith('3')) {
     cleanTo = `57${cleanTo}`;
+  }
+
+  // Si Baileys está habilitado, despachar a través de Baileys
+  if (process.env.WHATSAPP_PROVIDER === 'baileys' || process.env.USE_BAILEYS === 'true') {
+    const enviado = await BaileysService.enviarMensajeDirecto(cleanTo, message);
+    if (enviado) return;
   }
 
   const token = customToken || process.env.WHATSAPP_TOKEN;
@@ -1654,12 +1661,29 @@ app.all('/api/cron/recordatorios', async (req: Request, res: Response) => {
   }
 });
 
+// Estado de Baileys WhatsApp Web
+app.get('/api/baileys/status', (req: Request, res: Response) => {
+  res.json(BaileysService.getEstado());
+});
+
 // Iniciar Servidor
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`🚀 Servidor ejecutándose en http://localhost:${PORT}`);
   console.log(`📡 Webhook WhatsApp listo en: http://localhost:${PORT}/webhook`);
   console.log(`💬 Simulador del Bot listo en: POST http://localhost:${PORT}/api/bot/simulate`);
   console.log(`⏰ Cron Recordatorios listo en: POST http://localhost:${PORT}/api/cron/recordatorios`);
+
+  // Inicializar Baileys si está activo en el entorno
+  const usarBaileys = process.env.WHATSAPP_PROVIDER === 'baileys' || process.env.USE_BAILEYS === 'true';
+  if (usarBaileys) {
+    try {
+      await BaileysService.iniciar();
+    } catch (baileysErr) {
+      console.error('❌ Error iniciando servicio de Baileys:', baileysErr);
+    }
+  } else {
+    console.log('ℹ️  Modo WhatsApp: Meta Cloud API (Oficial). Para activar Baileys, define WHATSAPP_PROVIDER=baileys en .env');
+  }
 
   setInterval(async () => {
     try {
