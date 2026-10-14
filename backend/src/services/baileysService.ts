@@ -88,10 +88,10 @@ export class BaileysService {
    * Respalda automáticamente los archivos de sesión en Supabase para que Render no vuelva a pedir QR
    */
   private static debounceGuardado: NodeJS.Timeout | null = null;
-  private static respaldarSesionEnSupabase(authDir: string): void {
+  private static respaldarSesionEnSupabase(authDir: string, inmediato: boolean = false): void {
     if (this.debounceGuardado) clearTimeout(this.debounceGuardado);
 
-    this.debounceGuardado = setTimeout(async () => {
+    const ejecutarRespaldo = async () => {
       try {
         const credsPath = path.join(authDir, 'creds.json');
         if (!fs.existsSync(credsPath)) return;
@@ -118,7 +118,13 @@ export class BaileysService {
       } catch (err) {
         console.error('Error respaldando sesión en Supabase:', err);
       }
-    }, 3000);
+    };
+
+    if (inmediato) {
+      ejecutarRespaldo();
+    } else {
+      this.debounceGuardado = setTimeout(ejecutarRespaldo, 2000);
+    }
   }
 
   /**
@@ -207,7 +213,7 @@ export class BaileysService {
         this.qrCode = null;
         console.log('\n✅ ¡BAILEYS CONECTADO EXITOSAMENTE A WHATSAPP!');
         console.log(`📱 Usuario conectado: ${this.socket?.user?.id || 'Sesión Activa'}\n`);
-        this.respaldarSesionEnSupabase(authDir);
+        this.respaldarSesionEnSupabase(authDir, true);
       }
     });
 
