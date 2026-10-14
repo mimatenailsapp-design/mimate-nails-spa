@@ -23,6 +23,7 @@ import {
   IconCalendarEvent,
   IconCalendarMonth,
   IconSearch,
+  IconSettings,
 } from '@tabler/icons-react';
 import { supabase } from '../config/supabase';
 
@@ -2459,15 +2460,11 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
               <button
                 onClick={() => setModalConfigAnticipoAbierto(true)}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition shadow-xs cursor-pointer border bg-white border-[#F2C4D2] text-[#8C243B] hover:bg-[#FCE8EF]"
-                title="Modificar horario de trabajo por temporada, anticipos y cuentas de recaudo"
+                title="Configuración general del spa: horarios de trabajo, anticipos y cuentas de recaudo"
               >
-                <IconClock className="w-3.5 h-3.5 text-[#C74B66]" />
-                <span className="hidden sm:inline">
-                  Horario: {configAnticipo.horaApertura} - {configAnticipo.horaCierre}
-                </span>
-                <span className="sm:hidden">
-                  {configAnticipo.horaApertura}-{configAnticipo.horaCierre}
-                </span>
+                <IconSettings className="w-3.5 h-3.5 text-[#C74B66]" />
+                <span className="hidden sm:inline">Configuración del Spa</span>
+                <span className="sm:hidden">Config. Spa</span>
               </button>
             )}
 
@@ -2491,7 +2488,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                 title="Gestionar clientes con bot silenciado para atención humana personalizada"
               >
                 <IconLock className="w-3.5 h-3.5 text-[#8C243B]" />
-                <span className="hidden sm:inline">Bot Restringido</span>
+                <span className="hidden sm:inline">Número Restringido</span>
                 <span className="sm:hidden">Restringidos</span>
                 {exclusionesBot.length > 0 && (
                   <span className="px-1.5 py-0.2 rounded-full bg-[#8C243B] text-white text-[10px] font-mono font-bold">
@@ -4857,7 +4854,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                           title={estaSilenciado ? 'Acceso al bot actualmente restringido para este número. Clic para reactivar.' : 'Restringir bot para evitar que este número use reservas automáticas'}
                         >
                           <IconLock className="w-3.5 h-3.5 text-amber-700" />
-                          <span className="hidden sm:inline">{estaSilenciado ? 'Bot Restringido' : 'Restringir Bot'}</span>
+                          <span className="hidden sm:inline">{estaSilenciado ? 'Número Restringido' : 'Restringir Número'}</span>
                         </button>
                       );
                     })()}
