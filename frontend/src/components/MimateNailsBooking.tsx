@@ -616,9 +616,13 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
             "Mímate como te lo mereces. ¡Uñas hermosas, siempre perfectas!"
           </p>
 
-          <div className="inline-flex items-center gap-2 bg-white/80 border border-[#F2C4D2] px-4 py-1.5 rounded-full shadow-xs text-xs font-bold text-[#8C243B]">
-            <IconSparkles className="w-3.5 h-3.5 text-[#C74B66]" />
-            <span>★ Reserva tu cita en segundos</span>
+          <div className="flex items-center justify-center gap-2.5 pt-1 text-xs sm:text-sm font-semibold text-[#8C243B] tracking-wide">
+            <span className="w-8 sm:w-12 h-px bg-[#F2C4D2]" />
+            <span className="flex items-center gap-1.5">
+              <IconSparkles className="w-3.5 h-3.5 text-[#C74B66]" />
+              <span>Reserva tu cita en segundos</span>
+            </span>
+            <span className="w-8 sm:w-12 h-px bg-[#F2C4D2]" />
           </div>
         </div>
       </section>
