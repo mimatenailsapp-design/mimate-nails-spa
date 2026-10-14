@@ -4,6 +4,8 @@ import { supabase } from '../config/supabase.js';
 export interface ResultadoVerificacionIA {
   es_comprobante_bancario?: boolean;
   cuenta_coincide?: boolean;
+  fecha_coincide?: boolean;
+  monto_coincide?: boolean;
   es_valido: boolean;
   es_sospechoso_fraude: boolean;
   monto_detectado?: number;
@@ -50,6 +52,26 @@ export class ReceiptVerificationService {
   }
 
   /**
+   * Obtiene la fecha actual en zona horaria de Colombia en formato 'YYYY-MM-DD'
+   */
+  private static obtenerFechaActualCol(): { yyyyMmDd: string; dia: string; mes: string; anio: string; fechaTexto: string } {
+    const ahora = new Date();
+    const formatter = new Intl.DateTimeFormat('es-CO', {
+      timeZone: 'America/Bogota',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    const partes = formatter.formatToParts(ahora);
+    const anio = partes.find((p) => p.type === 'year')?.value || '';
+    const mes = partes.find((p) => p.type === 'month')?.value || '';
+    const dia = partes.find((p) => p.type === 'day')?.value || '';
+    const yyyyMmDd = `${anio}-${mes}-${dia}`;
+    const fechaTexto = `${dia}/${mes}/${anio}`;
+    return { yyyyMmDd, dia, mes, anio, fechaTexto };
+  }
+
+  /**
    * Analiza el comprobante con Google Gemini Flash Multimodal (Visión + Detección de Fraude)
    */
   static async analizarComprobante(
@@ -66,6 +88,8 @@ export class ReceiptVerificationService {
       return {
         es_valido: false,
         cuenta_coincide: false,
+        fecha_coincide: false,
+        monto_coincide: false,
         es_sospechoso_fraude: false,
         indicios_fraude: [],
         explicacion: 'No hay GEMINI_API_KEY configurada. Se deriva a verificación manual en visor.',
@@ -85,33 +109,44 @@ export class ReceiptVerificationService {
         ? listaCuentas.map((c) => `"${c}"`).join(' o ')
         : 'Nequi / Bancolombia oficial del spa';
 
+      const fechaActualInfo = this.obtenerFechaActualCol();
+
       const prompt = `Eres un auditor bancario experto en detección de fraudes de comprobantes de pago en Colombia (especialmente Nequi, Daviplata, Bancolombia, dale!, Bre-B).
-Analiza detalladamente esta imagen de comprobante de transferencia y determina:
+Analiza detalladamente esta imagen de comprobante de transferencia y valida rigurosamente los 3 FILTROS OBLIGATORIOS para confirmar la reserva:
+
+FILTRO 1: CUENTA DE DESTINO (¿A qué cuenta llegó el dinero?)
+- El comprobante DEBE ser enviado a una de las cuentas oficiales del negocio: ${cuentasTexto}
+- O al titular oficial del negocio: "${titularEsperado || 'JL Mímate Nails'}"
+- Si el dinero fue enviado a otra cuenta o a otra persona ajena, "cuenta_coincide" DEBE ser false.
+
+FILTRO 2: FECHA ACTUAL (¿Cuándo se realizó la transferencia?)
+- Fecha actual en Colombia hoy: ${fechaActualInfo.dia}/${fechaActualInfo.mes}/${fechaActualInfo.anio} (${fechaActualInfo.yyyyMmDd}).
+- La transferencia DEBE ser de HOY (${fechaActualInfo.dia}/${fechaActualInfo.mes}/${fechaActualInfo.anio} o indicación de "Hoy", "${fechaActualInfo.dia} de ...", etc.).
+- Comprobantes de fechas anteriores (días, meses o años pasados) son inválidos y "fecha_coincide" DEBE ser false.
+
+FILTRO 3: MONTO SOLICITADO (¿Cuánto dinero transfirió?)
+- Monto mínimo de anticipo requerido: $${montoEsperado} COP.
+- El valor transferido debe ser igual o superior al anticipo solicitado ($${montoEsperado} COP).
+- Si el monto transferido es menor al requerido, "monto_coincide" DEBE ser false.
 
 DATOS A EXTRAER:
 1. Monto transferido (número limpio, ej: 50000).
 2. Número de referencia / ID de transacción (ej: M1234567, 10982736, etc.).
 3. Nombre y número del destinatario / cuenta a la que llegó el dinero (extrae exactamente el número de celular o número de cuenta de destino visible y el nombre del titular destino).
-4. Fecha y hora de la transacción.
+4. Fecha y hora de la transacción (extrae exactamente el texto de la fecha como aparece en la imagen).
 5. Estado de la transacción (¿Dice "Exitoso", "Envío exitoso", "Listo", etc.?).
 
-AUDITORÍA DE FRAUDE, CUENTA DESTINO Y MANIPULACIÓN:
+AUDITORÍA DE FRAUDE Y MANIPULACIÓN:
 - ¿Es un comprobante auténtico generado por la app oficial o es una plantilla falsa generada por webs/apps de comprobantes falsos?
 - Tipografía y Fuentes: ¿Hay fuentes desalineadas, fuentes genéricas como Arial/Helvetica superpuestas, grosores inconsistentes en el monto o la fecha?
 - Píxeles y Compresión: ¿Hay "ruido" o artefactos de compresión diferentes alrededor del valor o de la fecha respecto al resto del fondo?
-- VERIFICACIÓN OBLIGATORIA DE CUENTA DESTINO:
-  * El comprobante DEBE ser enviado a una de las cuentas oficiales del negocio: ${cuentasTexto}
-  * O al titular oficial del negocio: "${titularEsperado || 'JL Mímate Nails'}"
-  * Si el comprobante muestra una cuenta o persona completamente diferente ajena a estas cuentas oficiales, "cuenta_coincide" DEBE ser false.
-- Datos esperados:
-  * Monto mínimo de anticipo esperado: $${montoEsperado} COP
-  * Cuentas oficiales autorizadas: ${cuentasTexto}
-  ${titularEsperado ? `* Nombre titular esperado: "${titularEsperado}"` : ''}
 
 RESPONDE EXCLUSIVAMENTE EN FORMATO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA:
 {
   "es_comprobante_bancario": boolean,
   "cuenta_coincide": boolean,
+  "fecha_coincide": boolean,
+  "monto_coincide": boolean,
   "es_valido": boolean,
   "es_sospechoso_fraude": boolean,
   "monto_detectado": number | null,
@@ -121,7 +156,7 @@ RESPONDE EXCLUSIVAMENTE EN FORMATO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA:
   "indicios_fraude": string[],
   "explicacion": string,
   "confianza": "ALTA" | "MEDIA" | "BAJA"
-}`;
+};`;
 
       // Lista de modelos ordenados por modernidad y precisión en visión (todos con capa gratuita en Google AI Studio)
       const modelosDisponibles = [
@@ -187,10 +222,7 @@ RESPONDE EXCLUSIVAMENTE EN FORMATO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA:
 
       const parsed = JSON.parse(rawText);
 
-      // Verificación de monto suficiente
-      const montoOk = parsed.monto_detectado && parsed.monto_detectado >= montoEsperado * 0.95; // margen de tolerancia del 5%
-
-      // Doble verificación en código de la cuenta/destinatario detectado:
+      // FILTRO 1: CUENTA DE DESTINO (Verificación con lista de cuentas oficiales)
       let cuentaOk = parsed.cuenta_coincide !== false;
       if (listaCuentas.length > 0 && parsed.destinatario_detectado) {
         const destLimpio = String(parsed.destinatario_detectado).replace(/\D/g, '');
@@ -212,17 +244,50 @@ RESPONDE EXCLUSIVAMENTE EN FORMATO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA:
           destTexto.includes('jl mimate')
         );
 
-        // Si la IA dijo que no coincide, o no coincide ni por número ni por titular:
         if (parsed.cuenta_coincide === false || (!coincideConCuentas && !coincideConTitular && destLimpio.length >= 7)) {
           cuentaOk = false;
         }
       }
 
-      const esValidoFinal = Boolean(parsed.es_valido && montoOk && cuentaOk && !parsed.es_sospechoso_fraude);
+      // FILTRO 2: FECHA ACTUAL (Transferencia realizada el día de hoy)
+      let fechaOk = parsed.fecha_coincide !== false;
+      if (parsed.fecha_detectada) {
+        const fDet = String(parsed.fecha_detectada).toLowerCase();
+        const diaNum = fechaActualInfo.dia;
+        const anioNum = fechaActualInfo.anio;
+
+        const esHoyTexto = fDet.includes('hoy');
+        const tieneDia = fDet.includes(diaNum) || fDet.includes(String(parseInt(diaNum, 10)));
+        const tieneAnio = fDet.includes(anioNum) || fDet.includes(anioNum.slice(-2));
+
+        if (parsed.fecha_coincide === false) {
+          fechaOk = false;
+        } else if (!esHoyTexto && (!tieneDia || !tieneAnio)) {
+          fechaOk = false;
+        }
+      }
+
+      // FILTRO 3: MONTO SOLICITADO (Igual o superior al anticipo requerido)
+      const montoDetectado = Number(parsed.monto_detectado || 0);
+      let montoOk = Boolean(parsed.monto_coincide !== false && montoDetectado >= montoEsperado * 0.95);
+      if (montoDetectado > 0 && montoDetectado < montoEsperado * 0.95) {
+        montoOk = false;
+      }
+
+      // Los 3 filtros deben ser 100% verdaderos para que sea válido
+      const esValidoFinal = Boolean(
+        parsed.es_valido &&
+        cuentaOk &&
+        fechaOk &&
+        montoOk &&
+        !parsed.es_sospechoso_fraude
+      );
 
       return {
         es_comprobante_bancario: parsed.es_comprobante_bancario !== false,
         cuenta_coincide: cuentaOk,
+        fecha_coincide: fechaOk,
+        monto_coincide: montoOk,
         es_valido: esValidoFinal,
         es_sospechoso_fraude: Boolean(parsed.es_sospechoso_fraude),
         monto_detectado: parsed.monto_detectado || undefined,
@@ -238,6 +303,8 @@ RESPONDE EXCLUSIVAMENTE EN FORMATO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA:
       return {
         es_valido: false,
         cuenta_coincide: false,
+        fecha_coincide: false,
+        monto_coincide: false,
         es_sospechoso_fraude: false,
         indicios_fraude: ['Fallo en servicio de visión IA'],
         explicacion: 'No se pudo procesar la imagen automáticamente. Se deriva al visor web.',

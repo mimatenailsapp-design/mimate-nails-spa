@@ -1105,14 +1105,34 @@ export class WhatsAppFlow {
           complejo.titular_cuenta
         );
 
-        // 1.0 DETECCIÓN DE CUENTA NO COINCIDENTE
+        // 1. FILTRO 1: CUENTA DE DESTINO
         if (analisis.cuenta_coincide === false) {
           const cuentasTexto = cuentasOficiales.length > 0 ? cuentasOficiales.join(' / ') : (complejo.nequi_numero || '3219610896');
           return {
             texto: `⚠️ *Cuenta de destino no coincide* 🏦❌\n\n` +
               `El comprobante enviado no corresponde a las cuentas oficiales de *${complejo.nombre}*.\n\n` +
-              `📌 Nuestras cuentas oficiales son:\n📲 Nequi / Bancolombia: *${cuentasTexto}*\n👤 Titular: *${complejo.titular_cuenta || 'JL Mímate Nails'}*\n\n` +
-              `Por favor verifica tu comprobante y reenvíalo 💕💅.`,
+              `📌 Nuestras cuentas oficiales autorizadas son:\n📲 Nequi / Bancolombia: *${cuentasTexto}*\n👤 Titular: *${complejo.titular_cuenta || 'JL Mímate Nails'}*\n\n` +
+              `Por favor verifica tu transferencia y reenvía el comprobante correcto 💕💅.`,
+          };
+        }
+
+        // 2. FILTRO 2: FECHA ACTUAL (Transferencia del día de hoy)
+        if (analisis.fecha_coincide === false) {
+          return {
+            texto: `⚠️ *Fecha del comprobante no válida* 📅❌\n\n` +
+              `El comprobante enviado no corresponde al día de hoy (${analisis.fecha_detectada ? `detectamos fecha: *${analisis.fecha_detectada}*` : 'fecha no actual'}).\n\n` +
+              `👉 Para confirmar tu reserva, la transferencia del abono debe realizarse el día de hoy. Por favor verifica y envía el soporte correspondiente 💕.`,
+          };
+        }
+
+        // 3. FILTRO 3: MONTO SOLICITADO
+        if (analisis.monto_coincide === false) {
+          const anticipoFmt = '$' + Number(anticipoRequerido).toLocaleString('es-CO');
+          const detectadoFmt = analisis.monto_detectado ? '$' + Number(analisis.monto_detectado).toLocaleString('es-CO') : 'monto insuficiente';
+          return {
+            texto: `⚠️ *Monto de abono insuficiente* 💰❌\n\n` +
+              `Detectamos un valor transferido de *${detectadoFmt}*, pero el anticipo requerido para confirmar tu cita es de *${anticipoFmt}*.\n\n` +
+              `👉 Por favor completa el valor del abono y envíanos el soporte para asegurar tu turno 💕💅.`,
           };
         }
 
@@ -1331,7 +1351,7 @@ export class WhatsAppFlow {
         };
       }
 
-      // CASO 2.2: COMPROBANTE ENVIADO A UNA CUENTA DIFERENTE A LAS OFICIALES DEL SPA
+      // CASO 2.2: FILTRO 1 - COMPROBANTE ENVIADO A UNA CUENTA DIFERENTE A LAS OFICIALES DEL SPA
       if (analisis.cuenta_coincide === false) {
         const cuentasTexto = cuentasOficiales.length > 0 ? cuentasOficiales.join(' / ') : (complejo.nequi_numero || '3219610896');
         const titularTexto = complejo.titular_cuenta || 'JL Mímate Nails';
@@ -1345,7 +1365,27 @@ export class WhatsAppFlow {
         };
       }
 
-      // CASO 2.3: ES COMPROBANTE BANCARIO PERO SOSPECHOSO DE FRAUDE
+      // CASO 2.3: FILTRO 2 - FECHA DE LA TRANSFERENCIA NO ES LA FECHA ACTUAL
+      if (analisis.fecha_coincide === false) {
+        return {
+          texto: `⚠️ *Fecha del comprobante no válida* 📅❌\n\n` +
+            `El comprobante enviado no corresponde al día de hoy (${analisis.fecha_detectada ? `detectamos fecha: *${analisis.fecha_detectada}*` : 'fecha no actual'}).\n\n` +
+            `👉 Para confirmar tu reserva, la transferencia del abono debe realizarse el día de hoy. Por favor verifica y envía el soporte correspondiente 💕.`,
+        };
+      }
+
+      // CASO 2.4: FILTRO 3 - MONTO TRANSFERIDO INSUFICIENTE
+      if (analisis.monto_coincide === false) {
+        const anticipoFmt = '$' + Number(anticipoRequerido).toLocaleString('es-CO');
+        const detectadoFmt = analisis.monto_detectado ? '$' + Number(analisis.monto_detectado).toLocaleString('es-CO') : 'monto insuficiente';
+        return {
+          texto: `⚠️ *Monto de abono insuficiente* 💰❌\n\n` +
+            `Detectamos un valor transferido de *${detectadoFmt}*, pero el anticipo requerido para confirmar tu turno es de *${anticipoFmt}*.\n\n` +
+            `👉 Por favor completa el valor del abono y envíanos el soporte para asegurar tu cita 💕💅.`,
+        };
+      }
+
+      // CASO 2.5: ES COMPROBANTE BANCARIO PERO SOSPECHOSO DE FRAUDE
       if (analisis.es_sospechoso_fraude) {
         const indicios = analisis.indicios_fraude.join(', ') || 'Inconsistencia detectada';
         await supabase
