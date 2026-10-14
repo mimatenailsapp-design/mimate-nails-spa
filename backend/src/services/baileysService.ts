@@ -14,6 +14,7 @@ import fs from 'fs';
 import { WhatsAppFlow, BotResponse } from '../bot/whatsappFlow.js';
 import { BookingService, Complejo } from './bookingService.js';
 import { BotExclusionsService } from './botExclusionsService.js';
+import { supabase } from '../config/supabase.js';
 
 export class BaileysService {
   private static socket: WASocket | null = null;
@@ -59,6 +60,67 @@ export class BaileysService {
   }
 
   /**
+   * Restaura la sesión desde la base de datos de Supabase si el disco local está vacío (como en Render)
+   */
+  private static async restaurarSesionDesdeSupabase(authDir: string): Promise<boolean> {
+    const credsPath = path.join(authDir, 'creds.json');
+    if (fs.existsSync(credsPath)) return true;
+
+    try {
+      const complejos = await BookingService.getComplejos();
+      const tokenData = complejos[0]?.whatsapp_token;
+      if (!tokenData || !tokenData.startsWith('{"creds.json":')) return false;
+
+      const bundle = JSON.parse(tokenData);
+      for (const [nombreArchivo, contenido] of Object.entries(bundle)) {
+        fs.writeFileSync(path.join(authDir, nombreArchivo), contenido as string, 'utf-8');
+      }
+      console.log(`💾 Sesión de Baileys restaurada exitosamente desde Supabase (${Object.keys(bundle).length} archivos).`);
+      return true;
+    } catch (err) {
+      console.error('Error restaurando sesión de Baileys desde Supabase:', err);
+      return false;
+    }
+  }
+
+  /**
+   * Respalda automáticamente los archivos de sesión en Supabase para que Render no vuelva a pedir QR
+   */
+  private static debounceGuardado: NodeJS.Timeout | null = null;
+  private static respaldarSesionEnSupabase(authDir: string): void {
+    if (this.debounceGuardado) clearTimeout(this.debounceGuardado);
+
+    this.debounceGuardado = setTimeout(async () => {
+      try {
+        const credsPath = path.join(authDir, 'creds.json');
+        if (!fs.existsSync(credsPath)) return;
+
+        const files = fs.readdirSync(authDir);
+        const bundle: Record<string, string> = {};
+        for (const f of files) {
+          const filePath = path.join(authDir, f);
+          if (fs.statSync(filePath).isFile()) {
+            bundle[f] = fs.readFileSync(filePath, 'utf-8');
+          }
+        }
+
+        const serialized = JSON.stringify(bundle);
+        const complejos = await BookingService.getComplejos();
+        const complejoId = complejos[0]?.id;
+        if (complejoId) {
+          await supabase
+            .from('complejos')
+            .update({ whatsapp_token: serialized })
+            .eq('id', complejoId);
+          console.log(`💾 Sesión de WhatsApp respaldada permanentemente en Supabase (${files.length} archivos).`);
+        }
+      } catch (err) {
+        console.error('Error respaldando sesión en Supabase:', err);
+      }
+    }, 3000);
+  }
+
+  /**
    * Inicializa la conexión de Baileys con blindaje anti-baneo
    */
   static async iniciar(): Promise<void> {
@@ -66,6 +128,9 @@ export class BaileysService {
     if (!fs.existsSync(authDir)) {
       fs.mkdirSync(authDir, { recursive: true });
     }
+
+    // 1. Restaurar sesión previa de Supabase si estamos en un contenedor nuevo (como Render)
+    await this.restaurarSesionDesdeSupabase(authDir);
 
     const { state, saveCreds } = await useMultiFileAuthState(authDir);
     const { version } = await fetchLatestBaileysVersion();
@@ -97,7 +162,10 @@ export class BaileysService {
       defaultQueryTimeoutMs: 60000,
     });
 
-    this.socket.ev.on('creds.update', saveCreds);
+    this.socket.ev.on('creds.update', async () => {
+      await saveCreds();
+      this.respaldarSesionEnSupabase(authDir);
+    });
 
     this.socket.ev.on('connection.update', async (update) => {
       const { connection, lastDisconnect, qr } = update;
@@ -121,6 +189,10 @@ export class BaileysService {
           console.log('❌ Sesión cerrada desde el celular. Limpiando credenciales antiguas...');
           try {
             fs.rmSync(authDir, { recursive: true, force: true });
+            const complejos = await BookingService.getComplejos();
+            if (complejos[0]?.id) {
+              await supabase.from('complejos').update({ whatsapp_token: null }).eq('id', complejos[0].id);
+            }
           } catch (e) {
             console.error('Error limpiando authDir:', e);
           }
@@ -134,6 +206,7 @@ export class BaileysService {
         this.qrCode = null;
         console.log('\n✅ ¡BAILEYS CONECTADO EXITOSAMENTE A WHATSAPP!');
         console.log(`📱 Usuario conectado: ${this.socket?.user?.id || 'Sesión Activa'}\n`);
+        this.respaldarSesionEnSupabase(authDir);
       }
     });
 
