@@ -1873,6 +1873,9 @@ export class WhatsAppFlow {
         })
         .eq('id', reserva.id);
 
+      session.reservaId = undefined;
+      session.paso = 'INICIO';
+
       return {
         texto:
           `🌸 *CITA CANCELADA*\n\n` +

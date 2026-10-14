@@ -1722,7 +1722,8 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     });
 
     const ALTURA_TOTAL_TIMELINE = HORAS_TIMELINE.length * ALTURA_HORA_PX;
-    const citasPosicionadas = calcularPosicionesCitas(citasManicurista);
+    const citasVisibles = citasManicurista.filter((r) => r.estado !== 'cancelada');
+    const citasPosicionadas = calcularPosicionesCitas(citasVisibles);
     const ahoraMs = ahora.getTime();
 
     return (
@@ -1738,7 +1739,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                 {nombreManicurista}
               </h3>
               <p className="text-xs text-[#7D6870]">
-                {fechaTextoTimeline} · <strong className="text-[#8C243B]">{citasManicurista.length} citas</strong> agendadas
+                {fechaTextoTimeline} · <strong className="text-[#8C243B]">{citasVisibles.length} citas</strong> agendadas
               </p>
             </div>
           </div>
@@ -2043,17 +2044,31 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                                 )}
 
                                 {cita.estado !== 'completada' && cita.estado !== 'cancelada' && (
-                                  <button
-                                    onClick={(ev) => {
-                                      ev.stopPropagation();
-                                      handleCambiarEstado(cita.id, 'completada');
-                                    }}
-                                    className="flex items-center gap-1 px-2 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold transition shadow-2xs cursor-pointer active:scale-95"
-                                    title="Marcar como atendida"
-                                  >
-                                    <IconCheck className="w-3 h-3" />
-                                    <span className="hidden sm:inline">Completada</span>
-                                  </button>
+                                  <>
+                                    <button
+                                      onClick={(ev) => {
+                                        ev.stopPropagation();
+                                        handleCambiarEstado(cita.id, 'completada');
+                                      }}
+                                      className="flex items-center gap-1 px-2 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold transition shadow-2xs cursor-pointer active:scale-95"
+                                      title="Marcar como atendida"
+                                    >
+                                      <IconCheck className="w-3 h-3" />
+                                      <span className="hidden sm:inline">Completada</span>
+                                    </button>
+
+                                    <button
+                                      onClick={(ev) => {
+                                        ev.stopPropagation();
+                                        handleCambiarEstado(cita.id, 'cancelada');
+                                      }}
+                                      className="flex items-center gap-1 px-2 py-1 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[11px] font-bold transition shadow-2xs cursor-pointer active:scale-95"
+                                      title="Cancelar cita y liberar el horario inmediatamente"
+                                    >
+                                      <IconX className="w-3 h-3" />
+                                      <span className="hidden sm:inline">Cancelar</span>
+                                    </button>
+                                  </>
                                 )}
 
                                 {esAdmin && (
@@ -2162,7 +2177,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                 {nombreTarget}
               </h3>
               <p className="text-xs text-[#7D6870]">
-                {etiquetaSemana} · <strong className="text-[#8C243B]">{citasFiltradas.length} citas</strong> agendadas
+                {etiquetaSemana} · <strong className="text-[#8C243B]">{citasFiltradas.filter((r) => r.estado !== 'cancelada').length} citas</strong> agendadas
               </p>
             </div>
           </div>
@@ -2908,15 +2923,15 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
             {vistaAgenda === 'semana' ? (
               renderVistaSemanal(
                 especialistaSeleccionadaId === 'todas'
-                  ? reservasDeLaSemana
-                  : reservasDeLaSemana.filter((r) => r.cancha_id === especialistaSeleccionadaId),
+                  ? reservasDeLaSemana.filter((r) => r.estado !== 'cancelada')
+                  : reservasDeLaSemana.filter((r) => r.cancha_id === especialistaSeleccionadaId && r.estado !== 'cancelada'),
                 true,
                 especialistaSeleccionadaId
               )
             ) : especialistaSeleccionadaId !== 'todas' ? (
               (() => {
                 const targetCancha = canchas.find((c) => c.id === especialistaSeleccionadaId);
-                const citasTarget = reservasDelDia.filter((r) => r.cancha_id === especialistaSeleccionadaId);
+                const citasTarget = reservasDelDia.filter((r) => r.cancha_id === especialistaSeleccionadaId && r.estado !== 'cancelada');
                 return renderTimelineManicurista(
                   citasTarget,
                   targetCancha?.nombre || 'Especialista',
@@ -2928,7 +2943,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
               /* TABLAS EN 4 COLUMNAS (1 POR CADA MANICURISTA) */
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {canchas.map((cancha, idx) => {
-                const citasCancha = reservasDelDia.filter((r) => r.cancha_id === cancha.id);
+                const citasCancha = reservasDelDia.filter((r) => r.cancha_id === cancha.id && r.estado !== 'cancelada');
                 const esColumnaAdmin = idx === 0;
 
                 return (
@@ -3090,6 +3105,20 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                                           title="Marcar como atendida / completada"
                                         >
                                           <IconCheck className="w-3.5 h-3.5" />
+                                        </button>
+                                      )}
+
+                                      {/* Botón Marcar Cancelada */}
+                                      {cita.estado !== 'completada' && cita.estado !== 'cancelada' && (
+                                        <button
+                                          onClick={(ev) => {
+                                            ev.stopPropagation();
+                                            handleCambiarEstado(cita.id, 'cancelada');
+                                          }}
+                                          className="p-1 rounded-md bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 transition cursor-pointer active:scale-95"
+                                          title="Cancelar cita y liberar el horario inmediatamente"
+                                        >
+                                          <IconX className="w-3.5 h-3.5" />
                                         </button>
                                       )}
 
@@ -3477,7 +3506,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
             {/* VISTA SEGÚN MODO DÍA O SEMANA */}
             {vistaAgenda === 'semana' ? (
               renderVistaSemanal(
-                reservasDeLaSemana.filter((r) => r.cancha_id === perfilActual.canchaId),
+                reservasDeLaSemana.filter((r) => r.cancha_id === perfilActual.canchaId && r.estado !== 'cancelada'),
                 false,
                 perfilActual.canchaId
               )
@@ -3485,7 +3514,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
               /* TIMELINE DIARIO CRONOLÓGICO DE LA MANICURISTA CON LÍNEA ROJA EN TIEMPO REAL */
               (() => {
                 const misCitas = reservasDelDia.filter(
-                  (r) => r.cancha_id === perfilActual.canchaId
+                  (r) => r.cancha_id === perfilActual.canchaId && r.estado !== 'cancelada'
                 );
 
                 return renderTimelineManicurista(
@@ -4989,16 +5018,30 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                     )}
 
                     {cita.estado !== 'completada' && cita.estado !== 'cancelada' && (
-                      <button
-                        onClick={() => {
-                          handleCambiarEstado(cita.id, 'completada');
-                          setPopoverCita(null);
-                        }}
-                        className="flex-1 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center justify-center gap-1 shadow-2xs cursor-pointer active:scale-95"
-                      >
-                        <IconCheck className="w-3.5 h-3.5" />
-                        <span>Completada</span>
-                      </button>
+                      <>
+                        <button
+                          onClick={() => {
+                            handleCambiarEstado(cita.id, 'completada');
+                            setPopoverCita(null);
+                          }}
+                          className="flex-1 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center justify-center gap-1 shadow-2xs cursor-pointer active:scale-95"
+                        >
+                          <IconCheck className="w-3.5 h-3.5" />
+                          <span>Completada</span>
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            handleCambiarEstado(cita.id, 'cancelada');
+                            setPopoverCita(null);
+                          }}
+                          className="flex-1 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition flex items-center justify-center gap-1 shadow-2xs cursor-pointer active:scale-95"
+                          title="Cancelar cita y liberar el horario inmediatamente"
+                        >
+                          <IconX className="w-3.5 h-3.5" />
+                          <span>Cancelar</span>
+                        </button>
+                      </>
                     )}
 
                     {esAdmin && telLimpio && (() => {
