@@ -660,35 +660,6 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     }
   };
 
-  const handleToggleSilenciarDesdeCita = async (telefono: string, nombre?: string) => {
-    const telLimpio = telefono.replace(/\D/g, '');
-    const solo10 = telLimpio.startsWith('57') && telLimpio.length === 12 ? telLimpio.slice(2) : telLimpio;
-    const yaEstaSilenciado = exclusionesBot.some((e) => {
-      const eLimpio = e.telefono.replace(/\D/g, '');
-      return eLimpio === telLimpio || eLimpio === solo10 || (eLimpio.startsWith('57') && eLimpio.slice(2) === solo10);
-    });
-
-    if (yaEstaSilenciado) {
-      solicitarReactivarBot(telLimpio, nombre);
-    } else {
-      try {
-        const res = await fetch('/api/bot/exclusiones', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            telefono: telLimpio,
-            nombre: nombre || 'Restringido desde agenda',
-          }),
-        });
-        if (res.ok) {
-          await cargarExclusionesBot();
-        }
-      } catch (err) {
-        console.error('Error restringiendo bot desde cita:', err);
-      }
-    }
-  };
-
   // Modal de Confirmación Elegante para Eliminar Citas
   const [citaAEliminar, setCitaAEliminar] = useState<{
     id: string;
@@ -2542,10 +2513,10 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                   <button
                     onClick={abrirModalExclusiones}
                     className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2] text-xs font-bold rounded-xl transition shadow-xs cursor-pointer active:scale-95"
-                    title="Gestionar clientes con bot silenciado para atención humana personalizada"
+                    title="Gestionar números restringidos del bot para atención personalizada"
                   >
                     <IconLock className="w-3.5 h-3.5 text-[#8C243B]" />
-                    <span>Número Restringido</span>
+                    <span>Números Restringidos</span>
                     {exclusionesBot.length > 0 && (
                       <span className="px-1.5 py-0.2 rounded-full bg-[#8C243B] text-white text-[10px] font-mono font-bold">
                         {exclusionesBot.length}
@@ -2691,7 +2662,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-[#8C243B] border border-[#F2C4D2] text-xs font-bold rounded-xl transition shadow-xs shrink-0 cursor-pointer active:scale-95"
                 >
                   <IconLock className="w-3.5 h-3.5 text-[#8C243B]" />
-                  <span>Restringidos</span>
+                  <span>Números Restringidos</span>
                   {exclusionesBot.length > 0 && (
                     <span className="px-1.5 py-0.2 rounded-full bg-[#8C243B] text-white text-[9px] font-mono font-bold">
                       {exclusionesBot.length}
@@ -4435,7 +4406,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                   <div>
                     <div className="flex items-center gap-2">
                       <h3 className="font-bold text-base text-[#2D2529] font-serif">
-                        Restricción de Acceso al Bot
+                        Números Restringidos
                       </h3>
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
                         Control de Acceso
@@ -5062,28 +5033,6 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                         </button>
                       </>
                     )}
-
-                    {esAdmin && telLimpio && (() => {
-                      const solo10 = telLimpio.startsWith('57') && telLimpio.length === 12 ? telLimpio.slice(2) : telLimpio;
-                      const estaSilenciado = exclusionesBot.some((e) => {
-                        const eLimpio = e.telefono.replace(/\D/g, '');
-                        return eLimpio === telLimpio || eLimpio === solo10 || (eLimpio.startsWith('57') && eLimpio.slice(2) === solo10);
-                      });
-                      return (
-                        <button
-                          onClick={() => handleToggleSilenciarDesdeCita(telLimpio, nombreClienta)}
-                          className={`px-2.5 py-2 rounded-xl text-xs font-bold transition shadow-2xs cursor-pointer flex items-center gap-1 active:scale-95 ${
-                            estaSilenciado
-                              ? 'bg-amber-100 text-amber-900 border border-amber-300'
-                              : 'bg-white hover:bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2]'
-                          }`}
-                          title={estaSilenciado ? 'Acceso al bot actualmente restringido para este número. Clic para reactivar.' : 'Restringir bot para evitar que este número use reservas automáticas'}
-                        >
-                          <IconLock className="w-3.5 h-3.5 text-amber-700" />
-                          <span className="hidden sm:inline">{estaSilenciado ? 'Número Restringido' : 'Restringir Número'}</span>
-                        </button>
-                      );
-                    })()}
 
                     {esAdmin && (
                       <button
