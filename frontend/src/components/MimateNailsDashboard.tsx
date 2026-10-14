@@ -164,24 +164,46 @@ function obtenerDetalleBloqueo(cita: Reserva): { motivo: string; por: string } {
   };
 }
 
-const HORAS_OPCIONES_BLOQUEO: string[] = [
-  '08:00',
-  '08:30',
-  '09:00',
-  '09:30',
-  '10:30',
-  '11:30',
-  '12:30',
-  '13:30',
-  '14:30',
-  '15:30',
-  '16:30',
-  '17:30',
-  '18:00',
-  '18:30',
-];
+/**
+ * Calcula dinámicamente las opciones de horas para bloqueo de horarios
+ * basándose en el horario de atención estipulado en ese momento (apertura y cierre).
+ */
+export function calcularHorasOpcionesBloqueo(
+  horaApertura: string = '08:00',
+  horaCierre: string = '19:00',
+  intervaloMinutos: number = 30
+): string[] {
+  const [aperH, aperM] = (horaApertura || '08:00').split(':').map(Number);
+  const [cierH, cierM] = (horaCierre || '19:00').split(':').map(Number);
+  const startMin = (isNaN(aperH) ? 8 : aperH) * 60 + (isNaN(aperM) ? 0 : aperM);
+  const endMin = (isNaN(cierH) ? 19 : cierH) * 60 + (isNaN(cierM) ? 0 : cierM);
 
-const HORAS_TIMELINE: number[] = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19];
+  const lista: string[] = [];
+  for (let m = startMin; m < endMin; m += intervaloMinutos) {
+    const hh = String(Math.floor(m / 60)).padStart(2, '0');
+    const mm = String(m % 60).padStart(2, '0');
+    lista.push(`${hh}:${mm}`);
+  }
+  return lista;
+}
+
+// Función calculada para compatibilidad cuando se referencie HORAS_OPCIONES_BLOQUEO
+export const HORAS_OPCIONES_BLOQUEO = (
+  horaApertura: string = '08:00',
+  horaCierre: string = '19:00',
+  intervaloMinutos: number = 30
+): string[] => calcularHorasOpcionesBloqueo(horaApertura, horaCierre, intervaloMinutos);
+
+export function calcularHorasTimeline(horaApertura: string = '08:00', horaCierre: string = '19:00'): number[] {
+  const aperH = parseInt((horaApertura || '08:00').split(':')[0], 10) || 8;
+  const cierH = parseInt((horaCierre || '19:00').split(':')[0], 10) || 19;
+  const horas: number[] = [];
+  for (let h = aperH; h <= cierH; h++) {
+    horas.push(h);
+  }
+  return horas.length > 0 ? horas : [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19];
+}
+
 const ALTURA_HORA_PX = 88;
 
 function formatearHora12(hora24: number): string {
@@ -688,22 +710,14 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     return servicios.find((s) => s.id === Number(agendarServicioId)) || servicios[0];
   }, [servicios, agendarServicioId]);
 
-  // Horas base de opciones de bloqueo dinámicas según horario configurado
+  // Horas base de opciones de bloqueo calculadas dinámicamente según horario configurado en el spa
   const horasOpcionesBloqueoDinamicas = useMemo(() => {
-    const aperturaStr = configAnticipo.horaApertura || '08:00';
-    const cierreStr = configAnticipo.horaCierre || '19:00';
-    const [aperH, aperM] = aperturaStr.split(':').map(Number);
-    const [cierH, cierM] = cierreStr.split(':').map(Number);
-    const startMin = (isNaN(aperH) ? 8 : aperH) * 60 + (isNaN(aperM) ? 0 : aperM);
-    const endMin = (isNaN(cierH) ? 19 : cierH) * 60 + (isNaN(cierM) ? 0 : cierM);
+    return calcularHorasOpcionesBloqueo(configAnticipo.horaApertura, configAnticipo.horaCierre, 30);
+  }, [configAnticipo.horaApertura, configAnticipo.horaCierre]);
 
-    const lista: string[] = [];
-    for (let m = startMin; m < endMin; m += 30) {
-      const hh = String(Math.floor(m / 60)).padStart(2, '0');
-      const mm = String(m % 60).padStart(2, '0');
-      lista.push(`${hh}:${mm}`);
-    }
-    return lista.length > 0 ? lista : HORAS_OPCIONES_BLOQUEO;
+  // Horas para el timeline visual calculadas dinámicamente según horario de apertura y cierre
+  const horasTimeline = useMemo(() => {
+    return calcularHorasTimeline(configAnticipo.horaApertura, configAnticipo.horaCierre);
   }, [configAnticipo.horaApertura, configAnticipo.horaCierre]);
 
   // Horas libres para el modal de Agendar Cita con cálculo dinámico por duración y fin de citas previas
@@ -1712,18 +1726,20 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     const esHoy = fechaActualTimeline === hoyStr;
     const horaActualNum = ahora.getHours();
     const minutosActuales = ahora.getMinutes();
-    const estaEnHorario = horaActualNum >= 8 && horaActualNum < 20;
-    const minutosDesde8AM = (horaActualNum - 8) * 60 + minutosActuales;
-    const posicionYLinea = (minutosDesde8AM / 60) * ALTURA_HORA_PX;
+    const horaAperturaNum = parseInt((configAnticipo.horaApertura || '08:00').split(':')[0], 10) || 8;
+    const horaCierreNum = parseInt((configAnticipo.horaCierre || '19:00').split(':')[0], 10) || 19;
+    const estaEnHorario = horaActualNum >= horaAperturaNum && horaActualNum <= horaCierreNum;
+    const minutosDesdeApertura = (horaActualNum - horaAperturaNum) * 60 + minutosActuales;
+    const posicionYLinea = (minutosDesdeApertura / 60) * ALTURA_HORA_PX;
     const horaMinutosActualStr = ahora.toLocaleTimeString('es-CO', {
       hour: 'numeric',
       minute: '2-digit',
       hour12: false,
     });
 
-    const ALTURA_TOTAL_TIMELINE = HORAS_TIMELINE.length * ALTURA_HORA_PX;
+    const ALTURA_TOTAL_TIMELINE = horasTimeline.length * ALTURA_HORA_PX;
     const citasVisibles = citasManicurista.filter((r) => r.estado !== 'cancelada');
-    const citasPosicionadas = calcularPosicionesCitas(citasVisibles);
+    const citasPosicionadas = calcularPosicionesCitas(citasVisibles, horaAperturaNum);
     const ahoraMs = ahora.getTime();
 
     return (
@@ -1746,7 +1762,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
           <div className="flex items-center gap-2">
             <span className="text-[11px] text-[#7D6870] hidden sm:inline">
-              Horario: 8:00 a.m. a 7:00 p.m.
+              Horario: {configAnticipo.horaApertura || '08:00'} a {configAnticipo.horaCierre || '19:00'}
             </span>
             {esHoy && estaEnHorario && (
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-red-50 text-red-600 border border-red-200 shadow-2xs">
@@ -1761,9 +1777,9 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
         <div className="relative p-2.5 sm:p-6 overflow-x-auto">
           <div className="min-w-full sm:min-w-[600px] relative">
             <div className="flex relative" style={{ height: `${ALTURA_TOTAL_TIMELINE}px` }}>
-              {/* Columna de Horas a la izquierda (8 a 19) */}
+              {/* Columna de Horas a la izquierda */}
               <div className="w-14 sm:w-24 pr-2 sm:pr-3 flex-shrink-0 relative select-none">
-                {HORAS_TIMELINE.map((h, index) => (
+                {horasTimeline.map((h, index) => (
                   <div
                     key={h}
                     className="absolute right-3 -mt-2.5 text-right"
@@ -1795,7 +1811,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
                 {/* Filas de fondo con guías horarias completas y de media hora */}
                 <div className="absolute inset-0 flex flex-col pointer-events-none">
-                  {HORAS_TIMELINE.map((h) => {
+                  {horasTimeline.map((h) => {
                     const hStr = `${String(h).padStart(2, '0')}:00`;
                     const horaSlotMs = new Date(`${fechaActualTimeline}T${hStr}:00-05:00`).getTime();
                     const esHoraPasadaTimeline = fechaActualTimeline < hoyStr || (esHoy && horaSlotMs <= ahoraMs);
@@ -2152,16 +2168,18 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
     const horaActualNum = ahora.getHours();
     const minutosActuales = ahora.getMinutes();
-    const estaEnHorario = horaActualNum >= 8 && horaActualNum < 20;
-    const minutosDesde8AM = (horaActualNum - 8) * 60 + minutosActuales;
-    const posicionYLinea = (minutosDesde8AM / 60) * ALTURA_HORA_PX;
+    const horaAperturaNum = parseInt((configAnticipo.horaApertura || '08:00').split(':')[0], 10) || 8;
+    const horaCierreNum = parseInt((configAnticipo.horaCierre || '19:00').split(':')[0], 10) || 19;
+    const estaEnHorario = horaActualNum >= horaAperturaNum && horaActualNum <= horaCierreNum;
+    const minutosDesdeApertura = (horaActualNum - horaAperturaNum) * 60 + minutosActuales;
+    const posicionYLinea = (minutosDesdeApertura / 60) * ALTURA_HORA_PX;
     const horaMinutosActualStr = ahora.toLocaleTimeString('es-CO', {
       hour: 'numeric',
       minute: '2-digit',
       hour12: false,
     });
     const esSemanaActual = diasDeLaSemana.some((d) => d.esHoy);
-    const ALTURA_TOTAL_TIMELINE = HORAS_TIMELINE.length * ALTURA_HORA_PX;
+    const ALTURA_TOTAL_TIMELINE = horasTimeline.length * ALTURA_HORA_PX;
     const ahoraMs = ahora.getTime();
 
     return (
@@ -2184,7 +2202,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
           <div className="flex items-center gap-2">
             <span className="text-[11px] text-[#7D6870] hidden sm:inline">
-              Horario: 8:00 a.m. a 7:00 p.m.
+              Horario: {configAnticipo.horaApertura || '08:00'} a {configAnticipo.horaCierre || '19:00'}
             </span>
             {esSemanaActual && estaEnHorario && (
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-red-50 text-red-600 border border-red-200 shadow-2xs">
@@ -2195,7 +2213,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
           </div>
         </div>
 
-        {/* Grilla Semanal dividida en 7 días y con horas de 8 a 19 */}
+        {/* Grilla Semanal dividida en 7 días y con horas de apertura a cierre */}
         <div className="relative p-4 sm:p-6 overflow-x-auto">
           <div className="min-w-[1050px]">
             {/* ENCABEZADOS DE LOS 7 DÍAS */}
@@ -2263,7 +2281,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
             <div className="flex relative" style={{ height: `${ALTURA_TOTAL_TIMELINE}px` }}>
               {/* Columna de Horas a la izquierda */}
               <div className="w-16 sm:w-24 pr-3 flex-shrink-0 relative select-none">
-                {HORAS_TIMELINE.map((h, index) => (
+                {horasTimeline.map((h, index) => (
                   <div
                     key={h}
                     className="absolute right-3 -mt-2.5 text-right"
@@ -2303,7 +2321,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                     return fCita === d.fechaIso && r.estado !== 'cancelada';
                   });
 
-                  const posicionesDia = calcularPosicionesCitas(citasDelDia);
+                  const posicionesDia = calcularPosicionesCitas(citasDelDia, horaAperturaNum);
 
                   return (
                     <div
@@ -2312,7 +2330,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                     >
                       {/* Filas de fondo con guías horarias completas y de media hora */}
                       <div className="absolute inset-0 flex flex-col pointer-events-none">
-                        {HORAS_TIMELINE.map((h) => (
+                        {horasTimeline.map((h) => (
                           <div
                             key={h}
                             className="relative border-b border-[#F2C4D2]/60"
