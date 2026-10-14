@@ -503,13 +503,12 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       });
       if (res.ok) {
         setModalConfigAnticipoAbierto(false);
-        alert('¡Configuración de horario y reservas guardada con éxito!');
         cargarReservas();
       } else {
-        alert('No se pudo guardar la configuración.');
+        console.error('No se pudo guardar la configuración.');
       }
     } catch (err: any) {
-      alert('Error guardando configuración: ' + err.message);
+      console.error('Error guardando configuración:', err.message);
     } finally {
       setGuardandoConfigAnticipo(false);
     }
@@ -1336,16 +1335,8 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     }
   };
 
-  // Desbloquear un horario
-  const handleDesbloquearHorario = async (reservaId: string, horaDetalle: string) => {
-    if (
-      !window.confirm(
-        `¿Deseas desbloquear el horario de las ${horaDetalle}? Quedará libre nuevamente para reservas.`
-      )
-    ) {
-      return;
-    }
-
+  // Desbloquear un horario de inmediato sin popups ni confirmaciones
+  const handleDesbloquearHorario = async (reservaId: string, _horaDetalle?: string) => {
     try {
       let borrado = false;
       try {
@@ -1366,7 +1357,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
       setReservas((prev) => prev.filter((r) => r.id !== reservaId));
     } catch (e: any) {
-      alert('No se pudo desbloquear el horario: ' + (e.message || 'Error de conexión'));
+      console.error('No se pudo desbloquear el horario:', e.message || 'Error de conexión');
     }
   };
 
