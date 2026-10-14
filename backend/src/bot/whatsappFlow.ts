@@ -1103,6 +1103,16 @@ export class WhatsAppFlow {
           complejo.titular_cuenta
         );
 
+        // 0. VERIFICAR QUE SEA UN COMPROBANTE BANCARIO (NO UNA FOTO CUALQUIERA)
+        if (analisis.es_comprobante_bancario === false) {
+          const anticipoFmt = '$' + Number(anticipoRequerido).toLocaleString('es-CO');
+          return {
+            texto: `🌸 *Hola reina, recibimos tu imagen:* 💕\n\n` +
+              `Sin embargo, nuestro sistema no detectó que sea un comprobante de transferencia bancaria de Nequi o Bancolombia 📄❌.\n\n` +
+              `👉 Para confirmar tu cita, por favor envíanos la *foto o captura de pantalla clara del comprobante de abono* (${anticipoFmt}) 💕💅.`,
+          };
+        }
+
         // 1. FILTRO 1: CUENTA DE DESTINO
         if (analisis.cuenta_coincide === false) {
           const cuentasTexto = cuentasOficiales.length > 0 ? cuentasOficiales.join(' / ') : (complejo.nequi_numero || '3219610896');
@@ -1134,73 +1144,74 @@ export class WhatsAppFlow {
           };
         }
 
-        // 1.1 DETECCIÓN DE FRAUDE / ALTERACIÓN
-        if (analisis.es_sospechoso_fraude) {
-          const motivos = analisis.indicios_fraude.join(', ') || 'Inconsistencia tipográfica o visual';
+        // 4. ES COMPROBANTE BANCARIO PERO SE VE DUDOSO POR SU FORMA O FORMATO
+        // Solo aquí queda pendiente de aprobación manual por la administración
+        if (analisis.es_sospechoso_fraude || analisis.confianza === 'BAJA') {
+          const motivos = analisis.indicios_fraude.join(', ') || 'Inconsistencia tipográfica o formato dudoso';
           await supabase
             .from('reservas')
-            .update({ notas: `⚠️ ALERTA FRAUDE IA: ${motivos} - ${analisis.explicacion}` })
+            .update({ notas: `⚠️ [COMPROBANTE_DUDOSO_REVISION_MANUAL] ${motivos} - ${analisis.explicacion}` })
             .eq('id', session.reservaId);
 
+          await supabase
+            .from('pagos_anticipos')
+            .insert({
+              reserva_id: session.reservaId,
+              metodo: 'nequi',
+              monto: analisis.monto_detectado || anticipoRequerido,
+              referencia_transaccion: analisis.referencia_detectada || `WA_DUDOSO_${Date.now()}`,
+              estado: 'pendiente',
+              comprobante_url: mediaId,
+              revisado_por: 'PENDIENTE_ADMIN',
+              notas_admin: `Comprobante dudoso en forma: ${motivos} - ${analisis.explicacion}`,
+            });
+
           return {
-            texto: `⚠️ *ALERTA EN VALIDACIÓN AUTOMÁTICA*\n\n` +
-              `El sistema detectó posibles inconsistencias en el comprobante (${motivos}).\n\n` +
-              `🔒 Tu turno sigue apartado temporalmente, pero *un administrador de ${complejo.nombre} revisará manualmente el pago en la cuenta bancaria antes de confirmar.* Te notificaremos en cuanto sea verificado.`,
+            texto: `📸 *¡Comprobante recibido en revisión especial!* ⏳\n\n` +
+              `Detectamos que el comprobante enviado presenta un aspecto visual o formato que requiere validación por parte del equipo del spa (${motivos}).\n\n` +
+              `🔒 Tu turno sigue apartado temporalmente mientras *la administración de ${complejo.nombre} revisa el abono en la cuenta bancaria.* Te notificaremos en breves minutos 💕💅.`,
           };
         }
 
-        // 1.2 COMPROBANTE AUTÉNTICO Y VÁLIDO (CONFIRMACIÓN 100% AUTOMÁTICA - OPCIÓN B)
-        if (analisis.es_valido && analisis.referencia_detectada) {
+        // 5. COMPROBANTE AUTÉNTICO Y VÁLIDO (CONFIRMACIÓN 100% AUTOMÁTICA - 3 FILTROS SUPERADOS)
+        const refFinal = analisis.referencia_detectada || `IA_WA_${Date.now()}`;
+        if (analisis.referencia_detectada) {
           const yaUsada = await ReceiptVerificationService.esReferenciaDuplicada(analisis.referencia_detectada);
-
           if (yaUsada) {
             return {
               texto: `⚠️ *Comprobante ya utilizado:*\nEl número de referencia *${analisis.referencia_detectada}* ya fue registrado en otra reserva previa. Por favor envía un comprobante nuevo o contacta a la administración de ${complejo.nombre}.`,
             };
           }
-
-          // Confirmar automáticamente la reserva
-          await BookingService.registrarPagoAnticipo({
-            reservaId: session.reservaId,
-            metodo: 'nequi',
-            monto: analisis.monto_detectado || anticipoRequerido,
-            referencia: analisis.referencia_detectada,
-          });
-
-          await supabase
-            .from('pagos_anticipos')
-            .update({ revisado_por: 'IA_GEMINI', notas_admin: `Auditado por Gemini Flash: ${analisis.explicacion}` })
-            .eq('reserva_id', session.reservaId);
-
-          session.paso = 'INICIO';
-
-          const montoFmt = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(analisis.monto_detectado || anticipoRequerido);
-
-          return {
-            texto: `🤖⚡ *¡PAGO AUDITADO Y APROBADO POR IA!*\n\n` +
-              `✅ Comprobante verificado con éxito:\n` +
-              `• Referencia: *#${analisis.referencia_detectada}*\n` +
-              `• Monto: *${montoFmt}*\n` +
-              `• Destino: *${analisis.destinatario_detectado || complejo.nombre}*\n\n` +
-              `🌸✨ *¡CITA 100% CONFIRMADA EN JL MÍMATE NAILS!* ✨🌸\n` +
-              `🏢 Spa: *${complejo.nombre}*\n` +
-              `💅 Manicurista: *${session.canchaSeleccionada?.nombre}*\n` +
-              `📅 Fecha: *${session.fechaSeleccionada}*\n` +
-              `⏰ Horario: *${session.horarioSeleccionado?.hora_inicio.slice(0, 5)} - ${session.horarioSeleccionado?.hora_fin.slice(0, 5)}*\n\n` +
-              `🔔 Te enviaremos un recordatorio previo a tu cita. ¡Nos vemos para consentirte reina! 💕💅`,
-          };
         }
 
-        // 1.3 IA CON BAJA CONFIANZA O SIN API KEY -> FALLBACK ELEGANTE A OPCIÓN A (VISOR ADMIN)
-        await supabase
-          .from('reservas')
-          .update({ notas: `Comprobante recibido vía WhatsApp (Media ID: ${mediaId}). Pendiente de aprobación manual en visor.` })
-          .eq('id', session.reservaId);
+        // Confirmar automáticamente el abono y la reserva
+        await BookingService.registrarPagoAnticipo({
+          reservaId: session.reservaId,
+          metodo: 'nequi',
+          monto: analisis.monto_detectado || anticipoRequerido,
+          referencia: refFinal,
+          estado: 'aprobado',
+          revisadoPor: 'IA_GEMINI',
+          notasAdmin: `Auditado y aprobado automáticamente por IA (3 filtros superados): ${analisis.explicacion}`,
+        });
+
+        session.reservaId = undefined;
+        session.paso = 'INICIO';
+
+        const montoFmt = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(analisis.monto_detectado || anticipoRequerido);
 
         return {
-          texto: `📸 *¡Comprobante recibido con éxito!*\n\n` +
-            `Nuestro equipo de administración en *${complejo.nombre}* está verificando tu pago en el visor de control.\n\n` +
-            `⏳ Tu turno sigue bloqueado para ti. Te llegará la confirmación oficial por este mismo chat en cuanto el administrador presione "Aprobar Anticipo".`,
+          texto: `🤖⚡ *¡PAGO AUDITADO Y APROBADO POR IA!*\n\n` +
+            `✅ Comprobante verificado con éxito:\n` +
+            `• Referencia: *#${refFinal}*\n` +
+            `• Monto: *${montoFmt}*\n` +
+            `• Destino: *${analisis.destinatario_detectado || complejo.nombre}*\n\n` +
+            `🌸✨ *¡CITA 100% CONFIRMADA EN JL MÍMATE NAILS!* ✨🌸\n` +
+            `🏢 Spa: *${complejo.nombre}*\n` +
+            `💅 Manicurista: *${session.canchaSeleccionada?.nombre}*\n` +
+            `📅 Fecha: *${session.fechaSeleccionada}*\n` +
+            `⏰ Horario: *${session.horarioSeleccionado?.hora_inicio.slice(0, 5)} - ${session.horarioSeleccionado?.hora_fin.slice(0, 5)}*\n\n` +
+            `🔔 Te enviaremos un recordatorio previo a tu cita. ¡Nos vemos para consentirte reina! 💕💅`,
         };
       }
     }
@@ -1383,61 +1394,118 @@ export class WhatsAppFlow {
         };
       }
 
-      // CASO 2.5: ES COMPROBANTE BANCARIO PERO SOSPECHOSO DE FRAUDE
-      if (analisis.es_sospechoso_fraude) {
-        const indicios = analisis.indicios_fraude.join(', ') || 'Inconsistencia detectada';
+      // CASO 2.5: ES COMPROBANTE BANCARIO PERO SOSPECHOSO DE FRAUDE O DUDOSO POR SU FORMA
+      // ÚNICO CASO QUE QUEDA PENDIENTE DE APROBACIÓN MANUAL
+      if (analisis.es_sospechoso_fraude || analisis.confianza === 'BAJA') {
+        const indicios = analisis.indicios_fraude.join(', ') || 'Inconsistencia visual o formato dudoso';
         await supabase
           .from('reservas')
           .update({
-            notas: `⚠️ ALERTA FRAUDE IA: ${indicios} - ${analisis.explicacion}`,
+            expiracion_reserva: null,
+            notas: `⚠️ [COMPROBANTE_DUDOSO_REVISION_MANUAL] ${indicios} - ${analisis.explicacion}`,
           })
           .eq('id', reservaTarget.id);
 
+        await supabase
+          .from('pagos_anticipos')
+          .insert({
+            reserva_id: reservaTarget.id,
+            metodo: 'transferencia_bancaria',
+            monto: analisis.monto_detectado || anticipoRequerido,
+            referencia_transaccion: analisis.referencia_detectada || `WA_DUDOSO_${Date.now()}`,
+            estado: 'pendiente',
+            comprobante_url: mediaId,
+            notas_admin: `Comprobante dudoso en forma: ${indicios} - ${analisis.explicacion}`,
+            revisado_por: 'PENDIENTE_ADMIN',
+          });
+
         return {
-          texto: `⚠️ *Comprobante en revisión especial*\n\n` +
-            `El sistema detectó inconsistencias visuales en el soporte de pago enviado.\n` +
-            `Un administrador de *${complejo.nombre}* revisará directamente la cuenta bancaria antes de confirmar. Te notificaremos en breve.`,
+          texto: `📸 *¡Comprobante recibido en revisión especial!* ⏳\n\n` +
+            `Detectamos que el soporte de pago enviado presenta un formato o aspecto visual que requiere validación manual por parte del equipo del spa (${indicios}).\n\n` +
+            `🔒 *¡Tu turno está asegurado y protegido!* El límite de 1 hora ha sido pausado. Una administradora revisará directamente la cuenta bancaria antes de confirmar. Te notificaremos en breves minutos 💕💅.`,
         };
       }
 
-      // CASO 2.4: ES COMPROBANTE BANCARIO VÁLIDO
-      // 1. Pausar el temporizador de 60 minutos estableciendo expiracion_reserva = null
-      // 2. Marcar en notas con la etiqueta [COMPROBANTE_VALIDO_IA]
-      const notasActualizadas = `[COMPROBANTE_VALIDO_IA] Ref: ${analisis.referencia_detectada || 'N/A'} - Monto: ${analisis.monto_detectado || anticipoRequerido} COP. ${reservaTarget.notas || ''}`.trim();
+      // CASO 2.6: LA IA CONFIRMA QUE EL COMPROBANTE ES VÁLIDO (3 FILTROS SUPERADOS Y AUTÉNTICO)
+      // -> CONFIRMAR EL ABONO DIRECTAMENTE Y CONFIRMAR LA CITA AUTOMÁTICAMENTE (NO ESPERAR APROBACIÓN MANUAL)
+      const refFinal = analisis.referencia_detectada || `IA_${Date.now()}`;
+      if (analisis.referencia_detectada) {
+        const yaUsada = await ReceiptVerificationService.esReferenciaDuplicada(analisis.referencia_detectada);
+        if (yaUsada) {
+          return {
+            texto: `⚠️ *Comprobante ya utilizado:*\nEl número de referencia *${analisis.referencia_detectada}* ya fue registrado en otra reserva previa. Por favor envía un comprobante nuevo o contacta a la administración de ${complejo.nombre}.`,
+          };
+        }
+      }
 
-      await supabase
-        .from('reservas')
-        .update({
-          expiracion_reserva: null,
-          notas: notasActualizadas,
-        })
-        .eq('id', reservaTarget.id);
+      const abonoMonto = analisis.monto_detectado || anticipoRequerido;
 
-      // Registrar en pagos_anticipos
+      // 1. Confirmar abono directamente como APROBADO
       await supabase
         .from('pagos_anticipos')
         .insert({
           reserva_id: reservaTarget.id,
           metodo: 'transferencia_bancaria',
-          monto: analisis.monto_detectado || anticipoRequerido,
-          referencia_transaccion: analisis.referencia_detectada || `WA_${Date.now()}`,
-          estado: 'pendiente',
+          monto: abonoMonto,
+          referencia_transaccion: refFinal,
+          estado: 'aprobado',
           comprobante_url: mediaId,
-          notas_admin: `Auditado por IA: ${analisis.explicacion}`,
+          revisado_por: 'IA_GEMINI',
+          notas_admin: `Auditado y aprobado automáticamente por IA (3 filtros superados): ${analisis.explicacion}`,
         });
 
+      // 2. Confirmar la reserva directamente (pasa de pendiente_pago a confirmada automáticamente)
+      await supabase
+        .from('reservas')
+        .update({
+          estado: 'confirmada',
+          expiracion_reserva: null,
+          notas: `[CONFIRMADA_AUTOMATICA_IA] Ref: ${refFinal} - Abono: ${abonoMonto} COP. ${reservaTarget.notas || ''}`.trim(),
+        })
+        .eq('id', reservaTarget.id);
+
+      session.reservaId = undefined;
       session.paso = 'INICIO';
 
-      const montoFmt = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(analisis.monto_detectado || anticipoRequerido);
+      const clienteNombre = reservaTarget.clientes?.nombre || 'reina';
+      const nombreManicurista = reservaTarget.canchas?.nombre || 'tu especialista';
+      const fechaCita = new Date(reservaTarget.fecha_inicio).toLocaleDateString('es-CO', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        timeZone: 'America/Bogota',
+      });
+      const horaInicio = new Date(reservaTarget.fecha_inicio).toLocaleTimeString('es-CO', {
+        hour: 'numeric',
+        minute: '2-digit',
+        timeZone: 'America/Bogota',
+      });
+      const horaFin = reservaTarget.fecha_fin
+        ? new Date(reservaTarget.fecha_fin).toLocaleTimeString('es-CO', {
+            hour: 'numeric',
+            minute: '2-digit',
+            timeZone: 'America/Bogota',
+          })
+        : '';
+
+      const abonoFmt = '$' + Number(abonoMonto).toLocaleString('es-CO');
+      const saldoPendiente = Math.max(0, (reservaTarget.valor_total || 0) - abonoMonto);
+      const saldoFmt = '$' + Number(saldoPendiente).toLocaleString('es-CO');
 
       return {
-        texto: `📸🌸 *¡COMPROBANTE RECIBIDO CON ÉXITO!* 💕\n\n` +
-          `✅ Nuestro sistema verificó tu soporte de pago bancario:\n` +
-          `• Monto: *${montoFmt}*\n` +
-          `${analisis.referencia_detectada ? `• Referencia: *#${analisis.referencia_detectada}*\n` : ''}` +
-          `\n🔒 *¡Tu turno está 100% protegido!* El límite de 1 hora ha sido pausado con éxito ⏳✅.\n\n` +
-          `La administración de *${complejo.nombre}* validará el abono y te llegará el mensaje de confirmación definitiva por este chat en breves minutos.\n\n` +
-          `¡Muchísimas gracias reina, te esperamos con amor! 💕💅`,
+        texto:
+          `🌸✨ *¡CITA 100% CONFIRMADA EN JL MÍMATE NAILS!* ✨🌸\n\n` +
+          `¡Hola *${clienteNombre}*! Tu abono de *${abonoFmt}* fue verificado y aprobado con éxito por nuestro sistema inteligente 💕.\n\n` +
+          `📋 *Detalles de tu cita:*\n` +
+          `💅 Especialista: *${nombreManicurista}*\n` +
+          `📅 Fecha: *${fechaCita}*\n` +
+          `⏰ Horario: *${horaInicio}${horaFin ? ` a ${horaFin}` : ''}*\n` +
+          `💰 Abono recibido: *${abonoFmt}*\n` +
+          `💵 Saldo restante a pagar en el spa: *${saldoFmt}*\n` +
+          `${refFinal ? `🔖 Nro. de comprobante: *#${refFinal}*\n` : ''}\n` +
+          `📍 Dirección: *${complejo.direccion || 'Calle 140 # 11-45'}*\n` +
+          `🗺️ Ubicación: https://maps.app.goo.gl/KdSvqi1b2iAe5xgg8\n\n` +
+          `🔔 Te recordaremos tu cita con anticipación. ¡Estamos listas para consentirte y dejarte soñada! 💅💕✨`,
       };
     }
 

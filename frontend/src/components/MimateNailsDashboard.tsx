@@ -1938,9 +1938,9 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                             ) : cita.estado === 'pendiente_anticipo' || cita.estado === 'pendiente_pago' ? (
                                   <>
                                     {/* Badge de estado de anticipo */}
-                                    {cita.notas?.includes('[COMPROBANTE_VALIDO_IA]') ? (
-                                      <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-amber-500 text-white shadow-2xs animate-pulse">
-                                        📸 Comprobante en revisión
+                                    {cita.notas?.includes('[COMPROBANTE_DUDOSO_REVISION_MANUAL]') || cita.notas?.includes('[COMPROBANTE_VALIDO_IA]') ? (
+                                      <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-amber-500 text-white shadow-2xs animate-pulse" title="Comprobante dudoso por su forma en revisión manual">
+                                        ⚠️ Comprobante dudoso en revisión
                                       </span>
                                     ) : (
                                       (() => {
@@ -4892,7 +4892,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                       esBloqueada
                         ? 'bg-amber-100 text-amber-900 border-amber-300'
                         : cita.estado === 'pendiente_anticipo' || cita.estado === 'pendiente_pago'
-                        ? cita.notas?.includes('[COMPROBANTE_VALIDO_IA]')
+                        ? (cita.notas?.includes('[COMPROBANTE_DUDOSO_REVISION_MANUAL]') || cita.notas?.includes('[COMPROBANTE_VALIDO_IA]'))
                           ? 'bg-amber-500 text-white border-amber-600 animate-pulse'
                           : 'bg-amber-100 text-amber-900 border-amber-300'
                         : cita.estado === 'completada'

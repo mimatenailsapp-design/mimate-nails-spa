@@ -254,6 +254,9 @@ export class BookingService {
     monto: number;
     comprobanteUrl?: string;
     referencia?: string;
+    estado?: 'pendiente' | 'aprobado';
+    revisadoPor?: string;
+    notasAdmin?: string;
   }) {
     const { data: pago, error: pagoError } = await supabase
       .from('pagos_anticipos')
@@ -263,7 +266,9 @@ export class BookingService {
         monto: params.monto,
         comprobante_url: params.comprobanteUrl,
         referencia_transaccion: params.referencia,
-        estado: 'pendiente',
+        estado: params.estado || 'aprobado',
+        revisado_por: params.revisadoPor || 'IA_GEMINI',
+        notas_admin: params.notasAdmin || 'Auditado y aprobado automáticamente por IA',
       })
       .select()
       .single();

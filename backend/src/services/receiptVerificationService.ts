@@ -136,10 +136,9 @@ DATOS A EXTRAER:
 4. Fecha y hora de la transacción (extrae exactamente el texto de la fecha como aparece en la imagen).
 5. Estado de la transacción (¿Dice "Exitoso", "Envío exitoso", "Listo", etc.?).
 
-AUDITORÍA DE FRAUDE Y MANIPULACIÓN:
-- ¿Es un comprobante auténtico generado por la app oficial o es una plantilla falsa generada por webs/apps de comprobantes falsos?
-- Tipografía y Fuentes: ¿Hay fuentes desalineadas, fuentes genéricas como Arial/Helvetica superpuestas, grosores inconsistentes en el monto o la fecha?
-- Píxeles y Compresión: ¿Hay "ruido" o artefactos de compresión diferentes alrededor del valor o de la fecha respecto al resto del fondo?
+AUDITORÍA DE FRAUDE Y FORMA DUDOSA:
+- ¿Es una imagen auténtica de comprobante bancario o una foto ajena (selfie, meme, manos, uñas, objetos)? Si no es soporte bancario, "es_comprobante_bancario": false.
+- Si ES comprobante bancario, ¿se ve dudoso por su forma?: ¿Fuentes desalineadas, tipografía genérica superpuesta, fecha/monto pegados encima, recortes sospechosos, artefactos de edición? Si se ve dudoso por su forma o montaje, "es_sospechoso_fraude": true.
 
 RESPONDE EXCLUSIVAMENTE EN FORMATO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA:
 {
@@ -274,13 +273,14 @@ RESPONDE EXCLUSIVAMENTE EN FORMATO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA:
         montoOk = false;
       }
 
-      // Los 3 filtros deben ser 100% verdaderos para que sea válido
+      // Es válido cuando es comprobante bancario, pasa los 3 filtros, no es sospechoso/dudoso y la confianza no es baja
       const esValidoFinal = Boolean(
-        parsed.es_valido &&
+        parsed.es_comprobante_bancario !== false &&
         cuentaOk &&
         fechaOk &&
         montoOk &&
-        !parsed.es_sospechoso_fraude
+        !parsed.es_sospechoso_fraude &&
+        parsed.confianza !== 'BAJA'
       );
 
       return {
