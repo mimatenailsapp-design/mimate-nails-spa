@@ -347,6 +347,15 @@ app.post('/webhook', async (req: Request, res: Response) => {
           return;
         }
 
+        // Si el cliente envió una imagen (posible comprobante), enviar de inmediato mensaje de espera antes de la revisión por IA
+        if (messageObj.type === 'image') {
+          const nombreDest = nombrePush ? ` ${nombrePush}` : '';
+          const msgEspera = `🌸 *¡Hola${nombreDest}!* Recibimos tu comprobante de pago 💕.\n\n` +
+            `⏳ Estamos confirmando tu transferencia, por favor espera un momento mientras validamos los datos... 🔍✨`;
+
+          await enviarMensajeWhatsApp(telefonoCliente, msgEspera, complejo.whatsapp_token, phoneId);
+        }
+
         // 2. Procesar con las especialistas, tarifas, Nequi y comprobantes de ESE complejo
         const respuestaBot = await WhatsAppFlow.procesarMensaje(
           telefonoCliente,
