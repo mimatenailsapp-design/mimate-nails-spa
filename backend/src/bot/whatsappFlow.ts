@@ -1970,14 +1970,17 @@ export class WhatsAppFlow {
 
       const textoSinLink = esSpa
         ? `🌸 *REAGENDAR CITA - JL MÍMATE NAILS* 🌸\n\n` +
-          `¡Claro que sí reina! Toca el botón a continuación para abrir directamente la agenda y elegir tu nuevo horario:\n\n` +
+          `¡Claro que sí reina! Abre nuestra agenda en el siguiente enlace para elegir tu nuevo horario:\n\n` +
+          `📅 *ABRIR AGENDA:*\n👉 ${linkReagendar}\n\n` +
           `💡 *Ten presente:*\n` +
-          `• Tu cita actual (*${fechaCita}* a las *${horaInicio}*) *permanece guardada* hasta que confirmes la nueva fecha.\n` +
-          `• Si completas la nueva reserva, tu cita anterior se cancelará automáticamente.\n` +
-          `• Si no reagendas, tu cita original seguirá tal cual como la tienes programada.`
+          `• *Tu abono ya pagado se transfiere automáticamente* a tu nueva cita (no debes pagar ningún anticipo de nuevo).\n` +
+          `• Si eliges el mismo servicio, tu excedente a pagar en el spa seguirá siendo el mismo. Si eliges otro servicio, tu abono se descontará del nuevo valor.\n` +
+          `• Tu cita actual (*${fechaCita}* a las *${horaInicio}*) *permanece guardada* hasta que confirmes la nueva fecha en el enlace.\n` +
+          `• Al confirmar el nuevo horario, la cita anterior se liberará automáticamente y tu nueva cita quedará confirmada de inmediato.\n\n` +
+          `¡Te esperamos con amor para consentirte reina! 💕💅`
         : `📅 *CAMBIAR FECHA DE RESERVA*\n\n` +
-          `Toca el botón a continuación para abrir directamente la agenda y seleccionar tu nuevo horario.\n\n` +
-          `Tu reserva del *${fechaCita}* a las *${horaInicio}* se mantendrá activa hasta que confirmes la nueva fecha.`;
+          `Abre el siguiente enlace para seleccionar tu nuevo horario:\n👉 ${linkReagendar}\n\n` +
+          `Tu abono previo se mantendrá y tu reserva actual del *${fechaCita}* a las *${horaInicio}* se mantendrá activa hasta que confirmes la nueva fecha.`;
 
       return {
         texto: textoSinLink,

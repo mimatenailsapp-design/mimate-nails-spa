@@ -190,6 +190,8 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
     precio: number;
     telefono: string;
     esPreReserva?: boolean;
+    esReagendamiento?: boolean;
+    abonoPrevioReconocido?: number;
     porcentajeAnticipo?: number;
     anticipoRequerido?: number;
     saldoRestante?: number;
@@ -201,10 +203,13 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
   // Parámetro de reagendamiento desde recordatorio WhatsApp (?reagendar=<id>)
   const [reagendarId, setReagendarId] = useState<string | null>(null);
   const [citaPreviaInfo, setCitaPreviaInfo] = useState<{
+    id?: string;
     fecha?: string;
     hora?: string;
     servicio?: string;
     manicurista?: string;
+    abonoPrevio?: number;
+    precioTotal?: number;
   } | null>(null);
 
   // Cargar info del spa y detectar parámetro de reagendamiento
@@ -267,10 +272,23 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                 minute: '2-digit',
                 hour12: false,
               });
+
+              let svcNom = data.servicio_nombre;
+              if (!svcNom && data.notas) {
+                const m = data.notas.match(/Servicio:\s*([^|[\n]+)/i);
+                if (m && m[1]) svcNom = m[1].trim();
+              }
+
+              const abono = Number(data.abono_previo ?? data.valor_anticipo_requerido ?? 0);
+
               setCitaPreviaInfo({
+                id: rId,
                 fecha: fStr,
                 hora: hStr,
+                servicio: svcNom,
                 manicurista: cancha?.nombre,
+                abonoPrevio: abono,
+                precioTotal: Number(data.valor_total) || 0,
               });
             }
           })
@@ -486,10 +504,12 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
       const data = await res.json();
 
       if (res.ok) {
-        const esPre = Boolean(data.esPreReserva ?? spaConfig.exigeAnticipo);
-        const porc = Number(data.porcentajeAnticipo ?? spaConfig.porcentajeAnticipo ?? 0);
-        const antReq = data.anticipoRequerido ?? Math.round((servicioSeleccionado.precio * porc) / 100);
-        const salRest = data.saldoRestante ?? (servicioSeleccionado.precio - antReq);
+        const esReag = Boolean(data.esReagendamiento || reagendarId);
+        const esPre = esReag ? false : Boolean(data.esPreReserva ?? spaConfig.exigeAnticipo);
+        const porc = esReag ? 0 : Number(data.porcentajeAnticipo ?? spaConfig.porcentajeAnticipo ?? 0);
+        const antReq = esReag ? 0 : (data.anticipoRequerido ?? Math.round((servicioSeleccionado.precio * porc) / 100));
+        const abonoPrev = Number(data.abonoPrevio ?? citaPreviaInfo?.abonoPrevio ?? 0);
+        const salRest = data.saldoRestante ?? (esReag ? Math.max(0, servicioSeleccionado.precio - abonoPrev) : (servicioSeleccionado.precio - antReq));
 
         setReservaConfirmada({
           codigo: data.codigoReserva || data.reserva?.id,
@@ -500,6 +520,8 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
           precio: servicioSeleccionado.precio,
           telefono: telefono.trim(),
           esPreReserva: esPre,
+          esReagendamiento: esReag,
+          abonoPrevioReconocido: abonoPrev,
           porcentajeAnticipo: porc,
           anticipoRequerido: antReq,
           saldoRestante: salRest,
@@ -560,6 +582,10 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
           }
         }
 
+        const esReag = Boolean(reagendarId);
+        const abonoPrev = Number(citaPreviaInfo?.abonoPrevio || 0);
+        const salRest = esReag ? Math.max(0, servicioSeleccionado.precio - abonoPrev) : servicioSeleccionado.precio;
+
         setReservaConfirmada({
           codigo: 'WEB-' + Math.floor(1000 + Math.random() * 9000),
           empleada: empAsignada?.nombre || 'Manicurista asignada',
@@ -568,6 +594,10 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
           hora: horaSeleccionada,
           precio: servicioSeleccionado.precio,
           telefono: telefono.trim(),
+          esPreReserva: false,
+          esReagendamiento: esReag,
+          abonoPrevioReconocido: abonoPrev,
+          saldoRestante: salRest,
         });
         setPaso(3);
         cargarSlots(fecha, empleadaId);
@@ -641,15 +671,21 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
               <div className="space-y-0.5">
                 <div className="flex items-center gap-2">
                   <p className="font-extrabold text-sm sm:text-base">Modo Reagendamiento</p>
-                  <span className="bg-white/25 text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full font-bold">
-                    Paso Activo
+                  <span className="bg-emerald-500/90 text-white text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full font-bold">
+                    Abono Reconocido ✓
                   </span>
                 </div>
                 <p className="text-xs text-pink-100 leading-relaxed">
-                  {citaPreviaInfo
-                    ? `Cita previa: ${citaPreviaInfo.fecha} a las ${citaPreviaInfo.hora} con ${citaPreviaInfo.manicurista || 'especialista'}. `
-                    : ''}
-                  Elige tu nuevo horario o servicio abajo. Tu cita anterior seguirá activa y guardada hasta que confirmes la nueva fecha.
+                  {citaPreviaInfo ? (
+                    <>
+                      Cita previa: <strong>{citaPreviaInfo.fecha} a las {citaPreviaInfo.hora}</strong> con {citaPreviaInfo.manicurista || 'especialista'}
+                      {citaPreviaInfo.servicio ? ` (${citaPreviaInfo.servicio})` : ''}.{' '}
+                      {citaPreviaInfo.abonoPrevio ? (
+                        <span>Abono transferible: <strong>${citaPreviaInfo.abonoPrevio.toLocaleString('es-CO')} COP</strong>.{' '}</span>
+                      ) : ''}
+                    </>
+                  ) : ''}
+                  Elige tu nuevo horario o servicio abajo. ¡Tu abono se transfiere 100% y tu nueva cita se confirmará de inmediato sin pagar de nuevo!
                 </p>
               </div>
             </div>
@@ -1019,7 +1055,68 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                     </div>
 
                     {/* Aviso de cobro o anticipo */}
-                    {spaConfig.exigeAnticipo ? (
+                    {reagendarId ? (
+                      <div className="bg-[#FFF0F4] border border-[#F2C4D2] rounded-2xl p-4 space-y-3 text-xs">
+                        <div className="flex items-center gap-1.5 text-[#8C243B] font-bold">
+                          <span className="text-base">🔄</span>
+                          <span>Reagendamiento: Tu abono previo queda reconocido</span>
+                        </div>
+
+                        {(() => {
+                          const prec = servicioSeleccionado?.precio || 0;
+                          const abono = citaPreviaInfo?.abonoPrevio || 0;
+                          const saldo = Math.max(0, prec - abono);
+                          const mismoServicio = citaPreviaInfo?.servicio &&
+                            citaPreviaInfo.servicio.toLowerCase().trim() === (servicioSeleccionado?.nombre || '').toLowerCase().trim();
+
+                          return (
+                            <div className="space-y-2">
+                              <div className="grid grid-cols-3 gap-2 text-center font-medium">
+                                <div className="bg-white p-2 rounded-xl border border-[#F2C4D2]">
+                                  <span className="text-[10px] text-[#7D6870] uppercase font-bold tracking-wider block">
+                                    Nuevo Servicio
+                                  </span>
+                                  <span className="font-extrabold text-[#2D2529] text-xs font-mono">
+                                    ${prec.toLocaleString('es-CO')}
+                                  </span>
+                                </div>
+                                <div className="bg-white p-2 rounded-xl border border-emerald-200">
+                                  <span className="text-[10px] text-emerald-700 uppercase font-bold tracking-wider block">
+                                    Abono Previo ✓
+                                  </span>
+                                  <span className="font-extrabold text-emerald-600 text-xs font-mono">
+                                    -${abono.toLocaleString('es-CO')}
+                                  </span>
+                                </div>
+                                <div className="bg-white p-2 rounded-xl border border-[#F2C4D2]">
+                                  <span className="text-[10px] text-[#7D6870] uppercase font-bold tracking-wider block">
+                                    Excedente en Spa
+                                  </span>
+                                  <span className="font-extrabold text-[#8C243B] text-xs font-mono">
+                                    ${saldo.toLocaleString('es-CO')}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="p-2.5 bg-white rounded-xl border border-[#F2C4D2] text-[11px] text-[#7D6870] leading-snug">
+                                {mismoServicio ? (
+                                  <p>
+                                    🌸 Mantienes el mismo servicio (<strong>{servicioSeleccionado?.nombre}</strong>). El excedente a pagar en el spa se mantiene igual.
+                                  </p>
+                                ) : (
+                                  <p>
+                                    💅 Elegiste un servicio diferente (<strong>{servicioSeleccionado?.nombre}</strong>). Se restó tu abono previo (${abono.toLocaleString('es-CO')}) del total. Tu nuevo excedente a pagar en el spa es de <strong>${saldo.toLocaleString('es-CO')}</strong>.
+                                  </p>
+                                )}
+                                <p className="mt-1 text-emerald-700 font-semibold">
+                                  ✨ No debes pagar ningún anticipo ahora. Tu cita se confirmará de inmediato.
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    ) : spaConfig.exigeAnticipo ? (
                       <div className="bg-[#FFF0F4] border border-[#F2C4D2] rounded-2xl p-4 space-y-2.5 text-xs">
                         <div className="flex items-center gap-1.5 text-[#8C243B] font-bold">
                           <IconSparkles className="w-4 h-4 text-[#C74B66] shrink-0" />
@@ -1067,15 +1164,6 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                       </div>
                     )}
 
-                    {reagendarId && (
-                      <div className="bg-[#FFF0F4] border border-[#F2C4D2] rounded-xl p-3 flex items-start gap-2 text-xs text-[#8C243B]">
-                        <span className="text-base shrink-0">🔄</span>
-                        <p className="leading-snug">
-                          <strong>Reagendamiento:</strong> Al confirmar esta nueva cita, tu cita previa se cancelará automáticamente y quedará vigente este nuevo horario.
-                        </p>
-                      </div>
-                    )}
-
                     {/* Botones volver y confirmar */}
                     <div className="flex items-center gap-2 pt-2">
                       <button
@@ -1094,12 +1182,20 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                           <>
                             <IconLoader2 className="w-4 h-4 animate-spin" />
                             <span>
-                              {spaConfig.exigeAnticipo ? 'Apartando pre-reserva...' : 'Confirmando cita...'}
+                              {reagendarId
+                                ? 'Confirmando reagendamiento...'
+                                : spaConfig.exigeAnticipo
+                                ? 'Apartando pre-reserva...'
+                                : 'Confirmando cita...'}
                             </span>
                           </>
                         ) : (
                           <span>
-                            {spaConfig.exigeAnticipo ? 'Confirmar pre-reserva' : 'Confirmar reserva'}
+                            {reagendarId
+                              ? 'Confirmar cambio de cita'
+                              : spaConfig.exigeAnticipo
+                              ? 'Confirmar pre-reserva'
+                              : 'Confirmar reserva'}
                           </span>
                         )}
                       </button>
@@ -1130,10 +1226,19 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                           <span>⏳ Pre-apartada por 60 minutos</span>
                         </div>
                       )}
+                      {reservaConfirmada.esReagendamiento && (
+                        <div className="inline-flex items-center gap-1 px-3 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-300 mb-1">
+                          <span>✓ Cita Reagendada y Confirmada</span>
+                        </div>
+                      )}
                       <h2 className="text-xl font-bold text-[#2D2529]">
                         ¡Cita{' '}
                         <span className="italic text-[#8C243B] font-serif">
-                          {reservaConfirmada.esPreReserva ? 'pre-confirmada!' : 'confirmada!'}
+                          {reservaConfirmada.esPreReserva
+                            ? 'pre-confirmada!'
+                            : reservaConfirmada.esReagendamiento
+                            ? 'reagendada con éxito!'
+                            : 'confirmada!'}
                         </span>
                       </h2>
                       <p className="text-xs text-[#7D6870] max-w-sm mx-auto leading-relaxed pt-1">
@@ -1144,7 +1249,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                           </>
                         ) : (
                           <>
-                            ¡Listo, reina! Enviamos tu comprobante oficial al WhatsApp{' '}
+                            ¡Listo, reina! Enviamos tu comprobante oficial actualizado al WhatsApp{' '}
                             <strong className="text-[#8C243B]">{reservaConfirmada.telefono}</strong>.
                           </>
                         )}
@@ -1190,10 +1295,13 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                       </div>
                     )}
 
-                    {reagendarId && (
+                    {reservaConfirmada.esReagendamiento && (
                       <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl p-3 text-xs flex items-center justify-center gap-2 font-medium">
                         <span>✓</span>
-                        <span>Tu cita previa fue cancelada y reemplazada con éxito por este nuevo turno.</span>
+                        <span>
+                          Tu cita previa fue cancelada y tu abono de{' '}
+                          <strong>${(reservaConfirmada.abonoPrevioReconocido || 0).toLocaleString('es-CO')}</strong> quedó transferido a este nuevo turno.
+                        </span>
                       </div>
                     )}
 
@@ -1264,6 +1372,27 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                               </>
                             );
                           })()}
+                        </>
+                      ) : reservaConfirmada.esReagendamiento ? (
+                        <>
+                          <div className="flex justify-between border-b border-[#FCE8EF] pb-1.5 pt-0.5">
+                            <span className="text-[#7D6870]">Precio del servicio:</span>
+                            <span className="font-semibold text-[#2D2529] font-mono text-xs">
+                              ${reservaConfirmada.precio.toLocaleString('es-CO')}
+                            </span>
+                          </div>
+                          <div className="flex justify-between border-b border-[#FCE8EF] pb-1.5 pt-0.5">
+                            <span className="text-emerald-700 font-bold">Abono anterior transferido:</span>
+                            <span className="font-extrabold text-emerald-600 font-mono text-xs">
+                              -${(reservaConfirmada.abonoPrevioReconocido || 0).toLocaleString('es-CO')}
+                            </span>
+                          </div>
+                          <div className="flex justify-between pt-1">
+                            <span className="text-[#7D6870] font-bold">Excedente a pagar en el spa:</span>
+                            <span className="font-extrabold text-[#8C243B] font-mono text-sm">
+                              ${(reservaConfirmada.saldoRestante ?? Math.max(0, reservaConfirmada.precio - (reservaConfirmada.abonoPrevioReconocido || 0))).toLocaleString('es-CO')}
+                            </span>
+                          </div>
                         </>
                       ) : (
                         <div className="flex justify-between pt-1">
