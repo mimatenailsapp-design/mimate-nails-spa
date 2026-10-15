@@ -28,11 +28,20 @@ export class BaileysService {
    * Si está configurada, el bot NUNCA responderá a ningún otro número.
    */
   private static getWhitelist(): string[] {
+    const defaultNumbers = [
+      '573022779797',
+      '573223739845',
+      '573134862536',
+      '3022779797',
+      '3223739845',
+      '3134862536',
+    ];
     const raw = process.env.BAILEYS_WHITELIST_NUMBERS || '';
-    return raw
+    const envNumbers = raw
       .split(',')
       .map((num) => num.replace(/\D/g, '').trim())
       .filter((num) => num.length > 0);
+    return Array.from(new Set([...defaultNumbers, ...envNumbers]));
   }
 
   /**
@@ -70,7 +79,7 @@ export class BaileysService {
     try {
       const complejos = await BookingService.getComplejos();
       const tokenData = complejos[0]?.whatsapp_token;
-      if (!tokenData || !tokenData.startsWith('{"creds.json":')) return false;
+      if (!tokenData || !tokenData.includes('"creds.json"')) return false;
 
       const bundle = JSON.parse(tokenData);
       for (const [nombreArchivo, contenido] of Object.entries(bundle)) {
