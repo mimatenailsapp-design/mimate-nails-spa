@@ -34,7 +34,7 @@ export class BaileysService {
 
   // Mapeo verificado de LIDs de WhatsApp a números de teléfono reales autorizados
   public static lidToPhoneMap: Map<string, string> = new Map([
-    ['279641092800638', '573134862536'], // Teléfono Lili / 3134862536
+    ['272627444801659', '573022779797'], // Teléfono autorizado 3022779797
     ['89296748961918', '573223739845'],  // Bot Mímate Nails Spa (Teléfono propio)
   ]);
 
@@ -48,21 +48,23 @@ export class BaileysService {
   }
 
   /**
-   * Obtiene la lista blanca de números autorizados desde variables de entorno.
-   * Si está configurada, el bot NUNCA responderá a ningún otro número.
+   * Obtiene la lista blanca de números autorizados.
+   * ÚNICAMENTE autorizados: 3134862536 y 3022779797 (además del propio bot 3223739845).
    */
   public static getWhitelist(): string[] {
     const defaultNumbers = [
       '573134862536',
+      '573022779797',
       '573223739845',
       '3134862536',
+      '3022779797',
       '3223739845',
     ];
     const raw = process.env.BAILEYS_WHITELIST_NUMBERS || '';
     const envNumbers = raw
       .split(',')
       .map((num) => num.replace(/\D/g, '').trim())
-      .filter((num) => num.length > 0 && !num.includes('3022779797'));
+      .filter((num) => num.length > 0);
     return Array.from(new Set([...defaultNumbers, ...envNumbers]));
   }
 
