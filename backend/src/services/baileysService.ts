@@ -111,6 +111,19 @@ export class BaileysService {
    * Restaura la sesión desde la base de datos de Supabase si el disco local está vacío (como en Render)
    */
   private static async restaurarSesionDesdeSupabase(authDir: string): Promise<boolean> {
+    // 1. Purgar localmente cualquier archivo de sesión de dispositivo propio que cause Bad MAC
+    if (fs.existsSync(authDir)) {
+      try {
+        const localFiles = fs.readdirSync(authDir);
+        for (const f of localFiles) {
+          if (f.startsWith('session-89296748961918') || f.startsWith('session-573223739845')) {
+            fs.unlinkSync(path.join(authDir, f));
+            console.log(`🧹 Archivo de sesión desincronizado eliminado localmente: ${f}`);
+          }
+        }
+      } catch (e) {}
+    }
+
     const credsPath = path.join(authDir, 'creds.json');
     if (fs.existsSync(credsPath)) return true;
 
@@ -121,6 +134,10 @@ export class BaileysService {
 
       const bundle = JSON.parse(tokenData);
       for (const [nombreArchivo, contenido] of Object.entries(bundle)) {
+        // No restaurar sesiones de sincronización de dispositivo propio para evitar Bad MAC
+        if (nombreArchivo.startsWith('session-89296748961918') || nombreArchivo.startsWith('session-573223739845')) {
+          continue;
+        }
         fs.writeFileSync(path.join(authDir, nombreArchivo), contenido as string, 'utf-8');
       }
       console.log(`💾 Sesión de Baileys restaurada exitosamente desde Supabase (${Object.keys(bundle).length} archivos).`);
@@ -146,6 +163,10 @@ export class BaileysService {
         const files = fs.readdirSync(authDir);
         const bundle: Record<string, string> = {};
         for (const f of files) {
+          // Omitir sesiones de sincronización interna que se desincronizan entre instancias
+          if (f.startsWith('session-89296748961918') || f.startsWith('session-573223739845')) {
+            continue;
+          }
           const filePath = path.join(authDir, f);
           if (fs.statSync(filePath).isFile()) {
             bundle[f] = fs.readFileSync(filePath, 'utf-8');
