@@ -27,12 +27,22 @@ export class BaileysService {
   private static qrCode: string | null = null;
   private static statusConexion: 'DESCONECTADO' | 'ESPERANDO_QR' | 'CONECTANDO' | 'CONECTADO' = 'DESCONECTADO';
   private static procesadosCache = new Set<string>();
+  public static eventosDebug: Array<{ hora: string; tipo: string; detalle: any }> = [];
+
+  public static addDebugEvent(tipo: string, detalle: any) {
+    this.eventosDebug.unshift({
+      hora: new Date().toLocaleTimeString('es-CO', { timeZone: 'America/Bogota' }),
+      tipo,
+      detalle,
+    });
+    if (this.eventosDebug.length > 50) this.eventosDebug.pop();
+  }
 
   /**
    * Obtiene la lista blanca de números autorizados desde variables de entorno.
    * Si está configurada, el bot NUNCA responderá a ningún otro número.
    */
-  private static getWhitelist(): string[] {
+  public static getWhitelist(): string[] {
     const defaultNumbers = [
       '573022779797',
       '573223739845',
@@ -289,13 +299,16 @@ export class BaileysService {
       if (!myNormalizedJid || !areJidsSameUser(normalizedJid, myNormalizedJid)) {
         return;
       }
+      this.addDebugEvent('CHAT_PROPIO_TEST', { telefonoLimpio });
       console.log(`[Baileys] 🧪 Mensaje de prueba recibido en chat propio: ${telefonoLimpio}`);
     }
 
+    this.addDebugEvent('MENSAJE_ENTRANTE', { rawJid, normalizedJid, telefonoLimpio, fromMe: m.key.fromMe });
     console.log(`[Baileys] 📨 Mensaje entrante de: ${rawJid} -> Normalizado: ${normalizedJid} (Teléfono: ${telefonoLimpio})`);
 
     // 4. BLINDAJE: Verificación estricta de Lista Blanca
     if (!this.estaEnListaBlanca(telefonoLimpio)) {
+      this.addDebugEvent('BLOQUEADO_LISTA_BLANCA', { telefonoLimpio });
       console.log(`[Baileys] 🛑 Número ${telefonoLimpio} NO está en la lista blanca. Ignorado por blindaje.`);
       return;
     }
@@ -303,6 +316,7 @@ export class BaileysService {
     // Verificar si el número está en la lista de exclusión (atención humana / bot silenciado)
     const esExcluido = await BotExclusionsService.esNumeroExcluido(telefonoLimpio);
     if (esExcluido) {
+      this.addDebugEvent('IGNORADO_ATENCION_HUMANA', { telefonoLimpio });
       console.log(`[Baileys] 👤 Mensaje de ${telefonoLimpio} ignorado (en lista de atención humana).`);
       return;
     }
@@ -446,13 +460,74 @@ export class BaileysService {
     const msTipeo = Math.min(1800 + textoFinal.length * 10, 3800) + Math.random() * 500;
     await this.delay(msTipeo);
 
-    // 3. Pausar presencia y enviar el mensaje
+    // 3. Pausar presencia
     try {
       await this.socket.sendPresenceUpdate('paused', targetJid);
+    } catch (e) {}
+
+    // 4. Si la respuesta contiene botones nativos de URL (como "Abrir Agenda")
+    if (typeof response !== 'string' && response.interactive?.type === 'cta_url') {
+      try {
+        const actionParams = (response.interactive.action as any)?.parameters;
+        const buttonUrl = actionParams?.url || response.urlRedirect;
+        const buttonText = actionParams?.display_text || '📅 Abrir Agenda';
+        const bodyContent = response.interactive.body || textoFinal;
+
+        const msg = generateWAMessageFromContent(
+          targetJid,
+          {
+            viewOnceMessage: {
+              message: {
+                messageContextInfo: {
+                  deviceListMetadata: {},
+                  deviceListMetadataVersion: 2,
+                },
+                interactiveMessage: proto.Message.InteractiveMessage.create({
+                  body: proto.Message.InteractiveMessage.Body.create({
+                    text: bodyContent,
+                  }),
+                  footer: proto.Message.InteractiveMessage.Footer.create({
+                    text: 'JL Mímate Nails 💕',
+                  }),
+                  header: proto.Message.InteractiveMessage.Header.create({
+                    title: response.interactive.header || '🌸 JL Mímate Nails Spa',
+                    hasMediaAttachment: false,
+                  }),
+                  nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
+                    buttons: [
+                      {
+                        name: 'cta_url',
+                        buttonParamsJson: JSON.stringify({
+                          display_text: buttonText,
+                          url: buttonUrl,
+                        }),
+                      },
+                    ],
+                  }),
+                }),
+              },
+            },
+          },
+          { userJid: this.socket.user?.id || targetJid }
+        );
+
+        await this.socket.relayMessage(targetJid, msg.message!, { messageId: msg.key.id! });
+        this.addDebugEvent('RESPUESTA_BOTON_CTA_ENVIADA', { destinatario: targetJid, url: buttonUrl });
+        console.log(`[Baileys] ✅ Mensaje con botón interactivo "Abrir Agenda" enviado a ${targetJid}`);
+        return;
+      } catch (ctaErr) {
+        console.warn('[Baileys] Error enviando botón nativo cta_url, recurriendo a texto:', ctaErr);
+      }
+    }
+
+    // 5. Envío tradicional de texto (o fallback)
+    try {
       await this.socket.sendMessage(targetJid, { text: textoFinal });
+      this.addDebugEvent('RESPUESTA_TEXTO_ENVIADA', { destinatario: targetJid, preview: textoFinal.slice(0, 50) });
       console.log(`[Baileys] ✅ Mensaje respondido exitosamente a ${targetJid}`);
     } catch (sendErr) {
       console.error('[Baileys] ❌ Error enviando mensaje a:', targetJid, sendErr);
+      this.addDebugEvent('ERROR_ENVIO', { destinatario: targetJid, error: String(sendErr) });
     }
   }
 

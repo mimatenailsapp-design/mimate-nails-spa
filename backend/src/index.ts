@@ -106,12 +106,14 @@ app.all('/webhook', (req: Request, res: Response) => {
   });
 });
 
-// Diagnóstico general del servicio WhatsApp Baileys
-app.get('/api/debug/whatsapp', (req: Request, res: Response) => {
+// Diagnóstico general y detallado del servicio WhatsApp Baileys
+app.get(['/api/debug/whatsapp', '/api/baileys/status', '/api/baileys/diagnostico'], (req: Request, res: Response) => {
   res.json({
     status: 'ok',
     proveedor: 'baileys',
     baileys: BaileysService.getEstado(),
+    whitelist: BaileysService.getWhitelist(),
+    eventos_recientes: BaileysService.eventosDebug,
     environment_variables: {
       has_supabase_url: !!process.env.SUPABASE_URL,
       has_supabase_service_key: !!process.env.SUPABASE_SERVICE_ROLE_KEY,

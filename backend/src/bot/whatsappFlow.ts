@@ -147,23 +147,54 @@ export class WhatsAppFlow {
         return resRecordatorio;
       }
 
-      // Detección de comprobante de pago o seguimiento de pre-reserva pendiente
-      const resComprobante = await this.manejarRecepcionComprobante(telefono, complejo, session, mediaId, mediaType, texto, directImageBuffer);
-      if (resComprobante) {
-        return resComprobante;
-      }
+      const esSpa = complejo.slug === 'mimate-nails' || complejo.tipo_negocio === 'belleza_unas';
 
-      if (
-        input === 'menu' ||
-        input === 'cancelar' ||
-        input === 'inicio' ||
-        (input === 'hola' && session.paso !== 'INICIO')
-      ) {
+      // 1. Detección de saludos, menú, inicio o solicitud de agenda
+      const esSoloSaludo = [
+        'hola',
+        'buenas',
+        'buen dia',
+        'buenos dias',
+        'buenas tardes',
+        'buenas noches',
+        'menu',
+        'inicio',
+        'empezar',
+        'comenzar',
+        'agendar',
+        'agenda',
+        'cita',
+        'citas',
+        'servicios',
+        'precios',
+      ].includes(input) || input.startsWith('hola') || input.startsWith('buenas') || input.includes('cita') || input.includes('agend');
+
+      if (esSoloSaludo || input === 'cancelar' || input === 'menu' || input === 'inicio') {
         session.paso = 'INICIO';
         session.canchaSeleccionada = undefined;
         session.fechaSeleccionada = undefined;
         session.horariosDisponibles = undefined;
         session.reservaId = undefined;
+
+        // Para JL Mímate Nails Spa: responder de inmediato con bienvenida y botón para abrir la agenda
+        if (esSpa && !mediaId && !directImageBuffer) {
+          return await this.manejarInicio(telefono, session, complejo, nombrePush, texto);
+        }
+      }
+
+      // 2. Detección de comprobante de pago o seguimiento de pre-reserva pendiente
+      // Solo si envió imagen, si está en espera de pago, o si menciona pago/comprobante explícitamente
+      const esConsultaPago = ['comprobante', 'abono', 'pago', 'transferencia', 'transferi', 'nequi', 'daviplata', 'cuenta', 'cuentas', 'soporte', 'pagar'].some(k => input.includes(k));
+      if (mediaId || directImageBuffer || session.paso === 'ESPERA_PAGO' || esConsultaPago) {
+        const resComprobante = await this.manejarRecepcionComprobante(telefono, complejo, session, mediaId, mediaType, texto, directImageBuffer);
+        if (resComprobante) {
+          return resComprobante;
+        }
+      }
+
+      // Si es Spa y está en inicio, garantizar siempre la respuesta con el botón de agenda
+      if (esSpa && session.paso === 'INICIO' && !mediaId && !directImageBuffer) {
+        return await this.manejarInicio(telefono, session, complejo, nombrePush, texto);
       }
 
       // Detección inteligente de consultas libres (FAQ) y derivación a asesor humano
@@ -174,8 +205,7 @@ export class WhatsAppFlow {
         }
       }
 
-
-      // 2. COMPRENSIÓN NATURAL DE CONTEXTO GLOBAL (Primer mensaje, segundo mensaje o en cualquier paso)
+      // 3. COMPRENSIÓN NATURAL DE CONTEXTO GLOBAL (Primer mensaje, segundo mensaje o en cualquier paso)
       const esComandoSistema = input.startsWith('cancha_') ||
         input.startsWith('fecha_') ||
         input.startsWith('hora_') ||
@@ -184,8 +214,6 @@ export class WhatsAppFlow {
         input === 'menu' ||
         input === 'reiniciar' ||
         input === 'cancelar';
-
-      const esSoloSaludo = ['hola', 'buenas', 'buen dia', 'buenos dias', 'buenas tardes'].includes(input);
 
       if (!mediaId && !esComandoSistema && !esSoloSaludo) {
         if (!session.canchasDisponibles || session.canchasDisponibles.length === 0) {
@@ -206,7 +234,7 @@ export class WhatsAppFlow {
         }
       }
 
-      // 3. FLUJO GUIADO DE RESERVAS Y CITAS (DEPORTES, BARBERÍA, SPA)
+      // 4. FLUJO GUIADO DE RESERVAS Y CITAS
       switch (session.paso) {
         case 'INICIO':
           return await this.manejarInicio(telefono, session, complejo, nombrePush, texto);
@@ -1509,7 +1537,14 @@ export class WhatsAppFlow {
         };
       }
 
-      // Para CUALQUIER otro mensaje o texto que envíe el cliente, mantener el hilo de la conversación:
+      // Si el cliente no está en espera de pago ni pregunta por el comprobante/pago, continuar flujo normal
+      const inputTexto = (texto || '').trim().toLowerCase();
+      const esConsultaPago = ['comprobante', 'abono', 'pago', 'transferencia', 'transferi', 'nequi', 'daviplata', 'cuenta', 'cuentas', 'soporte', 'pagar'].some(k => inputTexto.includes(k));
+      if (!esConsultaPago && session.paso !== 'ESPERA_PAGO') {
+        return null;
+      }
+
+      // Para consultas de pago o clientes en paso ESPERA_PAGO, enviar instrucciones de transferencia:
       const anticipoRequerido = reservaTarget.valor_anticipo_requerido || (reservaTarget.valor_total * 0.2) || 5000;
       const anticipoFmt = '$' + Number(anticipoRequerido).toLocaleString('es-CO');
       const nequiNum = complejo.nequi_numero || '3219610896';
