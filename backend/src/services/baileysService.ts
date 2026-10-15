@@ -31,11 +31,11 @@ export class BaileysService {
   private static procesadosCache = new Set<string>();
   public static eventosDebug: Array<{ hora: string; tipo: string; detalle: any }> = [];
 
-  // Mapeo bidireccional de LIDs de WhatsApp a números de teléfono reales
+  // Mapeo verificado de LIDs de WhatsApp a números de teléfono reales autorizados
   public static lidToPhoneMap: Map<string, string> = new Map([
-    ['279641092800638', '573134862536'],
-    ['272627444801659', '573022779797'],
-    ['89296748961918', '573223739845'],
+    ['279641092800638', '573134862536'], // Teléfono Lili / 3134862536
+    ['89296748961918', '573223739845'],  // Bot Mímate Nails Spa (Teléfono propio)
+    ['263677336907937', '573022779797'], // Teléfono autorizado 3022779797
   ]);
 
   public static addDebugEvent(tipo: string, detalle: any) {
@@ -53,16 +53,12 @@ export class BaileysService {
    */
   public static getWhitelist(): string[] {
     const defaultNumbers = [
-      '573022779797',
-      '573223739845',
       '573134862536',
-      '3022779797',
-      '3223739845',
+      '573223739845',
+      '573022779797',
       '3134862536',
-      // LIDs de WhatsApp de los dispositivos autorizados
-      '279641092800638',
-      '272627444801659',
-      '89296748961918',
+      '3223739845',
+      '3022779797',
     ];
     const raw = process.env.BAILEYS_WHITELIST_NUMBERS || '';
     const envNumbers = raw
@@ -77,10 +73,10 @@ export class BaileysService {
    */
   public static estaEnListaBlanca(telefonoLimpio: string): boolean {
     const whitelist = this.getWhitelist();
-    // Si no hay lista blanca configurada en .env, atiende normalmente (modo producción abierta)
+    // Si no hay lista blanca configurada en .env ni números default, atiende normalmente
     if (whitelist.length === 0) return true;
 
-    // Si es un LID mapeado a un número de teléfono conocido
+    // Si es un LID de WhatsApp mapeado a un número de teléfono conocido
     if (this.lidToPhoneMap.has(telefonoLimpio)) {
       const telReal = this.lidToPhoneMap.get(telefonoLimpio)!;
       return this.estaEnListaBlanca(telReal);
@@ -89,16 +85,11 @@ export class BaileysService {
     const limpio = telefonoLimpio.replace(/\D/g, '');
     const ultimos10 = limpio.length >= 10 ? limpio.slice(-10) : limpio;
 
-    // Si hay lista blanca configurada, el remitente DEBE estar en la lista
+    // Verificación ESTRICTA de seguridad: Solo coincidencia exacta de número o de los 10 dígitos celulares
     return whitelist.some((autorizado) => {
       const authClean = autorizado.replace(/\D/g, '');
       const auth10 = authClean.length >= 10 ? authClean.slice(-10) : authClean;
-      return (
-        limpio === authClean ||
-        (ultimos10.length === 10 && ultimos10 === auth10) ||
-        limpio.endsWith(authClean) ||
-        authClean.endsWith(limpio)
-      );
+      return limpio === authClean || (ultimos10.length === 10 && ultimos10 === auth10);
     });
   }
 
