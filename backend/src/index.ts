@@ -108,10 +108,14 @@ app.all('/webhook', (req: Request, res: Response) => {
 
 // Diagnóstico general y detallado del servicio WhatsApp Baileys
 app.get(['/api/debug/whatsapp', '/api/baileys/status', '/api/baileys/diagnostico'], (req: Request, res: Response) => {
+  const estado = BaileysService.getEstado();
   res.json({
-    status: 'ok',
+    status: estado.status,
+    tieneQr: estado.tieneQr,
+    qr: estado.qr,
+    usuarioConectado: estado.usuarioConectado,
     proveedor: 'baileys',
-    baileys: BaileysService.getEstado(),
+    baileys: estado,
     whitelist: BaileysService.getWhitelist(),
     eventos_recientes: BaileysService.eventosDebug,
     environment_variables: {
@@ -233,8 +237,9 @@ app.get(['/qr', '/api/baileys/qr'], (req: Request, res: Response) => {
       </ol>
     </div>
 
-    <div style="margin-top: 20px;">
+    <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
       <a href="/api/baileys/relink" onclick="return confirm('¿Deseas desvincular la sesión actual y generar un nuevo código QR?');" style="display: inline-block; padding: 10px 18px; background: #e11d48; color: white; border-radius: 999px; text-decoration: none; font-size: 13px; font-weight: 700; box-shadow: 0 4px 12px rgba(225, 29, 72, 0.25);">🔄 Desvincular y Escanear Nuevo QR</a>
+      <a href="/qr/image" target="_blank" style="display: inline-block; padding: 10px 18px; background: #be185d; color: white; border-radius: 999px; text-decoration: none; font-size: 13px; font-weight: 700;">🖼️ Ver Imagen Directa</a>
     </div>
 
     <p class="footer">Se actualiza automáticamente cada 3 segundos</p>
@@ -253,35 +258,48 @@ app.get(['/qr', '/api/baileys/qr'], (req: Request, res: Response) => {
         const qrDiv = document.getElementById('qrcode');
         const instructions = document.getElementById('instructions');
 
-        if (data.status === 'CONECTADO') {
+        const status = data.status || data.baileys?.status || 'INICIANDO';
+        const qr = data.qr || data.baileys?.qr || '';
+        const usuario = data.usuarioConectado || data.baileys?.usuarioConectado;
+
+        if (status === 'CONECTADO') {
           badge.className = 'status-badge status-conectado';
           badge.innerHTML = '✅ WhatsApp Conectado';
           placeholder.style.display = 'block';
-          placeholder.innerHTML = '🎉 ¡El bot está 100% activo y respondiendo chats!<br><br><strong>Usuario:</strong> ' + (data.usuarioConectado || 'Sesión Activa');
+          placeholder.innerHTML = '🎉 ¡El bot está 100% activo y respondiendo chats!<br><br><strong>Usuario:</strong> ' + (usuario || 'Sesión Activa');
           qrDiv.style.display = 'none';
           instructions.style.display = 'none';
-        } else if (data.status === 'ESPERANDO_QR' && data.qr) {
+        } else if (qr && qr.length > 5) {
           badge.className = 'status-badge status-esperando';
           badge.innerHTML = '⏳ Esperando que escanees el QR';
           placeholder.style.display = 'none';
           qrDiv.style.display = 'block';
           instructions.style.display = 'block';
 
-          if (ultimoQr !== data.qr) {
-            ultimoQr = data.qr;
+          if (ultimoQr !== qr) {
+            ultimoQr = qr;
             qrDiv.innerHTML = '';
-            qrInstancia = new QRCode(qrDiv, {
-              text: data.qr,
-              width: 230,
-              height: 230,
-              colorDark: '#000000',
-              colorLight: '#ffffff',
-              correctLevel: QRCode.CorrectLevel.M
-            });
+            try {
+              if (typeof QRCode !== 'undefined') {
+                qrInstancia = new QRCode(qrDiv, {
+                  text: qr,
+                  width: 230,
+                  height: 230,
+                  colorDark: '#000000',
+                  colorLight: '#ffffff',
+                  correctLevel: QRCode.CorrectLevel.M
+                });
+              } else {
+                throw new Error('QRCode lib no disponible');
+              }
+            } catch (err) {
+              console.warn('Fallback a imagen QR externa:', err);
+              qrDiv.innerHTML = '<img src="https://api.qrserver.com/v1/create-qr-code/?size=230x230&data=' + encodeURIComponent(qr) + '" style="border-radius: 8px; display: block; margin: 0 auto; max-width: 100%;" alt="Código QR WhatsApp" />';
+            }
           }
         } else {
           badge.className = 'status-badge status-conectando';
-          badge.innerHTML = '🔄 ' + data.status;
+          badge.innerHTML = '🔄 ' + status;
           placeholder.style.display = 'block';
           placeholder.textContent = 'Generando nuevo código QR...';
           qrDiv.style.display = 'none';
@@ -296,6 +314,14 @@ app.get(['/qr', '/api/baileys/qr'], (req: Request, res: Response) => {
   </script>
 </body>
 </html>`);
+});
+
+app.get(['/qr/image', '/api/baileys/qr.png'], (req: Request, res: Response) => {
+  const estado = BaileysService.getEstado();
+  if (!estado.qr) {
+    return res.status(404).send('No hay código QR disponible en este momento. Estado actual: ' + estado.status);
+  }
+  return res.redirect('https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' + encodeURIComponent(estado.qr));
 });
 
 /**
