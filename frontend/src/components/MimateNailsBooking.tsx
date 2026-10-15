@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   IconBrandWhatsapp,
@@ -214,6 +214,22 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
 
   // Cargar info del spa y detectar parámetro de reagendamiento
   useEffect(() => {
+    // 0. Cache instantáneo en sessionStorage para evitar layout shift o parpadeo
+    try {
+      const cached = sessionStorage.getItem('mimate_bootstrap');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && Date.now() - (parsed._ts || 0) < 5 * 60 * 1000) {
+          if (parsed.equipo && parsed.equipo.length > 0) {
+            setEmpleadas(parsed.equipo);
+          }
+          if (parsed.config && typeof parsed.config.exigeAnticipo === 'boolean') {
+            setSpaConfig(parsed.config);
+          }
+        }
+      }
+    } catch {}
+
     // 1. Carga unificada de bootstrap (equipo, servicios y configuración de anticipos en 1 solo viaje de red)
     fetch('/api/spa/info')
       .then((r) => r.json())
@@ -224,6 +240,9 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
         if (d.config && typeof d.config.exigeAnticipo === 'boolean') {
           setSpaConfig(d.config);
         }
+        try {
+          sessionStorage.setItem('mimate_bootstrap', JSON.stringify({ ...d, _ts: Date.now() }));
+        } catch {}
       })
       .catch(() => {});
 
@@ -291,20 +310,36 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
     } catch {}
   }, []);
 
+  const slotsCacheRef = useRef<Map<string, { slots: string[]; aviso: string | null; ts: number }>>(new Map());
+
   const cargarSlots = async (f = fecha, emp = empleadaId, dur = servicioSeleccionado?.duracion || 45) => {
     if (!f) return;
+
+    const duracion = Math.max(15, dur);
+    const cacheKey = `${f}_${emp || 'all'}_${duracion}`;
+    const cached = slotsCacheRef.current.get(cacheKey);
+    const ahora = Date.now();
+
+    // Cache de 60 segundos: respuesta inmediata sin parpadeo si la clienta vuelve a tocar la misma fecha
+    if (cached && ahora - cached.ts < 60000) {
+      setSlots(cached.slots);
+      setAvisoSlots(cached.aviso);
+      setCargandoSlots(false);
+      return;
+    }
+
     setCargandoSlots(true);
     setAvisoSlots(null);
 
     const dObj = new Date(`${f}T12:00:00-05:00`);
     if (dObj.getDay() === 0) {
+      const aviso = 'Los domingos estamos cerrados. Atendemos con amor de Lunes a Sábado de 9:30 am a 5:30 pm 💕';
       setSlots([]);
-      setAvisoSlots('Los domingos estamos cerrados. Atendemos con amor de Lunes a Sábado de 9:30 am a 5:30 pm 💕');
+      setAvisoSlots(aviso);
       setCargandoSlots(false);
+      slotsCacheRef.current.set(cacheKey, { slots: [], aviso, ts: ahora });
       return;
     }
-
-    const duracion = Math.max(15, dur);
 
     try {
       // 1. Intentar endpoint en backend
@@ -320,6 +355,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
         if (Array.isArray(d.slots)) {
           setSlots(d.slots);
           if (d.aviso) setAvisoSlots(d.aviso);
+          slotsCacheRef.current.set(cacheKey, { slots: d.slots, aviso: d.aviso || null, ts: Date.now() });
           setCargandoSlots(false);
           return;
         }
@@ -435,11 +471,11 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
       }
 
       setSlots(slotsLibres);
-      setAvisoSlots(
-        slotsLibres.length === 0
-          ? 'No hay horarios disponibles para esta fecha con la duración de este servicio. Prueba con otro día 💕'
-          : null
-      );
+      const avisoCalculado = slotsLibres.length === 0
+        ? 'No hay horarios disponibles para esta fecha con la duración de este servicio. Prueba con otro día 💕'
+        : null;
+      setAvisoSlots(avisoCalculado);
+      slotsCacheRef.current.set(cacheKey, { slots: slotsLibres, aviso: avisoCalculado, ts: Date.now() });
     } catch (errSupabase) {
       console.error('Error calculando slots en Supabase:', errSupabase);
       setSlots([]);
