@@ -31,6 +31,8 @@ export class BaileysService {
   private static procesadosCache = new Set<string>();
   private static mensajeStore = new Map<string, proto.IMessage>();
   public static eventosDebug: Array<{ hora: string; tipo: string; detalle: any }> = [];
+  private static isStarting = false;
+  private static reconectarTimeout: NodeJS.Timeout | null = null;
 
   // Mapeo verificado de LIDs de WhatsApp a números de teléfono reales autorizados
   public static lidToPhoneMap: Map<string, string> = new Map([
@@ -215,116 +217,144 @@ export class BaileysService {
    * Inicializa la conexión de Baileys con blindaje anti-baneo
    */
   static async iniciar(): Promise<void> {
-    const authDir = path.join(process.cwd(), 'baileys_auth_info');
-    if (!fs.existsSync(authDir)) {
-      fs.mkdirSync(authDir, { recursive: true });
+    if (this.isStarting) {
+      console.log('[Baileys] ⏳ Ya hay una inicialización en curso. Omitiendo llamada duplicada.');
+      return;
+    }
+    this.isStarting = true;
+
+    if (this.reconectarTimeout) {
+      clearTimeout(this.reconectarTimeout);
+      this.reconectarTimeout = null;
     }
 
-    // 1. Restaurar sesión previa de Supabase si estamos en un contenedor nuevo (como Render)
-    await this.restaurarSesionDesdeSupabase(authDir);
-
-    const { state, saveCreds } = await useMultiFileAuthState(authDir);
-    const { version } = await fetchLatestBaileysVersion();
-
-    const logger = pino({ level: 'silent' });
-
-    console.log('\n======================================================');
-    console.log('🤖 INICIANDO SERVICIO BLINDADO DE BAILEYS (WHATSAPP)');
-    console.log(`📦 Versión del protocolo WhatsApp Web: ${version.join('.')}`);
-    const whitelist = this.getWhitelist();
-    if (whitelist.length > 0) {
-      console.log(`🛡️  MODO LISTA BLANCA ACTIVO: Solo responderá a: [${whitelist.join(', ')}]`);
-    } else {
-      console.log('⚠️  MODO ABIERTO: Sin lista blanca (responderá a todos los chats)');
+    // Si ya existía un socket previo, desconectarlo y desvincular listeners para evitar colisiones
+    if (this.socket) {
+      try {
+        this.socket.ev.removeAllListeners('connection.update');
+        this.socket.ev.removeAllListeners('creds.update');
+        this.socket.ev.removeAllListeners('messages.upsert');
+        this.socket.end(undefined);
+      } catch (e) {}
+      this.socket = null;
     }
-    console.log('======================================================\n');
 
-    this.statusConexion = 'CONECTANDO';
-
-    // Blindaje de conexión: Browser Fingerprint oficial y keep-alive continuo anti-zombie
-    this.socket = makeWASocket({
-      version,
-      auth: state,
-      logger: pino({ level: 'warn' }),
-      browser: Browsers.windows('Desktop'),
-      syncFullHistory: false,
-      shouldSyncHistoryMessage: () => false,
-      markOnlineOnConnect: false,
-      shouldIgnoreJid: (jid) => isJidBroadcast(jid) || isJidGroup(jid) || jid.endsWith('@newsletter') || jid.includes('@broadcast'),
-      generateHighQualityLinkPreview: true,
-      defaultQueryTimeoutMs: 60000,
-      keepAliveIntervalMs: 25000,
-      emitOwnEvents: false,
-      retryRequestDelayMs: 250,
-      getMessage: async (key) => {
-        if (key?.id && this.mensajeStore.has(key.id)) {
-          const msg = this.mensajeStore.get(key.id);
-          this.addDebugEvent('REINTENTO_GETMESSAGE', { id: key.id });
-          return msg;
-        }
-        return undefined;
-      },
-    });
-
-    // Procesar todos los eventos de forma ordenada a través del buffer nativo de Baileys
-    this.socket.ev.process(async (events) => {
-      // 1. Guardado de credenciales independiente y no bloqueante
-      if (events['creds.update']) {
-        try {
-          await saveCreds();
-          this.respaldarSesionEnSupabase(authDir);
-        } catch (e) {
-          console.error('Error guardando credenciales:', e);
-        }
+    try {
+      const authDir = path.join(process.cwd(), 'baileys_auth_info');
+      if (!fs.existsSync(authDir)) {
+        fs.mkdirSync(authDir, { recursive: true });
       }
 
-      // 2. Control de estado de conexión
-      if (events['connection.update']) {
-        const update = events['connection.update'];
-        const { connection, lastDisconnect, qr } = update;
+      // 1. Restaurar sesión previa de Supabase si estamos en un contenedor nuevo (como Render)
+      await this.restaurarSesionDesdeSupabase(authDir);
 
-        if (qr) {
-          this.qrCode = qr;
-          this.statusConexion = 'ESPERANDO_QR';
-          console.log('\n📲 ESCANEA ESTE CÓDIGO QR EN TU WHATSAPP (Dispositivos vinculados):\n');
-          qrcode.generate(qr, { small: true });
-          console.log('👆 Abre WhatsApp > Dispositivos Vinculados > Vincular un dispositivo.\n');
-        }
+      const { state, saveCreds } = await useMultiFileAuthState(authDir);
+      const { version } = await fetchLatestBaileysVersion();
 
-        if (connection === 'close') {
-          this.statusConexion = 'DESCONECTADO';
-          const statusCode = (lastDisconnect?.error as any)?.output?.statusCode;
-          const debeReconectar = statusCode !== DisconnectReason.loggedOut;
+      console.log('\n======================================================');
+      console.log('🤖 INICIANDO SERVICIO BLINDADO DE BAILEYS (WHATSAPP)');
+      console.log(`📦 Versión del protocolo WhatsApp Web: ${version.join('.')}`);
+      const whitelist = this.getWhitelist();
+      if (whitelist.length > 0) {
+        console.log(`🛡️  MODO LISTA BLANCA ACTIVO: Solo responderá a: [${whitelist.join(', ')}]`);
+      } else {
+        console.log('⚠️  MODO ABIERTO: Sin lista blanca (responderá a todos los chats)');
+      }
+      console.log('======================================================\n');
 
-          console.log(`⚠️ Conexión de Baileys cerrada (Código: ${statusCode}). Reconectando: ${debeReconectar}`);
+      this.statusConexion = 'CONECTANDO';
 
-          if (statusCode === DisconnectReason.loggedOut) {
-            console.log('❌ Sesión cerrada desde el celular. Limpiando credenciales antiguas...');
-            try {
-              fs.rmSync(authDir, { recursive: true, force: true });
-              const complejos = await BookingService.getComplejos();
-              if (complejos[0]?.id) {
-                await supabase.from('complejos').update({ whatsapp_token: null }).eq('id', complejos[0].id);
-              }
-            } catch (e) {
-              console.error('Error limpiando authDir:', e);
-            }
-            setTimeout(() => this.iniciar(), 5000);
-          } else if (debeReconectar) {
-            // Retardo progresivo para evitar spam de reconexiones
-            setTimeout(() => this.iniciar(), 4000);
+      // Blindaje de conexión: Browser Fingerprint oficial y keep-alive continuo anti-zombie
+      this.socket = makeWASocket({
+        version,
+        auth: state,
+        logger: pino({ level: 'warn' }),
+        browser: Browsers.windows('Desktop'),
+        syncFullHistory: false,
+        shouldSyncHistoryMessage: () => false,
+        markOnlineOnConnect: false,
+        shouldIgnoreJid: (jid) => isJidBroadcast(jid) || isJidGroup(jid) || jid.endsWith('@newsletter') || jid.includes('@broadcast'),
+        generateHighQualityLinkPreview: true,
+        defaultQueryTimeoutMs: 60000,
+        keepAliveIntervalMs: 25000,
+        emitOwnEvents: false,
+        retryRequestDelayMs: 250,
+        getMessage: async (key) => {
+          if (key?.id && this.mensajeStore.has(key.id)) {
+            const msg = this.mensajeStore.get(key.id);
+            this.addDebugEvent('REINTENTO_GETMESSAGE', { id: key.id });
+            return msg;
           }
-        } else if (connection === 'open') {
-          this.statusConexion = 'CONECTADO';
-          this.qrCode = null;
-          console.log('\n✅ ¡BAILEYS CONECTADO EXITOSAMENTE A WHATSAPP!');
-          console.log(`📱 Usuario conectado: ${this.socket?.user?.id || 'Sesión Activa'}\n`);
-          this.respaldarSesionEnSupabase(authDir, true);
+          return undefined;
+        },
+      });
 
-          // Sincronizar automáticamente LIDs de WhatsApp para los números de la lista blanca
-          setTimeout(() => this.sincronizarLids(), 2000);
+      // Procesar todos los eventos de forma ordenada a través del buffer nativo de Baileys
+      this.socket.ev.process(async (events) => {
+        // 1. Guardado de credenciales independiente y no bloqueante
+        if (events['creds.update']) {
+          try {
+            await saveCreds();
+            this.respaldarSesionEnSupabase(authDir);
+          } catch (e) {
+            console.error('Error guardando credenciales:', e);
+          }
         }
-      }
+
+        // 2. Control de estado de conexión
+        if (events['connection.update']) {
+          const update = events['connection.update'];
+          const { connection, lastDisconnect, qr } = update;
+
+          if (qr) {
+            this.qrCode = qr;
+            this.statusConexion = 'ESPERANDO_QR';
+            console.log('\n📲 ESCANEA ESTE CÓDIGO QR EN TU WHATSAPP (Dispositivos vinculados):\n');
+            qrcode.generate(qr, { small: true });
+            console.log('👆 Abre WhatsApp > Dispositivos Vinculados > Vincular un dispositivo.\n');
+          }
+
+          if (connection === 'close') {
+            this.statusConexion = 'DESCONECTADO';
+            const statusCode = (lastDisconnect?.error as any)?.output?.statusCode;
+            const debeReconectar = statusCode !== DisconnectReason.loggedOut;
+
+            this.addDebugEvent('CONEXION_CERRADA', { statusCode, debeReconectar });
+            console.log(`⚠️ Conexión de Baileys cerrada (Código: ${statusCode}). Reconectando: ${debeReconectar}`);
+
+            if (this.reconectarTimeout) {
+              clearTimeout(this.reconectarTimeout);
+              this.reconectarTimeout = null;
+            }
+
+            if (statusCode === DisconnectReason.loggedOut) {
+              console.log('❌ Sesión cerrada desde el celular. Limpiando credenciales antiguas...');
+              try {
+                fs.rmSync(authDir, { recursive: true, force: true });
+                const complejos = await BookingService.getComplejos();
+                if (complejos[0]?.id) {
+                  await supabase.from('complejos').update({ whatsapp_token: null }).eq('id', complejos[0].id);
+                }
+              } catch (e) {
+                console.error('Error limpiando authDir:', e);
+              }
+              this.reconectarTimeout = setTimeout(() => this.iniciar(), 6000);
+            } else if (debeReconectar) {
+              // Retardo controlado para evitar spam o tormentas de reconexión
+              this.reconectarTimeout = setTimeout(() => this.iniciar(), 6000);
+            }
+          } else if (connection === 'open') {
+            this.statusConexion = 'CONECTADO';
+            this.qrCode = null;
+            this.addDebugEvent('CONEXION_ABIERTA', { usuario: this.socket?.user?.id });
+            console.log('\n✅ ¡BAILEYS CONECTADO EXITOSAMENTE A WHATSAPP!');
+            console.log(`📱 Usuario conectado: ${this.socket?.user?.id || 'Sesión Activa'}\n`);
+            this.respaldarSesionEnSupabase(authDir, true);
+
+            // Sincronizar automáticamente LIDs de WhatsApp para los números de la lista blanca
+            setTimeout(() => this.sincronizarLids(), 3000);
+          }
+        }
 
       // 3. Procesar mensajes entrantes con máxima prioridad e inmediatez
       if (events['messages.upsert']) {
@@ -346,7 +376,10 @@ export class BaileysService {
         }
       }
     });
+  } finally {
+    this.isStarting = false;
   }
+}
 
   /**
    * Limpia credenciales y solicita un nuevo código QR
