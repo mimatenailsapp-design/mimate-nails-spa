@@ -582,74 +582,7 @@ export class BaileysService {
       await this.socket.sendPresenceUpdate('paused', targetJid);
     } catch (e) {}
 
-    // 4. Si la respuesta es interactiva tipo cta_url (Botón para abrir la agenda web), enviar botón nativo
-    if (typeof response !== 'string' && response.interactive?.type === 'cta_url') {
-      try {
-        const action = response.interactive.action as any;
-        const url = action?.parameters?.url || response.urlRedirect;
-        const displayText = action?.parameters?.display_text || '📅 Abrir Agenda';
-        const bodyText = response.interactive.body || response.texto;
-        const headerTitle = response.interactive.header || '🌸 JL Mímate Nails Spa';
-        const footerTitle = response.interactive.footer || 'JL Mímate Nails 💕';
-
-        const myUserJid = this.socket.user?.id ? jidNormalizedUser(this.socket.user.id) : targetJid;
-        const msg = generateWAMessageFromContent(
-          targetJid,
-          {
-            viewOnceMessage: {
-              message: {
-                messageContextInfo: {
-                  deviceListMetadata: {},
-                  deviceListMetadataVersion: 2,
-                },
-                interactiveMessage: proto.Message.InteractiveMessage.create({
-                  body: proto.Message.InteractiveMessage.Body.create({
-                    text: bodyText,
-                  }),
-                  footer: proto.Message.InteractiveMessage.Footer.create({
-                    text: footerTitle,
-                  }),
-                  header: proto.Message.InteractiveMessage.Header.create({
-                    title: headerTitle,
-                    hasMediaAttachment: false,
-                  }),
-                  nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
-                    buttons: [
-                      {
-                        name: 'cta_url',
-                        buttonParamsJson: JSON.stringify({
-                          display_text: displayText,
-                          url: url,
-                          merchant_url: url,
-                        }),
-                      },
-                    ],
-                  }),
-                }),
-              },
-            },
-          },
-          { userJid: myUserJid }
-        );
-
-        if (msg.key?.id && msg.message) {
-          this.mensajeStore.set(msg.key.id, msg.message);
-          if (this.mensajeStore.size > 1000) {
-            const firstKey = this.mensajeStore.keys().next().value;
-            if (firstKey) this.mensajeStore.delete(firstKey);
-          }
-        }
-
-        await this.socket.relayMessage(targetJid, msg.message!, { messageId: msg.key.id! });
-        this.addDebugEvent('RESPUESTA_BOTON_CTA_ENVIADA', { destinatario: targetJid, boton: displayText, url });
-        console.log(`[Baileys] ✅ Botón interactivo CTA ("${displayText}") enviado exitosamente a ${targetJid}`);
-        return;
-      } catch (ctaErr) {
-        console.warn('[Baileys] Error enviando botón interactivo CTA, recurriendo a formato texto con enlace:', ctaErr);
-      }
-    }
-
-    // 5. Envío estándar en formato texto (fallback o mensajes de texto simple)
+    // 4. Envío garantizado del mensaje en formato texto estándar y seguro
     try {
       const sent = await this.socket.sendMessage(targetJid, { text: textoFinal });
       if (sent?.key?.id && sent?.message) {
@@ -726,66 +659,7 @@ export class BaileysService {
     }
     const remoteJid = `${clean}@s.whatsapp.net`;
 
-    // Si tiene botones, intentar enviar botones interactivos nativos de WhatsApp
-    if (botones && botones.length > 0) {
-      try {
-        const textBody = typeof mensaje === 'string' ? mensaje : mensaje.texto;
-        const interactiveButtons = botones.map((b) => ({
-          name: 'quick_reply',
-          buttonParamsJson: JSON.stringify({
-            display_text: b.title,
-            id: b.id,
-          }),
-        }));
-
-        const myUserJid = this.socket.user?.id ? jidNormalizedUser(this.socket.user.id) : remoteJid;
-        const msg = generateWAMessageFromContent(
-          remoteJid,
-          {
-            viewOnceMessage: {
-              message: {
-                messageContextInfo: {
-                  deviceListMetadata: {},
-                  deviceListMetadataVersion: 2,
-                },
-                interactiveMessage: proto.Message.InteractiveMessage.create({
-                  body: proto.Message.InteractiveMessage.Body.create({
-                    text: textBody,
-                  }),
-                  footer: proto.Message.InteractiveMessage.Footer.create({
-                    text: 'JL Mímate Nails Spa 💕',
-                  }),
-                  header: proto.Message.InteractiveMessage.Header.create({
-                    title: '🌸 Recordatorio de Cita',
-                    hasMediaAttachment: false,
-                  }),
-                  nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
-                    buttons: interactiveButtons,
-                  }),
-                }),
-              },
-            },
-          },
-          { userJid: myUserJid }
-        );
-
-        if (msg.key?.id && msg.message) {
-          this.mensajeStore.set(msg.key.id, msg.message);
-          if (this.mensajeStore.size > 1000) {
-            const firstKey = this.mensajeStore.keys().next().value;
-            if (firstKey) this.mensajeStore.delete(firstKey);
-          }
-        }
-
-        await this.delay(1200);
-        await this.socket.relayMessage(remoteJid, msg.message!, { messageId: msg.key.id! });
-        return true;
-      } catch (btnErr) {
-        console.warn('[Baileys] Error enviando botones interactivos nativos, recurriendo a formato texto:', btnErr);
-      }
-    }
-
-    // Fallback: si no hay botones o fallaron los botones nativos
+    // Si tiene botones, estructurarlos como opciones numeradas para compatibilidad universal en cualquier teléfono
     let textoSalida = mensaje;
     if (botones && botones.length > 0 && typeof mensaje === 'string') {
       const opciones = botones.map((b, i) => `${i + 1}️⃣ ${b.title}`).join('\n');

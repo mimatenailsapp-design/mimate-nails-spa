@@ -491,13 +491,14 @@ export class WhatsAppFlow {
       const saludoNombre = nombrePush ? ` ${nombrePush}` : '';
       const textoSpa =
         `🌸✨ *¡HOLA${saludoNombre ? saludoNombre.toUpperCase() : ' REINA'}! BIENVENIDA A JL MÍMATE NAILS* ✨🌸\n\n` +
-        `Nos alegra mucho saludarte. Para agendar tu cita, ver nuestros servicios y elegir tu manicurista preferida, abre nuestra agenda tocando el botón a continuación:\n\n` +
+        `Nos alegra mucho saludarte. Para agendar tu cita, ver nuestros servicios y elegir tu manicurista preferida, abre nuestra agenda en el siguiente enlace:\n\n` +
+        `📅 *ABRIR AGENDA:*\n👉 ${urlAgenda}\n\n` +
         `📍 Pereira, Cuba (Calle 66 bis #26-57)\n` +
         `${textoAnticipo}\n\n` +
         `¡Te esperamos con amor para consentirte! 💕`;
 
       return {
-        texto: `${textoSpa}\n\n📅 *Agenda tu cita aquí:*\n${urlAgenda}`,
+        texto: textoSpa,
         urlRedirect: urlAgenda,
         interactive: {
           type: 'cta_url',
@@ -507,7 +508,7 @@ export class WhatsAppFlow {
           action: {
             name: 'cta_url',
             parameters: {
-              display_text: '📅 Abrir Agenda',
+              display_text: 'Abrir Agenda',
               url: urlAgenda,
             },
           },
