@@ -1429,11 +1429,6 @@ app.all('/api/cron/recordatorios', async (req: Request, res: Response) => {
   }
 });
 
-// Estado de Baileys WhatsApp Web
-app.get('/api/baileys/status', (req: Request, res: Response) => {
-  res.json(BaileysService.getEstado());
-});
-
 // Iniciar Servidor
 app.listen(PORT, async () => {
   console.log(`🚀 Servidor ejecutándose en http://localhost:${PORT}`);
@@ -1448,6 +1443,7 @@ app.listen(PORT, async () => {
     console.error('❌ Error iniciando servicio de Baileys:', baileysErr);
   }
 
+  // Tarea periódica de recordatorios y limpieza de reservas expiradas
   setInterval(async () => {
     try {
       await ReminderService.procesarRecordatoriosProximos();
@@ -1456,4 +1452,9 @@ app.listen(PORT, async () => {
       console.error('Error en tarea programada:', e);
     }
   }, 5 * 60 * 1000);
+
+  // Keep-alive anti-suspensión para Render (ping externo cada 4 minutos)
+  setInterval(() => {
+    fetch('https://mimate-nails-api.onrender.com/api/baileys/diagnostico').catch(() => {});
+  }, 4 * 60 * 1000);
 });

@@ -249,12 +249,19 @@ export class BaileysService {
 
     // Procesar mensajes entrantes con blindaje
     this.socket.ev.on('messages.upsert', async ({ messages, type }) => {
+      this.addDebugEvent('UPSERT_EVENTO', {
+        tipo: type,
+        cantidad: messages.length,
+        remitentes: messages.map((m) => m.key?.remoteJid),
+      });
+
       // Procesar mensajes tanto en 'notify' como en 'append' para permitir pruebas y sincronización
       for (const m of messages) {
         try {
           await this.procesarMensajeEntrante(m);
         } catch (err) {
           console.error('[Baileys] Error procesando mensaje:', err);
+          this.addDebugEvent('ERROR_UPSERT_ITEM', { error: String(err) });
         }
       }
     });
@@ -264,10 +271,19 @@ export class BaileysService {
    * Procesa cada mensaje con las protecciones de lista blanca y comportamiento humano
    */
   private static async procesarMensajeEntrante(m: WAMessage): Promise<void> {
-    if (!this.socket || !m.message || !m.key) return;
+    if (!this.socket) return;
+
+    const rawJid = m.key?.remoteJid || '';
+    this.addDebugEvent('PROCESAR_ITEM', {
+      rawJid,
+      fromMe: m.key?.fromMe,
+      id: m.key?.id,
+      tieneMensaje: !!m.message,
+    });
+
+    if (!m.message || !m.key) return;
 
     // 1. BLINDAJE: Filtrar grupos, difusiones y canales
-    const rawJid = m.key.remoteJid || '';
     if (
       !rawJid ||
       isJidGroup(rawJid) ||
@@ -465,65 +481,10 @@ export class BaileysService {
       await this.socket.sendPresenceUpdate('paused', targetJid);
     } catch (e) {}
 
-    // 4. Si la respuesta contiene botones nativos de URL (como "Abrir Agenda")
-    if (typeof response !== 'string' && response.interactive?.type === 'cta_url') {
-      try {
-        const actionParams = (response.interactive.action as any)?.parameters;
-        const buttonUrl = actionParams?.url || response.urlRedirect;
-        const buttonText = actionParams?.display_text || '📅 Abrir Agenda';
-        const bodyContent = response.interactive.body || textoFinal;
-
-        const msg = generateWAMessageFromContent(
-          targetJid,
-          {
-            viewOnceMessage: {
-              message: {
-                messageContextInfo: {
-                  deviceListMetadata: {},
-                  deviceListMetadataVersion: 2,
-                },
-                interactiveMessage: proto.Message.InteractiveMessage.create({
-                  body: proto.Message.InteractiveMessage.Body.create({
-                    text: bodyContent,
-                  }),
-                  footer: proto.Message.InteractiveMessage.Footer.create({
-                    text: 'JL Mímate Nails 💕',
-                  }),
-                  header: proto.Message.InteractiveMessage.Header.create({
-                    title: response.interactive.header || '🌸 JL Mímate Nails Spa',
-                    hasMediaAttachment: false,
-                  }),
-                  nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
-                    buttons: [
-                      {
-                        name: 'cta_url',
-                        buttonParamsJson: JSON.stringify({
-                          display_text: buttonText,
-                          url: buttonUrl,
-                        }),
-                      },
-                    ],
-                  }),
-                }),
-              },
-            },
-          },
-          { userJid: this.socket.user?.id || targetJid }
-        );
-
-        await this.socket.relayMessage(targetJid, msg.message!, { messageId: msg.key.id! });
-        this.addDebugEvent('RESPUESTA_BOTON_CTA_ENVIADA', { destinatario: targetJid, url: buttonUrl });
-        console.log(`[Baileys] ✅ Mensaje con botón interactivo "Abrir Agenda" enviado a ${targetJid}`);
-        return;
-      } catch (ctaErr) {
-        console.warn('[Baileys] Error enviando botón nativo cta_url, recurriendo a texto:', ctaErr);
-      }
-    }
-
-    // 5. Envío tradicional de texto (o fallback)
+    // 4. Envío garantizado del mensaje con enlace a la agenda
     try {
       await this.socket.sendMessage(targetJid, { text: textoFinal });
-      this.addDebugEvent('RESPUESTA_TEXTO_ENVIADA', { destinatario: targetJid, preview: textoFinal.slice(0, 50) });
+      this.addDebugEvent('RESPUESTA_TEXTO_ENVIADA', { destinatario: targetJid, preview: textoFinal.slice(0, 60) });
       console.log(`[Baileys] ✅ Mensaje respondido exitosamente a ${targetJid}`);
     } catch (sendErr) {
       console.error('[Baileys] ❌ Error enviando mensaje a:', targetJid, sendErr);
