@@ -33,6 +33,7 @@ export class BaileysService {
   public static eventosDebug: Array<{ hora: string; tipo: string; detalle: any }> = [];
   private static isStarting = false;
   private static reconectarTimeout: NodeJS.Timeout | null = null;
+  private static flushInterval: NodeJS.Timeout | null = null;
 
   // Mapeo verificado de LIDs de WhatsApp a números de teléfono reales autorizados
   public static lidToPhoneMap: Map<string, string> = new Map([
@@ -264,6 +265,15 @@ export class BaileysService {
 
       this.statusConexion = 'CONECTANDO';
 
+      // Bloquear solicitudes PeerDataOperation (PLACEHOLDER_MESSAGE_RESEND) hacia el celular
+      // que causaban las notificaciones en ráfaga de "Sincronizando con WhatsApp en Windows"
+      const noopPlaceholderCache = {
+        get: <T>(_key: string): T | undefined => true as unknown as T,
+        set: (): void => {},
+        del: (): void => {},
+        flushAll: (): void => {},
+      };
+
       // Blindaje de conexión: Browser Fingerprint oficial y keep-alive continuo anti-zombie
       this.socket = makeWASocket({
         version,
@@ -273,7 +283,9 @@ export class BaileysService {
         syncFullHistory: false,
         shouldSyncHistoryMessage: () => false,
         markOnlineOnConnect: false,
-        shouldIgnoreJid: (jid) => isJidBroadcast(jid) || isJidGroup(jid) || jid.endsWith('@newsletter') || jid.includes('@broadcast'),
+        placeholderResendCache: noopPlaceholderCache,
+        shouldIgnoreJid: (jid) =>
+          !jid ? false : Boolean(isJidBroadcast(jid) || isJidGroup(jid) || jid.endsWith('@newsletter') || jid.includes('@broadcast')),
         generateHighQualityLinkPreview: true,
         defaultQueryTimeoutMs: 60000,
         keepAliveIntervalMs: 25000,
@@ -288,6 +300,16 @@ export class BaileysService {
           return undefined;
         },
       });
+
+      // Garantizar que ningún evento entrante quede retenido en el buffer interno de Baileys
+      if (this.flushInterval) clearInterval(this.flushInterval);
+      this.flushInterval = setInterval(() => {
+        try {
+          if (this.socket?.ev?.isBuffering()) {
+            this.socket.ev.flush();
+          }
+        } catch (e) {}
+      }, 300);
 
       // Procesar todos los eventos de forma ordenada a través del buffer nativo de Baileys
       this.socket.ev.process(async (events) => {
@@ -421,6 +443,8 @@ export class BaileysService {
       fromMe: m.key?.fromMe,
       id: m.key?.id,
       tieneMensaje: !!m.message,
+      stubType: m.messageStubType,
+      stubParams: m.messageStubParameters,
     });
 
     if (!m.message || !m.key) return;
