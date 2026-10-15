@@ -11,6 +11,7 @@ import makeWASocket, {
   areJidsSameUser,
   isJidGroup,
   isJidBroadcast,
+  isLidUser,
   Browsers,
 } from '@whiskeysockets/baileys';
 import pino from 'pino';
@@ -29,6 +30,13 @@ export class BaileysService {
   private static statusConexion: 'DESCONECTADO' | 'ESPERANDO_QR' | 'CONECTANDO' | 'CONECTADO' = 'DESCONECTADO';
   private static procesadosCache = new Set<string>();
   public static eventosDebug: Array<{ hora: string; tipo: string; detalle: any }> = [];
+
+  // Mapeo bidireccional de LIDs de WhatsApp a números de teléfono reales
+  public static lidToPhoneMap: Map<string, string> = new Map([
+    ['279641092800638', '573134862536'],
+    ['272627444801659', '573022779797'],
+    ['89296748961918', '573223739845'],
+  ]);
 
   public static addDebugEvent(tipo: string, detalle: any) {
     this.eventosDebug.unshift({
@@ -51,22 +59,32 @@ export class BaileysService {
       '3022779797',
       '3223739845',
       '3134862536',
+      // LIDs de WhatsApp de los dispositivos autorizados
+      '279641092800638',
+      '272627444801659',
+      '89296748961918',
     ];
     const raw = process.env.BAILEYS_WHITELIST_NUMBERS || '';
     const envNumbers = raw
       .split(',')
       .map((num) => num.replace(/\D/g, '').trim())
       .filter((num) => num.length > 0);
-    return Array.from(new Set([...defaultNumbers, ...envNumbers]));
+    return Array.from(new Set([...defaultNumbers, ...envNumbers, ...this.lidToPhoneMap.keys()]));
   }
 
   /**
    * Verifica si un remitente está en la lista blanca de seguridad.
    */
-  private static estaEnListaBlanca(telefonoLimpio: string): boolean {
+  public static estaEnListaBlanca(telefonoLimpio: string): boolean {
     const whitelist = this.getWhitelist();
     // Si no hay lista blanca configurada en .env, atiende normalmente (modo producción abierta)
     if (whitelist.length === 0) return true;
+
+    // Si es un LID mapeado a un número de teléfono conocido
+    if (this.lidToPhoneMap.has(telefonoLimpio)) {
+      const telReal = this.lidToPhoneMap.get(telefonoLimpio)!;
+      return this.estaEnListaBlanca(telReal);
+    }
 
     const limpio = telefonoLimpio.replace(/\D/g, '');
     const ultimos10 = limpio.length >= 10 ? limpio.slice(-10) : limpio;
@@ -251,6 +269,34 @@ export class BaileysService {
           console.log('\n✅ ¡BAILEYS CONECTADO EXITOSAMENTE A WHATSAPP!');
           console.log(`📱 Usuario conectado: ${this.socket?.user?.id || 'Sesión Activa'}\n`);
           this.respaldarSesionEnSupabase(authDir, true);
+
+          // Sincronizar automáticamente LIDs de WhatsApp para los números de la lista blanca
+          setTimeout(async () => {
+            try {
+              if (!this.socket) return;
+              const wl = this.getWhitelist();
+              const phones = wl
+                .filter((n) => n.length >= 10 && !n.startsWith('27') && !n.startsWith('89'))
+                .map((n) => `+${n.startsWith('57') ? n : '57' + n}`);
+              const uniquePhones = Array.from(new Set(phones));
+
+              if (uniquePhones.length > 0) {
+                const results = await this.socket.onWhatsApp(...uniquePhones);
+                if (results) {
+                  for (const r of (results as any[])) {
+                    if (r.lid && r.jid) {
+                      const lidId = String(r.lid).split('@')[0];
+                      const phoneId = String(r.jid).split('@')[0];
+                      this.lidToPhoneMap.set(lidId, phoneId);
+                      console.log(`[Baileys] 🔗 LID Mapeado dinámicamente: ${lidId} -> ${phoneId}`);
+                    }
+                  }
+                }
+              }
+            } catch (errSync) {
+              console.warn('[Baileys] Error sincronizando LIDs:', errSync);
+            }
+          }, 3000);
         }
       }
 
@@ -340,14 +386,28 @@ export class BaileysService {
       this.procesadosCache.clear();
     }
 
-    // 2. Extraer teléfono limpio
-    const telefonoLimpio = normalizedJid.split('@')[0].replace(/\D/g, '');
+    // 2. Extraer teléfono limpio y resolver LID de WhatsApp si aplica
+    let telefonoLimpio = normalizedJid.split('@')[0].replace(/\D/g, '');
+    const esLid = isLidUser(normalizedJid);
+
+    if (esLid && this.lidToPhoneMap.has(telefonoLimpio)) {
+      const telReal = this.lidToPhoneMap.get(telefonoLimpio)!;
+      this.addDebugEvent('LID_RESUELTO', { lid: telefonoLimpio, telefonoReal: telReal });
+      console.log(`[Baileys] 🔄 Remitente LID ${telefonoLimpio} reconocido como teléfono real: ${telReal}`);
+      telefonoLimpio = telReal;
+    }
 
     // 3. Manejo de mensajes propios (m.key.fromMe)
     if (m.key.fromMe) {
       const myNormalizedJid = this.socket.user?.id ? jidNormalizedUser(this.socket.user.id) : '';
-      // Si el mensaje fue enviado por el bot/admin a otro usuario, no auto-responder
-      if (!myNormalizedJid || !areJidsSameUser(normalizedJid, myNormalizedJid)) {
+      const myNormalizedLid = this.socket.user?.lid ? jidNormalizedUser(this.socket.user.lid) : '';
+      const esChatPropio =
+        (myNormalizedJid && areJidsSameUser(normalizedJid, myNormalizedJid)) ||
+        (myNormalizedLid && areJidsSameUser(normalizedJid, myNormalizedLid)) ||
+        telefonoLimpio === this.socket.user?.id?.split(':')[0]?.replace(/\D/g, '');
+
+      // Si el mensaje fue enviado por el bot/admin a otro usuario en un chat ordinario, no auto-responder
+      if (!esChatPropio) {
         return;
       }
       this.addDebugEvent('CHAT_PROPIO_TEST', { telefonoLimpio });
@@ -359,8 +419,8 @@ export class BaileysService {
 
     // 4. BLINDAJE: Verificación estricta de Lista Blanca
     if (!this.estaEnListaBlanca(telefonoLimpio)) {
-      this.addDebugEvent('BLOQUEADO_LISTA_BLANCA', { telefonoLimpio });
-      console.log(`[Baileys] 🛑 Número ${telefonoLimpio} NO está en la lista blanca. Ignorado por blindaje.`);
+      this.addDebugEvent('BLOQUEADO_LISTA_BLANCA', { telefonoLimpio, rawJid });
+      console.log(`[Baileys] 🛑 Número/LID ${telefonoLimpio} NO está en la lista blanca. Ignorado por blindaje.`);
       return;
     }
 
