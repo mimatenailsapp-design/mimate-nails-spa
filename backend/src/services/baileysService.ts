@@ -269,7 +269,7 @@ export class BaileysService {
       version,
       auth: state,
       logger,
-      browser: Browsers.windows('Desktop'),
+      browser: ['Windows', 'Chrome', '124.0.0.0'],
       syncFullHistory: false,
       generateHighQualityLinkPreview: true,
       markOnlineOnConnect: true,
@@ -287,75 +287,78 @@ export class BaileysService {
       },
     });
 
-    // Procesamiento canónico y secuencial de eventos con EventBuffer de Baileys
-    this.socket.ev.process(async (events) => {
-      if (events['creds.update']) {
+    // 1. Guardado de credenciales independiente y no bloqueante
+    this.socket.ev.on('creds.update', async () => {
+      try {
         await saveCreds();
         this.respaldarSesionEnSupabase(authDir);
+      } catch (e) {
+        console.error('Error guardando credenciales:', e);
+      }
+    });
+
+    // 2. Control de estado de conexión
+    this.socket.ev.on('connection.update', async (update) => {
+      const { connection, lastDisconnect, qr } = update;
+
+      if (qr) {
+        this.qrCode = qr;
+        this.statusConexion = 'ESPERANDO_QR';
+        console.log('\n📲 ESCANEA ESTE CÓDIGO QR EN TU WHATSAPP (Dispositivos vinculados):\n');
+        qrcode.generate(qr, { small: true });
+        console.log('👆 Abre WhatsApp > Dispositivos Vinculados > Vincular un dispositivo.\n');
       }
 
-      if (events['connection.update']) {
-        const update = events['connection.update'];
-        const { connection, lastDisconnect, qr } = update;
+      if (connection === 'close') {
+        this.statusConexion = 'DESCONECTADO';
+        const statusCode = (lastDisconnect?.error as any)?.output?.statusCode;
+        const debeReconectar = statusCode !== DisconnectReason.loggedOut;
 
-        if (qr) {
-          this.qrCode = qr;
-          this.statusConexion = 'ESPERANDO_QR';
-          console.log('\n📲 ESCANEA ESTE CÓDIGO QR EN TU WHATSAPP (Dispositivos vinculados):\n');
-          qrcode.generate(qr, { small: true });
-          console.log('👆 Abre WhatsApp > Dispositivos Vinculados > Vincular un dispositivo.\n');
-        }
+        console.log(`⚠️ Conexión de Baileys cerrada (Código: ${statusCode}). Reconectando: ${debeReconectar}`);
 
-        if (connection === 'close') {
-          this.statusConexion = 'DESCONECTADO';
-          const statusCode = (lastDisconnect?.error as any)?.output?.statusCode;
-          const debeReconectar = statusCode !== DisconnectReason.loggedOut;
-
-          console.log(`⚠️ Conexión de Baileys cerrada (Código: ${statusCode}). Reconectando: ${debeReconectar}`);
-
-          if (statusCode === DisconnectReason.loggedOut) {
-            console.log('❌ Sesión cerrada desde el celular. Limpiando credenciales antiguas...');
-            try {
-              fs.rmSync(authDir, { recursive: true, force: true });
-              const complejos = await BookingService.getComplejos();
-              if (complejos[0]?.id) {
-                await supabase.from('complejos').update({ whatsapp_token: null }).eq('id', complejos[0].id);
-              }
-            } catch (e) {
-              console.error('Error limpiando authDir:', e);
-            }
-            setTimeout(() => this.iniciar(), 5000);
-          } else if (debeReconectar) {
-            // Retardo progresivo para evitar spam de reconexiones
-            setTimeout(() => this.iniciar(), 4000);
-          }
-        } else if (connection === 'open') {
-          this.statusConexion = 'CONECTADO';
-          this.qrCode = null;
-          console.log('\n✅ ¡BAILEYS CONECTADO EXITOSAMENTE A WHATSAPP!');
-          console.log(`📱 Usuario conectado: ${this.socket?.user?.id || 'Sesión Activa'}\n`);
-          this.respaldarSesionEnSupabase(authDir, true);
-
-          // Sincronizar automáticamente LIDs de WhatsApp para los números de la lista blanca
-          setTimeout(() => this.sincronizarLids(), 2000);
-        }
-      }
-
-      if (events['messages.upsert']) {
-        const { messages, type } = events['messages.upsert'];
-        this.addDebugEvent('UPSERT_EVENTO', {
-          tipo: type,
-          cantidad: messages.length,
-          remitentes: messages.map((m) => m.key?.remoteJid),
-        });
-
-        for (const m of messages) {
+        if (statusCode === DisconnectReason.loggedOut) {
+          console.log('❌ Sesión cerrada desde el celular. Limpiando credenciales antiguas...');
           try {
-            await this.procesarMensajeEntrante(m);
-          } catch (err) {
-            console.error('[Baileys] Error procesando mensaje:', err);
-            this.addDebugEvent('ERROR_UPSERT_ITEM', { error: String(err) });
+            fs.rmSync(authDir, { recursive: true, force: true });
+            const complejos = await BookingService.getComplejos();
+            if (complejos[0]?.id) {
+              await supabase.from('complejos').update({ whatsapp_token: null }).eq('id', complejos[0].id);
+            }
+          } catch (e) {
+            console.error('Error limpiando authDir:', e);
           }
+          setTimeout(() => this.iniciar(), 5000);
+        } else if (debeReconectar) {
+          // Retardo progresivo para evitar spam de reconexiones
+          setTimeout(() => this.iniciar(), 4000);
+        }
+      } else if (connection === 'open') {
+        this.statusConexion = 'CONECTADO';
+        this.qrCode = null;
+        console.log('\n✅ ¡BAILEYS CONECTADO EXITOSAMENTE A WHATSAPP!');
+        console.log(`📱 Usuario conectado: ${this.socket?.user?.id || 'Sesión Activa'}\n`);
+        this.respaldarSesionEnSupabase(authDir, true);
+
+        // Sincronizar automáticamente LIDs de WhatsApp para los números de la lista blanca
+        setTimeout(() => this.sincronizarLids(), 2000);
+      }
+    });
+
+    // 3. Procesar mensajes entrantes con máxima prioridad e inmediatez
+    this.socket.ev.on('messages.upsert', async ({ messages, type }) => {
+      console.log(`[Baileys] 📥 Mensajes entrantes detectados (Cantidad: ${messages.length}, Tipo: ${type})`);
+      this.addDebugEvent('UPSERT_EVENTO', {
+        tipo: type,
+        cantidad: messages.length,
+        remitentes: messages.map((m) => m.key?.remoteJid),
+      });
+
+      for (const m of messages) {
+        try {
+          await this.procesarMensajeEntrante(m);
+        } catch (err) {
+          console.error('[Baileys] Error procesando mensaje:', err);
+          this.addDebugEvent('ERROR_UPSERT_ITEM', { error: String(err) });
         }
       }
     });
