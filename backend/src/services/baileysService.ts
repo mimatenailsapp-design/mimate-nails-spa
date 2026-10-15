@@ -49,23 +49,25 @@ export class BaileysService {
 
   /**
    * Obtiene la lista blanca de números autorizados.
-   * ÚNICAMENTE autorizados: 3134862536 y 3022779797 (además del propio bot 3223739845).
+   * ÚNICAMENTE autorizados: 3134862536 y 3022779797.
+   * El número propio del bot / admin (3223739845) queda estrictamente bloqueado para evitar auto-respuestas.
    */
   public static getWhitelist(): string[] {
     const defaultNumbers = [
       '573134862536',
       '573022779797',
-      '573223739845',
       '3134862536',
       '3022779797',
-      '3223739845',
     ];
     const raw = process.env.BAILEYS_WHITELIST_NUMBERS || '';
     const envNumbers = raw
       .split(',')
       .map((num) => num.replace(/\D/g, '').trim())
-      .filter((num) => num.length > 0);
-    return Array.from(new Set([...defaultNumbers, ...envNumbers]));
+      .filter((num) => num.length > 0 && !num.includes('3223739845'));
+
+    return Array.from(new Set([...defaultNumbers, ...envNumbers])).filter(
+      (n) => !n.includes('3223739845') && !n.endsWith('3223739845')
+    );
   }
 
   /**
@@ -74,6 +76,11 @@ export class BaileysService {
   public static estaEnListaBlanca(telefonoLimpio: string): boolean {
     const limpio = telefonoLimpio.replace(/\D/g, '');
     if (!limpio) return false;
+
+    // Bloquear explícitamente el número propio del bot / administrador (3223739845)
+    if (limpio.endsWith('3223739845') || limpio === '3223739845') {
+      return false;
+    }
 
     // Si es un LID de WhatsApp mapeado a un número de teléfono conocido
     if (this.lidToPhoneMap.has(limpio)) {
@@ -403,21 +410,12 @@ export class BaileysService {
       telefonoLimpio = telReal;
     }
 
-    // 3. Manejo de mensajes propios (m.key.fromMe)
-    if (m.key.fromMe) {
-      const myNormalizedJid = this.socket.user?.id ? jidNormalizedUser(this.socket.user.id) : '';
-      const myNormalizedLid = this.socket.user?.lid ? jidNormalizedUser(this.socket.user.lid) : '';
-      const esChatPropio =
-        (myNormalizedJid && areJidsSameUser(normalizedJid, myNormalizedJid)) ||
-        (myNormalizedLid && areJidsSameUser(normalizedJid, myNormalizedLid)) ||
-        telefonoLimpio === this.socket.user?.id?.split(':')[0]?.replace(/\D/g, '');
-
-      // Si el mensaje fue enviado por el bot/admin a otro usuario en un chat ordinario, no auto-responder
-      if (!esChatPropio) {
-        return;
-      }
-      this.addDebugEvent('CHAT_PROPIO_TEST', { telefonoLimpio });
-      console.log(`[Baileys] 🧪 Mensaje de prueba recibido en chat propio: ${telefonoLimpio}`);
+    // 3. Bloqueo estricto de mensajes propios (m.key.fromMe) o del número propio/admin (3223739845)
+    const esNumeroPropio = telefonoLimpio.endsWith('3223739845') || telefonoLimpio === '3223739845';
+    if (m.key.fromMe || esNumeroPropio) {
+      this.addDebugEvent('IGNORADO_NUMERO_PROPIO', { telefonoLimpio, fromMe: m.key.fromMe });
+      console.log(`[Baileys] 🛑 Mensaje del propio número/administrador (${telefonoLimpio}) ignorado por blindaje.`);
+      return;
     }
 
     this.addDebugEvent('MENSAJE_ENTRANTE', { rawJid, normalizedJid, telefonoLimpio, fromMe: m.key.fromMe });
