@@ -144,10 +144,6 @@ export class ReminderService {
         `⏰ *Hora:* ${horaInicio}\n\n` +
         `📍 *Lugar:* Pereira, Cuba (Calle 66 bis #26-57)\n` +
         `${notaPago}\n\n` +
-        `Por favor, confirma tu asistencia seleccionando una opción o respondiendo:\n` +
-        `1️⃣ *Confirmar cita*\n` +
-        `2️⃣ *Cancelar cita*\n` +
-        `3️⃣ *Cambiar fecha (Reagendar)*\n\n` +
         `¡Nos vemos pronto para consentirte reina! 💕`;
 
       const botonesOpciones = [
@@ -251,10 +247,6 @@ export class ReminderService {
           `👩‍🎨 *Especialista:* ${cancha.nombre}\n` +
           `⏰ *Hora:* ${horaInicio}\n` +
           `📍 *Lugar:* Pereira, Cuba (Calle 66 bis #26-57)\n\n` +
-          `Por favor, confirma tu asistencia o indícanos si necesitas cancelar o cambiar fecha:\n` +
-          `1️⃣ *Confirmar cita*\n` +
-          `2️⃣ *Cancelar cita*\n` +
-          `3️⃣ *Cambiar fecha (Reagendar)*\n\n` +
           `¡Te esperamos con amor reina! 💕💅`;
 
         botonesOpciones = [
@@ -306,13 +298,7 @@ export class ReminderService {
       cleanPhone = `57${cleanPhone}`;
     }
 
-    let textoCompleto = message;
-    if (botones && botones.length > 0) {
-      const opciones = botones.map((b, i) => `${i + 1}️⃣ ${b.title}`).join('\n');
-      textoCompleto += `\n\n${opciones}\n\n👉 Responde con el número de tu opción.`;
-    }
-
-    const enviado = await BaileysService.enviarMensajeDirecto(cleanPhone, textoCompleto);
+    const enviado = await BaileysService.enviarMensajeDirecto(cleanPhone, message, botones);
     if (enviado) {
       console.log(`✅ [RECORDATORIO BAILEYS ENVIADO a ${cleanPhone}]`);
     } else {

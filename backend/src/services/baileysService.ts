@@ -6,6 +6,7 @@ import makeWASocket, {
   WASocket,
   proto,
   WAMessage,
+  generateWAMessageFromContent,
 } from '@whiskeysockets/baileys';
 import pino from 'pino';
 // @ts-ignore
@@ -285,13 +286,39 @@ export class BaileysService {
       return;
     }
 
-    // 4. Extraer texto y adjuntos del mensaje
+    // 4. Extraer texto y adjuntos del mensaje (incluyendo clics de botones interactivos)
     const messageContent = m.message;
     let texto =
       messageContent.conversation ||
       messageContent.extendedTextMessage?.text ||
       messageContent.imageMessage?.caption ||
       '';
+
+    if (messageContent.buttonsResponseMessage) {
+      texto =
+        messageContent.buttonsResponseMessage.selectedButtonId ||
+        messageContent.buttonsResponseMessage.selectedDisplayText ||
+        '';
+    } else if (messageContent.templateButtonReplyMessage) {
+      texto =
+        messageContent.templateButtonReplyMessage.selectedId ||
+        messageContent.templateButtonReplyMessage.selectedDisplayText ||
+        '';
+    } else if (messageContent.interactiveResponseMessage) {
+      const nativeFlow = messageContent.interactiveResponseMessage.nativeFlowResponseMessage;
+      if (nativeFlow?.paramsJson) {
+        try {
+          const parsed = JSON.parse(nativeFlow.paramsJson);
+          texto = parsed.id || messageContent.interactiveResponseMessage.body?.text || '';
+        } catch {
+          texto = messageContent.interactiveResponseMessage.body?.text || '';
+        }
+      } else {
+        texto = messageContent.interactiveResponseMessage.body?.text || '';
+      }
+    } else if (messageContent.listResponseMessage?.singleSelectReply?.selectedRowId) {
+      texto = messageContent.listResponseMessage.singleSelectReply.selectedRowId;
+    }
 
     let directBuffer: Buffer | undefined;
     let mediaType: string | undefined;
@@ -422,7 +449,11 @@ export class BaileysService {
   /**
    * Envía un mensaje proactivo o recordatorio directo a través de Baileys
    */
-  static async enviarMensajeDirecto(telefono: string, mensaje: string | BotResponse): Promise<boolean> {
+  static async enviarMensajeDirecto(
+    telefono: string,
+    mensaje: string | BotResponse,
+    botones?: Array<{ id: string; title: string }>
+  ): Promise<boolean> {
     if (!this.socket || this.statusConexion !== 'CONECTADO') {
       return false;
     }
@@ -435,7 +466,65 @@ export class BaileysService {
       return false;
     }
     const remoteJid = `${clean}@s.whatsapp.net`;
-    await this.enviarConTipeoHumano(remoteJid, mensaje);
+
+    // Si tiene botones, intentar enviar botones interactivos nativos de WhatsApp
+    if (botones && botones.length > 0) {
+      try {
+        const textBody = typeof mensaje === 'string' ? mensaje : mensaje.texto;
+        const interactiveButtons = botones.map((b) => ({
+          name: 'quick_reply',
+          buttonParamsJson: JSON.stringify({
+            display_text: b.title,
+            id: b.id,
+          }),
+        }));
+
+        const msg = generateWAMessageFromContent(
+          remoteJid,
+          {
+            viewOnceMessage: {
+              message: {
+                messageContextInfo: {
+                  deviceListMetadata: {},
+                  deviceListMetadataVersion: 2,
+                },
+                interactiveMessage: proto.Message.InteractiveMessage.create({
+                  body: proto.Message.InteractiveMessage.Body.create({
+                    text: textBody,
+                  }),
+                  footer: proto.Message.InteractiveMessage.Footer.create({
+                    text: 'JL Mímate Nails Spa 💕',
+                  }),
+                  header: proto.Message.InteractiveMessage.Header.create({
+                    title: '🌸 Recordatorio de Cita',
+                    hasMediaAttachment: false,
+                  }),
+                  nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
+                    buttons: interactiveButtons,
+                  }),
+                }),
+              },
+            },
+          },
+          { userJid: this.socket.user?.id || remoteJid }
+        );
+
+        await this.delay(1200);
+        await this.socket.relayMessage(remoteJid, msg.message!, { messageId: msg.key.id! });
+        return true;
+      } catch (btnErr) {
+        console.warn('[Baileys] Error enviando botones interactivos nativos, recurriendo a formato texto:', btnErr);
+      }
+    }
+
+    // Fallback: si no hay botones o fallaron los botones nativos
+    let textoSalida = mensaje;
+    if (botones && botones.length > 0 && typeof mensaje === 'string') {
+      const opciones = botones.map((b, i) => `${i + 1}️⃣ ${b.title}`).join('\n');
+      textoSalida = `${mensaje}\n\n${opciones}\n\n👉 Responde con el número de tu opción.`;
+    }
+
+    await this.enviarConTipeoHumano(remoteJid, textoSalida);
     return true;
   }
 
