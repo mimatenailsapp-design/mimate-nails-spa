@@ -36,7 +36,6 @@ export class BaileysService {
   public static lidToPhoneMap: Map<string, string> = new Map([
     ['279641092800638', '573134862536'], // Teléfono Lili / 3134862536
     ['89296748961918', '573223739845'],  // Bot Mímate Nails Spa (Teléfono propio)
-    ['263677336907937', '573022779797'], // Teléfono autorizado 3022779797
   ]);
 
   public static addDebugEvent(tipo: string, detalle: any) {
@@ -56,34 +55,39 @@ export class BaileysService {
     const defaultNumbers = [
       '573134862536',
       '573223739845',
-      '573022779797',
       '3134862536',
       '3223739845',
-      '3022779797',
     ];
     const raw = process.env.BAILEYS_WHITELIST_NUMBERS || '';
     const envNumbers = raw
       .split(',')
       .map((num) => num.replace(/\D/g, '').trim())
-      .filter((num) => num.length > 0);
-    return Array.from(new Set([...defaultNumbers, ...envNumbers, ...this.lidToPhoneMap.keys()]));
+      .filter((num) => num.length > 0 && !num.includes('3022779797'));
+    return Array.from(new Set([...defaultNumbers, ...envNumbers]));
   }
 
   /**
    * Verifica si un remitente está en la lista blanca de seguridad.
    */
   public static estaEnListaBlanca(telefonoLimpio: string): boolean {
+    const limpio = telefonoLimpio.replace(/\D/g, '');
+    if (!limpio) return false;
+
+    // Si es un LID de WhatsApp mapeado a un número de teléfono conocido
+    if (this.lidToPhoneMap.has(limpio)) {
+      const telReal = this.lidToPhoneMap.get(limpio)!;
+      return this.estaEnListaBlanca(telReal);
+    }
+
+    // Si es un identificador no mapeado de tipo LID (>12 dígitos y no empieza con 573...), bloquear
+    if (limpio.length > 12 && !limpio.startsWith('573')) {
+      return false;
+    }
+
     const whitelist = this.getWhitelist();
     // Si no hay lista blanca configurada en .env ni números default, atiende normalmente
     if (whitelist.length === 0) return true;
 
-    // Si es un LID de WhatsApp mapeado a un número de teléfono conocido
-    if (this.lidToPhoneMap.has(telefonoLimpio)) {
-      const telReal = this.lidToPhoneMap.get(telefonoLimpio)!;
-      return this.estaEnListaBlanca(telReal);
-    }
-
-    const limpio = telefonoLimpio.replace(/\D/g, '');
     const ultimos10 = limpio.length >= 10 ? limpio.slice(-10) : limpio;
 
     // Verificación ESTRICTA de seguridad: Solo coincidencia exacta de número o de los 10 dígitos celulares
