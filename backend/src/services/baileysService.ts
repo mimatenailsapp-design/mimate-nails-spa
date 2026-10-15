@@ -29,6 +29,7 @@ export class BaileysService {
   private static qrCode: string | null = null;
   private static statusConexion: 'DESCONECTADO' | 'ESPERANDO_QR' | 'CONECTANDO' | 'CONECTADO' = 'DESCONECTADO';
   private static procesadosCache = new Set<string>();
+  private static mensajeStore = new Map<string, proto.IMessage>();
   public static eventosDebug: Array<{ hora: string; tipo: string; detalle: any }> = [];
 
   // Mapeo verificado de LIDs de WhatsApp a números de teléfono reales autorizados
@@ -210,6 +211,12 @@ export class BaileysService {
       keepAliveIntervalMs: 15000,
       emitOwnEvents: true,
       retryRequestDelayMs: 250,
+      getMessage: async (key) => {
+        if (key?.id && this.mensajeStore.has(key.id)) {
+          return this.mensajeStore.get(key.id);
+        }
+        return undefined;
+      },
     });
 
     // Procesamiento canónico y secuencial de eventos con EventBuffer de Baileys
@@ -577,44 +584,49 @@ export class BaileysService {
         const headerTitle = response.interactive.header || '🌸 JL Mímate Nails Spa';
         const footerTitle = response.interactive.footer || 'JL Mímate Nails 💕';
 
+        const myUserJid = this.socket.user?.id ? jidNormalizedUser(this.socket.user.id) : targetJid;
         const msg = generateWAMessageFromContent(
           targetJid,
           {
-            viewOnceMessage: {
-              message: {
-                messageContextInfo: {
-                  deviceListMetadata: {},
-                  deviceListMetadataVersion: 2,
-                },
-                interactiveMessage: proto.Message.InteractiveMessage.create({
-                  body: proto.Message.InteractiveMessage.Body.create({
-                    text: bodyText,
-                  }),
-                  footer: proto.Message.InteractiveMessage.Footer.create({
-                    text: footerTitle,
-                  }),
-                  header: proto.Message.InteractiveMessage.Header.create({
-                    title: headerTitle,
-                    hasMediaAttachment: false,
-                  }),
-                  nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
-                    buttons: [
-                      {
-                        name: 'cta_url',
-                        buttonParamsJson: JSON.stringify({
-                          display_text: displayText,
-                          url: url,
-                          merchant_url: url,
-                        }),
-                      },
-                    ],
-                  }),
-                }),
-              },
+            messageContextInfo: {
+              deviceListMetadata: {},
+              deviceListMetadataVersion: 2,
             },
+            interactiveMessage: proto.Message.InteractiveMessage.create({
+              body: proto.Message.InteractiveMessage.Body.create({
+                text: bodyText,
+              }),
+              footer: proto.Message.InteractiveMessage.Footer.create({
+                text: footerTitle,
+              }),
+              header: proto.Message.InteractiveMessage.Header.create({
+                title: headerTitle,
+                hasMediaAttachment: false,
+              }),
+              nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
+                buttons: [
+                  {
+                    name: 'cta_url',
+                    buttonParamsJson: JSON.stringify({
+                      display_text: displayText,
+                      url: url,
+                      merchant_url: url,
+                    }),
+                  },
+                ],
+              }),
+            }),
           },
-          { userJid: this.socket.user?.id || targetJid }
+          { userJid: myUserJid }
         );
+
+        if (msg.key?.id && msg.message) {
+          this.mensajeStore.set(msg.key.id, msg.message);
+          if (this.mensajeStore.size > 1000) {
+            const firstKey = this.mensajeStore.keys().next().value;
+            if (firstKey) this.mensajeStore.delete(firstKey);
+          }
+        }
 
         await this.socket.relayMessage(targetJid, msg.message!, { messageId: msg.key.id! });
         this.addDebugEvent('RESPUESTA_BOTON_CTA_ENVIADA', { destinatario: targetJid, boton: displayText, url });
@@ -711,35 +723,40 @@ export class BaileysService {
           }),
         }));
 
+        const myUserJid = this.socket.user?.id ? jidNormalizedUser(this.socket.user.id) : remoteJid;
         const msg = generateWAMessageFromContent(
           remoteJid,
           {
-            viewOnceMessage: {
-              message: {
-                messageContextInfo: {
-                  deviceListMetadata: {},
-                  deviceListMetadataVersion: 2,
-                },
-                interactiveMessage: proto.Message.InteractiveMessage.create({
-                  body: proto.Message.InteractiveMessage.Body.create({
-                    text: textBody,
-                  }),
-                  footer: proto.Message.InteractiveMessage.Footer.create({
-                    text: 'JL Mímate Nails Spa 💕',
-                  }),
-                  header: proto.Message.InteractiveMessage.Header.create({
-                    title: '🌸 Recordatorio de Cita',
-                    hasMediaAttachment: false,
-                  }),
-                  nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
-                    buttons: interactiveButtons,
-                  }),
-                }),
-              },
+            messageContextInfo: {
+              deviceListMetadata: {},
+              deviceListMetadataVersion: 2,
             },
+            interactiveMessage: proto.Message.InteractiveMessage.create({
+              body: proto.Message.InteractiveMessage.Body.create({
+                text: textBody,
+              }),
+              footer: proto.Message.InteractiveMessage.Footer.create({
+                text: 'JL Mímate Nails Spa 💕',
+              }),
+              header: proto.Message.InteractiveMessage.Header.create({
+                title: '🌸 Recordatorio de Cita',
+                hasMediaAttachment: false,
+              }),
+              nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
+                buttons: interactiveButtons,
+              }),
+            }),
           },
-          { userJid: this.socket.user?.id || remoteJid }
+          { userJid: myUserJid }
         );
+
+        if (msg.key?.id && msg.message) {
+          this.mensajeStore.set(msg.key.id, msg.message);
+          if (this.mensajeStore.size > 1000) {
+            const firstKey = this.mensajeStore.keys().next().value;
+            if (firstKey) this.mensajeStore.delete(firstKey);
+          }
+        }
 
         await this.delay(1200);
         await this.socket.relayMessage(remoteJid, msg.message!, { messageId: msg.key.id! });
