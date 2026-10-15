@@ -217,7 +217,9 @@ export class BaileysService {
       retryRequestDelayMs: 250,
       getMessage: async (key) => {
         if (key?.id && this.mensajeStore.has(key.id)) {
-          return this.mensajeStore.get(key.id);
+          const msg = this.mensajeStore.get(key.id);
+          this.addDebugEvent('REINTENTO_GETMESSAGE', { id: key.id });
+          return msg;
         }
         return undefined;
       },
@@ -592,34 +594,38 @@ export class BaileysService {
         const msg = generateWAMessageFromContent(
           targetJid,
           {
-            messageContextInfo: {
-              deviceListMetadata: {},
-              deviceListMetadataVersion: 2,
+            viewOnceMessage: {
+              message: {
+                messageContextInfo: {
+                  deviceListMetadata: {},
+                  deviceListMetadataVersion: 2,
+                },
+                interactiveMessage: proto.Message.InteractiveMessage.create({
+                  body: proto.Message.InteractiveMessage.Body.create({
+                    text: bodyText,
+                  }),
+                  footer: proto.Message.InteractiveMessage.Footer.create({
+                    text: footerTitle,
+                  }),
+                  header: proto.Message.InteractiveMessage.Header.create({
+                    title: headerTitle,
+                    hasMediaAttachment: false,
+                  }),
+                  nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
+                    buttons: [
+                      {
+                        name: 'cta_url',
+                        buttonParamsJson: JSON.stringify({
+                          display_text: displayText,
+                          url: url,
+                          merchant_url: url,
+                        }),
+                      },
+                    ],
+                  }),
+                }),
+              },
             },
-            interactiveMessage: proto.Message.InteractiveMessage.create({
-              body: proto.Message.InteractiveMessage.Body.create({
-                text: bodyText,
-              }),
-              footer: proto.Message.InteractiveMessage.Footer.create({
-                text: footerTitle,
-              }),
-              header: proto.Message.InteractiveMessage.Header.create({
-                title: headerTitle,
-                hasMediaAttachment: false,
-              }),
-              nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
-                buttons: [
-                  {
-                    name: 'cta_url',
-                    buttonParamsJson: JSON.stringify({
-                      display_text: displayText,
-                      url: url,
-                      merchant_url: url,
-                    }),
-                  },
-                ],
-              }),
-            }),
           },
           { userJid: myUserJid }
         );
@@ -643,7 +649,10 @@ export class BaileysService {
 
     // 5. Envío estándar en formato texto (fallback o mensajes de texto simple)
     try {
-      await this.socket.sendMessage(targetJid, { text: textoFinal });
+      const sent = await this.socket.sendMessage(targetJid, { text: textoFinal });
+      if (sent?.key?.id && sent?.message) {
+        this.mensajeStore.set(sent.key.id, sent.message);
+      }
       this.addDebugEvent('RESPUESTA_TEXTO_ENVIADA', { destinatario: targetJid, preview: textoFinal.slice(0, 60) });
       console.log(`[Baileys] ✅ Mensaje respondido exitosamente a ${targetJid}`);
     } catch (sendErr) {
@@ -731,25 +740,29 @@ export class BaileysService {
         const msg = generateWAMessageFromContent(
           remoteJid,
           {
-            messageContextInfo: {
-              deviceListMetadata: {},
-              deviceListMetadataVersion: 2,
+            viewOnceMessage: {
+              message: {
+                messageContextInfo: {
+                  deviceListMetadata: {},
+                  deviceListMetadataVersion: 2,
+                },
+                interactiveMessage: proto.Message.InteractiveMessage.create({
+                  body: proto.Message.InteractiveMessage.Body.create({
+                    text: textBody,
+                  }),
+                  footer: proto.Message.InteractiveMessage.Footer.create({
+                    text: 'JL Mímate Nails Spa 💕',
+                  }),
+                  header: proto.Message.InteractiveMessage.Header.create({
+                    title: '🌸 Recordatorio de Cita',
+                    hasMediaAttachment: false,
+                  }),
+                  nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
+                    buttons: interactiveButtons,
+                  }),
+                }),
+              },
             },
-            interactiveMessage: proto.Message.InteractiveMessage.create({
-              body: proto.Message.InteractiveMessage.Body.create({
-                text: textBody,
-              }),
-              footer: proto.Message.InteractiveMessage.Footer.create({
-                text: 'JL Mímate Nails Spa 💕',
-              }),
-              header: proto.Message.InteractiveMessage.Header.create({
-                title: '🌸 Recordatorio de Cita',
-                hasMediaAttachment: false,
-              }),
-              nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
-                buttons: interactiveButtons,
-              }),
-            }),
           },
           { userJid: myUserJid }
         );
