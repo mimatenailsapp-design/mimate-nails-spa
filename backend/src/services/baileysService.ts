@@ -582,25 +582,7 @@ export class BaileysService {
       await this.socket.sendPresenceUpdate('paused', targetJid);
     } catch (e) {}
 
-    // 4. Si la respuesta incluye una imagen visual (ej. banner o logo de JL Mímate Nails)
-    if (typeof response !== 'string' && response.imagenUrl) {
-      try {
-        const sent = await this.socket.sendMessage(targetJid, {
-          image: { url: response.imagenUrl },
-          caption: textoFinal,
-        });
-        if (sent?.key?.id && sent?.message) {
-          this.mensajeStore.set(sent.key.id, sent.message);
-        }
-        this.addDebugEvent('RESPUESTA_IMAGEN_ENVIADA', { destinatario: targetJid, preview: textoFinal.slice(0, 60) });
-        console.log(`[Baileys] ✅ Mensaje con imagen/banner respondido exitosamente a ${targetJid}`);
-        return;
-      } catch (imgErr) {
-        console.warn('[Baileys] Error enviando imagen, recurriendo a formato texto estándar:', imgErr);
-      }
-    }
-
-    // 5. Envío garantizado del mensaje en formato texto estándar y seguro
+    // 4. Envío garantizado del mensaje en formato texto estándar y seguro
     try {
       const sent = await this.socket.sendMessage(targetJid, { text: textoFinal });
       if (sent?.key?.id && sent?.message) {
