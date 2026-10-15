@@ -44,6 +44,7 @@ export interface BotCtaUrlMessage {
 
 export interface BotResponse {
   texto: string;
+  imagenUrl?: string;
   interactive?: BotInteractiveMessage | BotCtaUrlMessage;
   urlRedirect?: string;
 }
@@ -491,14 +492,19 @@ export class WhatsAppFlow {
       const saludoNombre = nombrePush ? ` ${nombrePush}` : '';
       const textoSpa =
         `🌸✨ *¡HOLA${saludoNombre ? saludoNombre.toUpperCase() : ' REINA'}! BIENVENIDA A JL MÍMATE NAILS* ✨🌸\n\n` +
-        `Nos alegra mucho saludarte. Para agendar tu cita, ver nuestros servicios y elegir tu manicurista preferida, abre nuestra agenda en el siguiente enlace:\n\n` +
-        `📅 *ABRIR AGENDA:*\n👉 ${urlAgenda}\n\n` +
-        `📍 Pereira, Cuba (Calle 66 bis #26-57)\n` +
+        `Nos alegra mucho saludarte. Para agendar tu cita, ver nuestros servicios y elegir tu manicurista preferida, abre nuestra agenda tocando el enlace a continuación:\n\n` +
+        `╭─────────────────────────╮\n` +
+        `  📅 *ABRIR AGENDA VIRTUAL*\n` +
+        `  👉 ${urlAgenda}\n` +
+        `╰─────────────────────────╯\n\n` +
+        `📍 *Pereira, Cuba* (Calle 66 bis #26-57)\n` +
         `${textoAnticipo}\n\n` +
-        `¡Te esperamos con amor para consentirte! 💕`;
+        `¡Te esperamos con amor para consentirte! 💕\n` +
+        `_JL Mímate Nails Spa_`;
 
       return {
         texto: textoSpa,
+        imagenUrl: 'https://mimate-nails-spa.vercel.app/mimate-nails-logo.png',
         urlRedirect: urlAgenda,
         interactive: {
           type: 'cta_url',
