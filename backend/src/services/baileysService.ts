@@ -34,9 +34,48 @@ export class BaileysService {
 
   // Mapeo verificado de LIDs de WhatsApp a números de teléfono reales autorizados
   public static lidToPhoneMap: Map<string, string> = new Map([
-    ['272627444801659', '573022779797'], // Teléfono autorizado 3022779797
-    ['89296748961918', '573223739845'],  // Bot Mímate Nails Spa (Teléfono propio)
+    // Contacto 3134862536 (LID oficial verificado por onWhatsApp y sub-dispositivo)
+    ['272627444801659', '573134862536'],
+    ['24327567204353', '573134862536'],
+
+    // Contacto 3022779797 (LID oficial verificado por onWhatsApp y sub-dispositivos)
+    ['263677336907937', '573022779797'],
+    ['32547346104379', '573022779797'],
+    ['264784868065348', '573022779797'],
+
+    // Bot Mímate Nails Spa (Teléfono propio 3223739845)
+    ['89296748961918', '573223739845'],
   ]);
+
+  /**
+   * Sincroniza dinámicamente los LIDs de WhatsApp para los números autorizados en la lista blanca
+   */
+  public static async sincronizarLids(): Promise<void> {
+    try {
+      if (!this.socket) return;
+      const wl = this.getWhitelist();
+      const phones = wl
+        .filter((n) => n.length >= 10 && !n.startsWith('27') && !n.startsWith('89'))
+        .map((n) => `+${n.startsWith('57') ? n : '57' + n}`);
+      const uniquePhones = Array.from(new Set(phones));
+
+      if (uniquePhones.length > 0) {
+        const results = await this.socket.onWhatsApp(...uniquePhones);
+        if (results) {
+          for (const r of (results as any[])) {
+            if (r.lid && r.jid) {
+              const lidId = String(r.lid).split('@')[0];
+              const phoneId = String(r.jid).split('@')[0];
+              this.lidToPhoneMap.set(lidId, phoneId);
+              console.log(`[Baileys] 🔗 LID Mapeado dinámicamente: ${lidId} -> ${phoneId}`);
+            }
+          }
+        }
+      }
+    } catch (errSync) {
+      console.warn('[Baileys] Error sincronizando LIDs:', errSync);
+    }
+  }
 
   public static addDebugEvent(tipo: string, detalle: any) {
     this.eventosDebug.unshift({
@@ -298,32 +337,7 @@ export class BaileysService {
           this.respaldarSesionEnSupabase(authDir, true);
 
           // Sincronizar automáticamente LIDs de WhatsApp para los números de la lista blanca
-          setTimeout(async () => {
-            try {
-              if (!this.socket) return;
-              const wl = this.getWhitelist();
-              const phones = wl
-                .filter((n) => n.length >= 10 && !n.startsWith('27') && !n.startsWith('89'))
-                .map((n) => `+${n.startsWith('57') ? n : '57' + n}`);
-              const uniquePhones = Array.from(new Set(phones));
-
-              if (uniquePhones.length > 0) {
-                const results = await this.socket.onWhatsApp(...uniquePhones);
-                if (results) {
-                  for (const r of (results as any[])) {
-                    if (r.lid && r.jid) {
-                      const lidId = String(r.lid).split('@')[0];
-                      const phoneId = String(r.jid).split('@')[0];
-                      this.lidToPhoneMap.set(lidId, phoneId);
-                      console.log(`[Baileys] 🔗 LID Mapeado dinámicamente: ${lidId} -> ${phoneId}`);
-                    }
-                  }
-                }
-              }
-            } catch (errSync) {
-              console.warn('[Baileys] Error sincronizando LIDs:', errSync);
-            }
-          }, 3000);
+          setTimeout(() => this.sincronizarLids(), 2000);
         }
       }
 
@@ -417,7 +431,11 @@ export class BaileysService {
     let telefonoLimpio = normalizedJid.split('@')[0].replace(/\D/g, '');
     const esLid = isLidUser(normalizedJid);
 
-    if (esLid && this.lidToPhoneMap.has(telefonoLimpio)) {
+    if (esLid && !this.lidToPhoneMap.has(telefonoLimpio)) {
+      await this.sincronizarLids();
+    }
+
+    if (this.lidToPhoneMap.has(telefonoLimpio)) {
       const telReal = this.lidToPhoneMap.get(telefonoLimpio)!;
       this.addDebugEvent('LID_RESUELTO', { lid: telefonoLimpio, telefonoReal: telReal });
       console.log(`[Baileys] 🔄 Remitente LID ${telefonoLimpio} reconocido como teléfono real: ${telReal}`);
@@ -614,6 +632,26 @@ export class BaileysService {
     } catch (sendErr) {
       console.error('[Baileys] ❌ Error enviando mensaje a:', targetJid, sendErr);
       this.addDebugEvent('ERROR_ENVIO', { destinatario: targetJid, error: String(sendErr) });
+
+      // Fallback: si falló el envío a un @lid, intentar enviar directamente al número telefónico normalizado @s.whatsapp.net
+      if (isLidUser(targetJid)) {
+        const lidOnly = targetJid.split('@')[0].replace(/\D/g, '');
+        const telReal = this.lidToPhoneMap.get(lidOnly);
+        if (telReal) {
+          const fallbackJid = `${telReal}@s.whatsapp.net`;
+          try {
+            console.log(`[Baileys] 🔄 Reintentando envío a través de JID telefónico: ${fallbackJid}`);
+            const sentFallback = await this.socket.sendMessage(fallbackJid, { text: textoFinal });
+            if (sentFallback?.key?.id && sentFallback?.message) {
+              this.mensajeStore.set(sentFallback.key.id, sentFallback.message);
+            }
+            this.addDebugEvent('RESPUESTA_FALLBACK_ENVIADA', { destinatario: fallbackJid });
+            console.log(`[Baileys] ✅ Mensaje respondido exitosamente por fallback telefónico a ${fallbackJid}`);
+          } catch (fallbackErr) {
+            console.error('[Baileys] ❌ Fallback telefónico también falló:', fallbackErr);
+          }
+        }
+      }
     }
   }
 
