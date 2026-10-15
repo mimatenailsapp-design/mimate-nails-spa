@@ -7,6 +7,10 @@ import makeWASocket, {
   proto,
   WAMessage,
   generateWAMessageFromContent,
+  jidNormalizedUser,
+  areJidsSameUser,
+  isJidGroup,
+  isJidBroadcast,
 } from '@whiskeysockets/baileys';
 import pino from 'pino';
 // @ts-ignore
@@ -53,12 +57,18 @@ export class BaileysService {
     // Si no hay lista blanca configurada en .env, atiende normalmente (modo producción abierta)
     if (whitelist.length === 0) return true;
 
+    const limpio = telefonoLimpio.replace(/\D/g, '');
+    const ultimos10 = limpio.length >= 10 ? limpio.slice(-10) : limpio;
+
     // Si hay lista blanca configurada, el remitente DEBE estar en la lista
     return whitelist.some((autorizado) => {
+      const authClean = autorizado.replace(/\D/g, '');
+      const auth10 = authClean.length >= 10 ? authClean.slice(-10) : authClean;
       return (
-        telefonoLimpio === autorizado ||
-        telefonoLimpio.endsWith(autorizado) ||
-        autorizado.endsWith(telefonoLimpio)
+        limpio === authClean ||
+        (ultimos10.length === 10 && ultimos10 === auth10) ||
+        limpio.endsWith(authClean) ||
+        authClean.endsWith(limpio)
       );
     });
   }
@@ -229,8 +239,7 @@ export class BaileysService {
 
     // Procesar mensajes entrantes con blindaje
     this.socket.ev.on('messages.upsert', async ({ messages, type }) => {
-      if (type !== 'notify') return;
-
+      // Procesar mensajes tanto en 'notify' como en 'append' para permitir pruebas y sincronización
       for (const m of messages) {
         try {
           await this.procesarMensajeEntrante(m);
@@ -247,47 +256,73 @@ export class BaileysService {
   private static async procesarMensajeEntrante(m: WAMessage): Promise<void> {
     if (!this.socket || !m.message || !m.key) return;
 
-    // 1. BLINDAJE: Evitar bucles de mensajes propios (a menos que hables contigo mismo en un chat privado de pruebas)
-    const remoteJid = m.key.remoteJid || '';
-    if (!remoteJid || remoteJid.endsWith('@g.us')) {
-      // Ignorar grupos para evitar baneos por mensajes no solicitados
+    // 1. BLINDAJE: Filtrar grupos, difusiones y canales
+    const rawJid = m.key.remoteJid || '';
+    if (
+      !rawJid ||
+      isJidGroup(rawJid) ||
+      isJidBroadcast(rawJid) ||
+      rawJid.includes('@broadcast') ||
+      rawJid.endsWith('@newsletter')
+    ) {
       return;
     }
 
+    // Normalizar JID a formato base sin sufijos de dispositivo (ej. 57313...:1@s.whatsapp.net -> 57313...@s.whatsapp.net)
+    const normalizedJid = jidNormalizedUser(rawJid);
+
     // Deduplicación por ID de mensaje
     const msgId = m.key.id || '';
-    if (this.procesadosCache.has(msgId)) return;
+    if (!msgId || this.procesadosCache.has(msgId)) return;
     this.procesadosCache.add(msgId);
     if (this.procesadosCache.size > 2000) {
       this.procesadosCache.clear();
     }
 
     // 2. Extraer teléfono limpio
-    const telefonoLimpio = remoteJid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+    const telefonoLimpio = normalizedJid.split('@')[0].replace(/\D/g, '');
 
-    // 3. BLINDAJE: Verificación estricta de Lista Blanca
-    if (!this.estaEnListaBlanca(telefonoLimpio)) {
-      // Si el número NO está en la lista blanca, salir silenciosamente
-      return;
-    }
-
-    // Ignorar mensajes enviados por mí si no es un chat contigo mismo
+    // 3. Manejo de mensajes propios (m.key.fromMe)
     if (m.key.fromMe) {
-      const myJid = this.socket.user?.id ? this.socket.user.id.split(':')[0] + '@s.whatsapp.net' : '';
-      if (remoteJid !== myJid) {
+      const myNormalizedJid = this.socket.user?.id ? jidNormalizedUser(this.socket.user.id) : '';
+      // Si el mensaje fue enviado por el bot/admin a otro usuario, no auto-responder
+      if (!myNormalizedJid || !areJidsSameUser(normalizedJid, myNormalizedJid)) {
         return;
       }
+      console.log(`[Baileys] 🧪 Mensaje de prueba recibido en chat propio: ${telefonoLimpio}`);
+    }
+
+    console.log(`[Baileys] 📨 Mensaje entrante de: ${rawJid} -> Normalizado: ${normalizedJid} (Teléfono: ${telefonoLimpio})`);
+
+    // 4. BLINDAJE: Verificación estricta de Lista Blanca
+    if (!this.estaEnListaBlanca(telefonoLimpio)) {
+      console.log(`[Baileys] 🛑 Número ${telefonoLimpio} NO está en la lista blanca. Ignorado por blindaje.`);
+      return;
     }
 
     // Verificar si el número está en la lista de exclusión (atención humana / bot silenciado)
     const esExcluido = await BotExclusionsService.esNumeroExcluido(telefonoLimpio);
     if (esExcluido) {
-      console.log(`[Baileys] Mensaje de ${telefonoLimpio} ignorado (en lista de atención humana).`);
+      console.log(`[Baileys] 👤 Mensaje de ${telefonoLimpio} ignorado (en lista de atención humana).`);
       return;
     }
 
-    // 4. Extraer texto y adjuntos del mensaje (incluyendo clics de botones interactivos)
-    const messageContent = m.message;
+    // 5. Desenvolver contenido del mensaje si viene encapsulado (efímeros, view-once, multimedia con caption)
+    let messageContent: any = m.message;
+    while (
+      messageContent?.ephemeralMessage?.message ||
+      messageContent?.viewOnceMessage?.message ||
+      messageContent?.viewOnceMessageV2?.message ||
+      messageContent?.documentWithCaptionMessage?.message
+    ) {
+      messageContent =
+        messageContent.ephemeralMessage?.message ||
+        messageContent.viewOnceMessage?.message ||
+        messageContent.viewOnceMessageV2?.message ||
+        messageContent.documentWithCaptionMessage?.message;
+    }
+
+    // Extraer texto y adjuntos del mensaje (incluyendo clics de botones interactivos)
     let texto =
       messageContent.conversation ||
       messageContent.extendedTextMessage?.text ||
@@ -334,9 +369,14 @@ export class BaileysService {
       }
     }
 
-    if (!texto && !directBuffer) return;
+    if (!texto && !directBuffer) {
+      console.log(`[Baileys] Mensaje sin texto ni imagen descargable recibido de ${telefonoLimpio}. Ignorando.`);
+      return;
+    }
 
-    // 5. BLINDAJE ANTI-DETECCIÓN (<5% RIESGO):
+    console.log(`[Baileys] 💬 Procesando texto de ${telefonoLimpio}: "${texto}"`);
+
+    // 6. BLINDAJE ANTI-DETECCIÓN (<5% RIESGO):
     // Esperar entre 1.5 y 2.5 segundos antes de marcar como leído para simular lectura humana
     await this.delay(1500 + Math.random() * 1000);
     try {
@@ -345,10 +385,17 @@ export class BaileysService {
       // Ignorar fallo de marcado de lectura
     }
 
-    // 6. Obtener complejo/spa
+    // 7. Obtener complejo/spa
     const complejos = await BookingService.getComplejos();
     const complejo: Complejo = complejos[0];
     const nombrePush = m.pushName || undefined;
+
+    // Normalizar a formato Colombia internacional estándar (573XXXXXXXXX) para consultas en BD
+    const telefonoNormalizado = telefonoLimpio.startsWith('57')
+      ? telefonoLimpio
+      : telefonoLimpio.length === 10
+      ? `57${telefonoLimpio}`
+      : telefonoLimpio;
 
     // Si envió imagen de comprobante, enviar de inmediato mensaje de espera
     if (directBuffer) {
@@ -357,12 +404,12 @@ export class BaileysService {
         `🌸 *¡Hola${nombreDest}!* Recibimos tu comprobante de pago 💕.\n\n` +
         `⏳ Estamos confirmando tu transferencia, por favor espera un momento mientras validamos los datos... 🔍✨`;
 
-      await this.enviarConTipeoHumano(remoteJid, msgEspera);
+      await this.enviarConTipeoHumano(normalizedJid, msgEspera);
     }
 
-    // 7. Procesar con el cerebro de WhatsAppFlow (IA Gemini + Supabase)
+    // 8. Procesar con el cerebro de WhatsAppFlow (IA Gemini + Supabase)
     const respuestaBot = await WhatsAppFlow.procesarMensaje(
-      telefonoLimpio,
+      telefonoNormalizado,
       texto,
       nombrePush,
       complejo,
@@ -371,8 +418,8 @@ export class BaileysService {
       directBuffer
     );
 
-    // 8. Enviar respuesta adaptada para Baileys con presencia de tipeo humano
-    await this.enviarConTipeoHumano(remoteJid, respuestaBot);
+    // 9. Enviar respuesta adaptada para Baileys con presencia de tipeo humano
+    await this.enviarConTipeoHumano(normalizedJid, respuestaBot);
   }
 
   /**
@@ -381,12 +428,16 @@ export class BaileysService {
   private static async enviarConTipeoHumano(remoteJid: string, response: string | BotResponse): Promise<void> {
     if (!this.socket) return;
 
+    const targetJid = jidNormalizedUser(remoteJid);
     const textoFinal = this.formatearTextoParaBaileys(response);
-    if (!textoFinal.trim()) return;
+    if (!textoFinal.trim()) {
+      console.warn(`[Baileys] Texto final vacío para ${targetJid}, no se envía mensaje.`);
+      return;
+    }
 
     // 1. Simular presencia de "escribiendo..." (composing)
     try {
-      await this.socket.sendPresenceUpdate('composing', remoteJid);
+      await this.socket.sendPresenceUpdate('composing', targetJid);
     } catch (e) {
       // Ignorar si falla presencia
     }
@@ -397,10 +448,11 @@ export class BaileysService {
 
     // 3. Pausar presencia y enviar el mensaje
     try {
-      await this.socket.sendPresenceUpdate('paused', remoteJid);
-      await this.socket.sendMessage(remoteJid, { text: textoFinal });
+      await this.socket.sendPresenceUpdate('paused', targetJid);
+      await this.socket.sendMessage(targetJid, { text: textoFinal });
+      console.log(`[Baileys] ✅ Mensaje respondido exitosamente a ${targetJid}`);
     } catch (sendErr) {
-      console.error('[Baileys] Error enviando mensaje a:', remoteJid, sendErr);
+      console.error('[Baileys] ❌ Error enviando mensaje a:', targetJid, sendErr);
     }
   }
 
@@ -437,7 +489,7 @@ export class BaileysService {
         const action = response.interactive.action as any;
         const url = action?.parameters?.url;
         const label = action?.parameters?.display_text || 'Abrir enlace';
-        if (url) {
+        if (url && !texto.includes(url)) {
           texto += `\n\n🔗 *${label}:*\n${url}`;
         }
       }
