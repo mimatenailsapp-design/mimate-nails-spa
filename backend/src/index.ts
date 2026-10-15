@@ -1,5 +1,6 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
+import compression from 'compression';
 import dotenv from 'dotenv';
 import { supabase } from './config/supabase.js';
 import { WhatsAppFlow, BotResponse } from './bot/whatsappFlow.js';
@@ -15,6 +16,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
+app.use(compression());
 app.use(express.json());
 
 // ==============================================================================
@@ -1063,20 +1065,39 @@ app.get('/api/spa/info', async (req: Request, res: Response) => {
 
     const { data: canchas } = await supabase
       .from('canchas')
-      .select('*')
+      .select('id, nombre, deporte, activa, precio_estandar, precio_pico')
       .eq('complejo_id', complejo.id)
       .eq('activa', true)
       .order('nombre');
 
-    res.json({
+    const config = {
+      exigeAnticipo: (complejo.porcentaje_anticipo_minimo || 0) > 0,
+      porcentajeAnticipo: complejo.porcentaje_anticipo_minimo || 20,
+      nequiNumero: complejo.nequi_numero || '321 961 0896',
+      bancolombiaNumero: complejo.daviplata_numero || 'Ahorros 245-000123-88',
+      titularCuenta: complejo.titular_cuenta || 'JL Mímate Nails Spa',
+      horaApertura: complejo.hora_apertura ? complejo.hora_apertura.slice(0, 5) : '08:00',
+      horaCierre: complejo.hora_cierre ? complejo.hora_cierre.slice(0, 5) : '19:00',
+    };
+
+    const bootstrapData = {
       complejo,
       equipo: canchas || [],
+      config,
       servicios: SERVICIOS_MIMATE_NAILS,
       categorias: ['Todos', 'Tradicional', 'Semipermanente & Ruber', 'Dipping & Press On', 'Esculpidas & Polygel', 'Recubrimiento & Cuidado']
-    });
+    };
+
+    res.json(bootstrapData);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
+});
+
+// Endpoint alias bootstrap para inicialización ultrarrápida de la web en 1 solo viaje de red
+app.get('/api/spa/bootstrap', (req: Request, res: Response) => {
+  // Redirigir limpiamente a /api/spa/info que contiene todo el bootstrap paquetizado
+  res.redirect(307, '/api/spa/info');
 });
 
 // Obtener horarios (slots) disponibles para una fecha y duración específica (Lunes a Sábado, 9:30 am a 5:30 pm)

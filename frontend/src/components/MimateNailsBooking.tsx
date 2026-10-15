@@ -214,21 +214,15 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
 
   // Cargar info del spa y detectar parámetro de reagendamiento
   useEffect(() => {
+    // 1. Carga unificada de bootstrap (equipo, servicios y configuración de anticipos en 1 solo viaje de red)
     fetch('/api/spa/info')
       .then((r) => r.json())
       .then((d) => {
         if (d.equipo && d.equipo.length > 0) {
           setEmpleadas(d.equipo);
         }
-      })
-      .catch(() => {});
-
-    // Cargar si el spa tiene activada la exigencia de anticipo
-    fetch('/api/spa/config')
-      .then((r) => r.json())
-      .then((d) => {
-        if (d && typeof d.exigeAnticipo === 'boolean') {
-          setSpaConfig(d);
+        if (d.config && typeof d.config.exigeAnticipo === 'boolean') {
+          setSpaConfig(d.config);
         }
       })
       .catch(() => {});
