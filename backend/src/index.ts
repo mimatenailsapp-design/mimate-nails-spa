@@ -150,6 +150,35 @@ app.post('/api/debug/test-send', async (req: Request, res: Response) => {
   });
 });
 
+// Simulación directa de mensaje entrante para pruebas
+app.post('/api/baileys/simular-entrante', async (req: Request, res: Response) => {
+  const { from, text } = req.body;
+  const tel = String(from || '573134862536').replace(/\D/g, '');
+  const dummyMessage: any = {
+    key: {
+      remoteJid: `${tel}@s.whatsapp.net`,
+      fromMe: false,
+      id: `SIM_${Date.now()}`,
+    },
+    message: {
+      conversation: text || 'hola',
+    },
+    pushName: 'Cliente Simulado',
+  };
+  await BaileysService.procesarMensajeEntrante(dummyMessage);
+  return res.json({
+    ok: true,
+    simulado: { from: tel, text: text || 'hola' },
+    eventos_recientes: BaileysService.eventosDebug,
+  });
+});
+
+// Desvincular sesión y forzar generación de nuevo QR
+app.all('/api/baileys/relink', async (req: Request, res: Response) => {
+  await BaileysService.desvincularYReiniciar();
+  return res.redirect('/qr');
+});
+
 // Interfaz web visual para escanear el código QR fácilmente desde el celular
 app.get(['/qr', '/api/baileys/qr'], (req: Request, res: Response) => {
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -202,6 +231,10 @@ app.get(['/qr', '/api/baileys/qr'], (req: Request, res: Response) => {
         <li>Selecciona <strong>Dispositivos vinculados</strong></li>
         <li>Toca <strong>Vincular un dispositivo</strong> y escanea el código</li>
       </ol>
+    </div>
+
+    <div style="margin-top: 20px;">
+      <a href="/api/baileys/relink" onclick="return confirm('¿Deseas desvincular la sesión actual y generar un nuevo código QR?');" style="display: inline-block; padding: 10px 18px; background: #e11d48; color: white; border-radius: 999px; text-decoration: none; font-size: 13px; font-weight: 700; box-shadow: 0 4px 12px rgba(225, 29, 72, 0.25);">🔄 Desvincular y Escanear Nuevo QR</a>
     </div>
 
     <p class="footer">Se actualiza automáticamente cada 3 segundos</p>

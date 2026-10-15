@@ -275,9 +275,37 @@ export class BaileysService {
   }
 
   /**
+   * Limpia credenciales y solicita un nuevo código QR
+   */
+  public static async desvincularYReiniciar(): Promise<void> {
+    const authDir = path.join(process.cwd(), 'baileys_auth_info');
+    try {
+      if (this.socket) {
+        try {
+          this.socket.end(new Error('Reinicio manual solicitado'));
+        } catch (e) {}
+        this.socket = null;
+      }
+      fs.rmSync(authDir, { recursive: true, force: true });
+      const complejos = await BookingService.getComplejos();
+      if (complejos[0]?.id) {
+        await supabase.from('complejos').update({ whatsapp_token: null }).eq('id', complejos[0].id);
+      }
+      this.statusConexion = 'DESCONECTADO';
+      this.qrCode = null;
+      this.procesadosCache.clear();
+      this.eventosDebug = [];
+      console.log('🔄 Sesión limpiada por completo. Generando nuevo QR...');
+      setTimeout(() => this.iniciar(), 1000);
+    } catch (err) {
+      console.error('Error desvinculando sesión:', err);
+    }
+  }
+
+  /**
    * Procesa cada mensaje con las protecciones de lista blanca y comportamiento humano
    */
-  private static async procesarMensajeEntrante(m: WAMessage): Promise<void> {
+  public static async procesarMensajeEntrante(m: WAMessage): Promise<void> {
     if (!this.socket) return;
 
     const rawJid = m.key?.remoteJid || '';
