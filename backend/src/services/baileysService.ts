@@ -567,7 +567,65 @@ export class BaileysService {
       await this.socket.sendPresenceUpdate('paused', targetJid);
     } catch (e) {}
 
-    // 4. Envío garantizado del mensaje con enlace a la agenda
+    // 4. Si la respuesta es interactiva tipo cta_url (Botón para abrir la agenda web), enviar botón nativo
+    if (typeof response !== 'string' && response.interactive?.type === 'cta_url') {
+      try {
+        const action = response.interactive.action as any;
+        const url = action?.parameters?.url || response.urlRedirect;
+        const displayText = action?.parameters?.display_text || '📅 Abrir Agenda';
+        const bodyText = response.interactive.body || response.texto;
+        const headerTitle = response.interactive.header || '🌸 JL Mímate Nails Spa';
+        const footerTitle = response.interactive.footer || 'JL Mímate Nails 💕';
+
+        const msg = generateWAMessageFromContent(
+          targetJid,
+          {
+            viewOnceMessage: {
+              message: {
+                messageContextInfo: {
+                  deviceListMetadata: {},
+                  deviceListMetadataVersion: 2,
+                },
+                interactiveMessage: proto.Message.InteractiveMessage.create({
+                  body: proto.Message.InteractiveMessage.Body.create({
+                    text: bodyText,
+                  }),
+                  footer: proto.Message.InteractiveMessage.Footer.create({
+                    text: footerTitle,
+                  }),
+                  header: proto.Message.InteractiveMessage.Header.create({
+                    title: headerTitle,
+                    hasMediaAttachment: false,
+                  }),
+                  nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
+                    buttons: [
+                      {
+                        name: 'cta_url',
+                        buttonParamsJson: JSON.stringify({
+                          display_text: displayText,
+                          url: url,
+                          merchant_url: url,
+                        }),
+                      },
+                    ],
+                  }),
+                }),
+              },
+            },
+          },
+          { userJid: this.socket.user?.id || targetJid }
+        );
+
+        await this.socket.relayMessage(targetJid, msg.message!, { messageId: msg.key.id! });
+        this.addDebugEvent('RESPUESTA_BOTON_CTA_ENVIADA', { destinatario: targetJid, boton: displayText, url });
+        console.log(`[Baileys] ✅ Botón interactivo CTA ("${displayText}") enviado exitosamente a ${targetJid}`);
+        return;
+      } catch (ctaErr) {
+        console.warn('[Baileys] Error enviando botón interactivo CTA, recurriendo a formato texto con enlace:', ctaErr);
+      }
+    }
+
+    // 5. Envío estándar en formato texto (fallback o mensajes de texto simple)
     try {
       await this.socket.sendMessage(targetJid, { text: textoFinal });
       this.addDebugEvent('RESPUESTA_TEXTO_ENVIADA', { destinatario: targetJid, preview: textoFinal.slice(0, 60) });
