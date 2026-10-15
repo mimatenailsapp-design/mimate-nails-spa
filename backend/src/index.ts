@@ -1,5 +1,6 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
+// @ts-ignore
 import compression from 'compression';
 import dotenv from 'dotenv';
 import { supabase } from './config/supabase.js';
