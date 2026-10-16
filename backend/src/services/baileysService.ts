@@ -37,14 +37,11 @@ export class BaileysService {
 
   // Mapeo verificado de LIDs de WhatsApp a números de teléfono reales autorizados
   public static lidToPhoneMap: Map<string, string> = new Map([
-    // Contacto 3134862536 (LID oficial verificado por onWhatsApp y sub-dispositivo)
+    // Contacto 3134862536 (LID oficial verificado por onWhatsApp)
     ['272627444801659', '573134862536'],
-    ['24327567204353', '573134862536'],
 
-    // Contacto 3022779797 (LID oficial verificado por onWhatsApp y sub-dispositivos)
+    // Contacto 3022779797 (LID oficial verificado por onWhatsApp)
     ['263677336907937', '573022779797'],
-    ['32547346104379', '573022779797'],
-    ['264784868065348', '573022779797'],
 
     // Bot Mímate Nails Spa (Teléfono propio 3223739845)
     ['89296748961918', '573223739845'],
@@ -103,28 +100,26 @@ export class BaileysService {
       .map((num) => num.replace(/\D/g, '').trim())
       .filter((num) => num.length > 0);
 
-    // Si se especificó lista blanca en variables de entorno, usar ÚNICAMENTE esos números
-    if (envNumbers.length > 0) {
-      const allowed: string[] = [];
-      for (const num of envNumbers) {
-        allowed.push(num);
-        if (num.startsWith('57') && num.length > 10) {
-          allowed.push(num.slice(2));
-        } else if (num.length === 10) {
-          allowed.push(`57${num}`);
-        }
-      }
-      return Array.from(new Set(allowed));
-    }
-
-    // Por defecto, solo número de prueba autorizado y el propio bot
+    // Números de prueba autorizados y el propio bot
     const defaultNumbers = [
+      '573134862536',
+      '3134862536',
       '573022779797',
-      '573223739845',
       '3022779797',
+      '573223739845',
       '3223739845',
     ];
-    return defaultNumbers;
+
+    const allowed = new Set<string>(defaultNumbers);
+    for (const num of envNumbers) {
+      allowed.add(num);
+      if (num.startsWith('57') && num.length > 10) {
+        allowed.add(num.slice(2));
+      } else if (num.length === 10) {
+        allowed.add(`57${num}`);
+      }
+    }
+    return Array.from(allowed);
   }
 
   /**
