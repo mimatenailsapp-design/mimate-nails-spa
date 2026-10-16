@@ -257,6 +257,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
     return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
   }, []);
   const [fecha, setFecha] = useState(hoyStr);
+  const dateInputRef = useRef<HTMLInputElement>(null);
 
   const formatearFechaElegante = (fechaIso: string) => {
     if (!fechaIso) return '';
@@ -1178,8 +1179,23 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                       </div>
 
                       {/* Botón interactivo táctil + input nativo invisible que cubre todo */}
-                      <div className="relative">
-                        <div className="w-full bg-white border border-[#F2C4D2] rounded-xl px-3.5 py-2.5 text-xs font-semibold text-[#2D2529] flex items-center justify-between shadow-xs hover:border-[#C74B66] transition cursor-pointer">
+                      <div
+                        onClick={() => {
+                          try {
+                            if (dateInputRef.current) {
+                              if ('showPicker' in HTMLInputElement.prototype) {
+                                dateInputRef.current.showPicker();
+                              } else {
+                                dateInputRef.current.focus();
+                              }
+                            }
+                          } catch {
+                            dateInputRef.current?.focus();
+                          }
+                        }}
+                        className="relative cursor-pointer"
+                      >
+                        <div className="w-full bg-white border border-[#F2C4D2] rounded-xl px-3.5 py-2.5 text-xs font-semibold text-[#2D2529] flex items-center justify-between shadow-xs hover:border-[#C74B66] transition">
                           <div className="flex items-center gap-2.5 truncate">
                             <IconCalendar className="w-4 h-4 text-[#C74B66] shrink-0" />
                             <span className="font-bold text-[#2D2529] truncate capitalize">
@@ -1189,11 +1205,20 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                           <IconChevronDown className="w-4 h-4 text-[#7D6870] shrink-0" />
                         </div>
                         <input
+                          ref={dateInputRef}
                           type="date"
                           min={hoyStr}
                           value={fecha}
                           onChange={(e) => setFecha(e.target.value)}
-                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 text-base"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            try {
+                              if ('showPicker' in HTMLInputElement.prototype) {
+                                e.currentTarget.showPicker();
+                              }
+                            } catch {}
+                          }}
+                          className="date-picker-overlay absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 text-base"
                           aria-label="Seleccionar fecha"
                         />
                       </div>
