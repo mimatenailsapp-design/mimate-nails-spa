@@ -160,10 +160,17 @@ export class BaileysService {
       if (!tokenData || !tokenData.includes('"creds.json"')) return false;
 
       const bundle = JSON.parse(tokenData);
+      let restaurados = 0;
       for (const [nombreArchivo, contenido] of Object.entries(bundle)) {
-        fs.writeFileSync(path.join(authDir, nombreArchivo), contenido as string, 'utf-8');
+        const strContenido = contenido as string;
+        // Descartar sesiones unidireccionales corruptas (pendingPreKey) creadas por assertSessions forzado
+        if (nombreArchivo.startsWith('session-') && strContenido.includes('"pendingPreKey"')) {
+          continue;
+        }
+        fs.writeFileSync(path.join(authDir, nombreArchivo), strContenido, 'utf-8');
+        restaurados++;
       }
-      console.log(`💾 Sesión de Baileys restaurada exitosamente desde Supabase (${Object.keys(bundle).length} archivos).`);
+      console.log(`💾 Sesión de Baileys restaurada exitosamente desde Supabase (${restaurados} archivos).`);
       return true;
     } catch (err) {
       console.error('Error restaurando sesión de Baileys desde Supabase:', err);
@@ -172,7 +179,7 @@ export class BaileysService {
   }
 
   /**
-   * Respalda automáticamente los archivos de sesión en Supabase para que Render no vuelva a pedir QR
+   * Respalda automáticamente los archivos de sesión en Supabase de forma 100% asíncrona para no bloquear el Event Loop
    */
   private static debounceGuardado: NodeJS.Timeout | null = null;
   private static respaldarSesionEnSupabase(authDir: string, inmediato: boolean = false): void {
@@ -183,13 +190,16 @@ export class BaileysService {
         const credsPath = path.join(authDir, 'creds.json');
         if (!fs.existsSync(credsPath)) return;
 
-        const files = fs.readdirSync(authDir);
+        const files = await fs.promises.readdir(authDir);
         const bundle: Record<string, string> = {};
         for (const f of files) {
           const filePath = path.join(authDir, f);
-          if (fs.statSync(filePath).isFile()) {
-            bundle[f] = fs.readFileSync(filePath, 'utf-8');
-          }
+          try {
+            const stat = await fs.promises.stat(filePath);
+            if (stat.isFile()) {
+              bundle[f] = await fs.promises.readFile(filePath, 'utf-8');
+            }
+          } catch {}
         }
 
         const serialized = JSON.stringify(bundle);
@@ -200,7 +210,7 @@ export class BaileysService {
             .from('complejos')
             .update({ whatsapp_token: serialized })
             .eq('id', complejoId);
-          console.log(`💾 Sesión de WhatsApp respaldada permanentemente en Supabase (${files.length} archivos).`);
+          console.log(`💾 Sesión de WhatsApp respaldada permanentemente en Supabase (${Object.keys(bundle).length} archivos).`);
         }
       } catch (err) {
         console.error('Error respaldando sesión en Supabase:', err);
@@ -210,7 +220,7 @@ export class BaileysService {
     if (inmediato) {
       ejecutarRespaldo();
     } else {
-      this.debounceGuardado = setTimeout(ejecutarRespaldo, 2000);
+      this.debounceGuardado = setTimeout(ejecutarRespaldo, 4500);
     }
   }
 
@@ -281,25 +291,6 @@ export class BaileysService {
         flushAll: (): void => {},
       };
 
-      // Cache de reintentos que inicia en 1 para que en el primer fallo de cifrado (No session record / Invalid PreKey ID)
-      // Baileys adjunte inmediatamente llaves PreKey nuevas (<keys>) y regenere la sesión al instante
-      const retryMap = new Map<string, number>();
-      const customRetryCache = {
-        get: <T>(key: string): T | undefined => {
-          const val = retryMap.get(key);
-          return (val !== undefined ? val : 1) as unknown as T;
-        },
-        set: <T>(key: string, value: T): void => {
-          retryMap.set(key, Number(value));
-        },
-        del: (key: string): void => {
-          retryMap.delete(key);
-        },
-        flushAll: (): void => {
-          retryMap.clear();
-        },
-      };
-
       // Blindaje de conexión: Browser Fingerprint oficial y keep-alive continuo anti-zombie
       this.socket = makeWASocket({
         version,
@@ -310,14 +301,13 @@ export class BaileysService {
         shouldSyncHistoryMessage: () => false,
         markOnlineOnConnect: false,
         placeholderResendCache: noopPlaceholderCache,
-        msgRetryCounterCache: customRetryCache,
         shouldIgnoreJid: (jid) =>
           !jid ? false : Boolean(isJidBroadcast(jid) || isJidGroup(jid) || jid.endsWith('@newsletter') || jid.includes('@broadcast')),
         generateHighQualityLinkPreview: true,
         defaultQueryTimeoutMs: 60000,
         keepAliveIntervalMs: 25000,
         emitOwnEvents: false,
-        retryRequestDelayMs: 250,
+        retryRequestDelayMs: 150,
         getMessage: async (key) => {
           if (key?.id && this.mensajeStore.has(key.id)) {
             const msg = this.mensajeStore.get(key.id);
@@ -398,32 +388,8 @@ export class BaileysService {
             this.addDebugEvent('CONEXION_ABIERTA', { usuario: this.socket?.user?.id });
             console.log('\n✅ ¡BAILEYS CONECTADO EXITOSAMENTE A WHATSAPP!');
             console.log(`📱 Usuario conectado: ${this.socket?.user?.id || 'Sesión Activa'}\n`);
-
-            // Subir PreKeys frescas y asegurar sesiones E2E para evitar errores "Invalid PreKey ID" / "No session record"
-            setTimeout(async () => {
-              try {
-                if (this.socket) {
-                  await this.socket.uploadPreKeys(30);
-                  await this.socket.assertSessions(
-                    [
-                      '89296748961918@lid',
-                      '573223739845@s.whatsapp.net',
-                      '24327567204353@lid',
-                      '272627444801659@lid',
-                      '263677336907937@lid',
-                      '279641092800638@lid',
-                      '573134862536@s.whatsapp.net',
-                      '573022779797@s.whatsapp.net',
-                    ],
-                    true
-                  );
-                  this.respaldarSesionEnSupabase(authDir, true);
-                }
-              } catch (e) {
-                console.warn('[Baileys] Aviso sincronizando PreKeys/Sesiones iniciales:', e);
-              }
-              await this.sincronizarLids();
-            }, 2000);
+            this.respaldarSesionEnSupabase(authDir);
+            setTimeout(() => this.sincronizarLids(), 3000);
           }
         }
 
@@ -497,11 +463,9 @@ export class BaileysService {
     });
 
     if (!m.message || !m.key) {
-      // Si el mensaje llegó como CIPHERTEXT (stubType 2: No session record / Invalid PreKey ID), regenerar sesión E2E
-      if (m.messageStubType === 2 && rawJid) {
-        try {
-          await this.socket.assertSessions([rawJid], true);
-        } catch (e) {}
+      // Si es un eco antiguo emitido por una instancia previa de Baileys (3EB0...), acusar recibo para limpiarlo de la cola
+      if (m.messageStubType === 2 && m.key?.fromMe && m.key?.id?.startsWith('3EB0') && rawJid) {
+        this.socket.sendReceipt(rawJid, undefined, [m.key.id], 'sender' as any).catch(() => {});
       }
       return;
     }
