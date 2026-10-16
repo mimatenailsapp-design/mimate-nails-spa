@@ -247,6 +247,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
   const [modalAbierto, setModalAbierto] = useState(false);
   const [paso, setPaso] = useState<1 | 2 | 3>(1);
   const [servicioSeleccionado, setServicioSeleccionado] = useState<Servicio | null>(null);
+  const [faqAbierto, setFaqAbierto] = useState<number | null>(null);
 
   // Formulario de reserva
   const hoyStr = useMemo(() => {
@@ -851,16 +852,19 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
           <div className="relative w-44 h-44 sm:w-52 sm:h-52 mx-auto rounded-3xl overflow-hidden shadow-lg border-2 border-[#F2C4D2] bg-[#F9D2D9] transition-transform hover:scale-105 duration-300">
             <img
               src="/mimate-nails-logo.png"
-              alt="JL Mímate Nails Logo Oficial"
+              alt="JL Mímate Nails - Spa de Uñas en Pereira Cuba"
               className="w-full h-full object-cover"
             />
           </div>
 
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-[#2D2529] tracking-tight">
+          <h1 className="text-2xl sm:text-4xl font-extrabold text-[#2D2529] tracking-tight">
             JL Mímate Nails
+            <span className="block text-base sm:text-xl font-bold text-[#8C243B] mt-1 font-serif">
+              Spa de Uñas en Pereira
+            </span>
           </h1>
           <p className="text-sm sm:text-base text-[#7D6870] max-w-md mx-auto italic font-medium leading-relaxed">
-            "Mímate como te lo mereces. ¡Uñas hermosas, siempre perfectas!"
+            "Mímate como te lo mereces. ¡Uñas acrílicas, semipermanente y rubber siempre perfectas!"
           </p>
 
           <div className="flex items-center justify-center gap-2.5 pt-1 text-xs sm:text-sm font-semibold text-[#8C243B] tracking-wide">
@@ -1038,6 +1042,139 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                 </div>
               </div>
             ))}
+          </div>
+        </section>
+
+        {/* SECCIÓN SEO LOCAL: POR QUÉ ELEGIRNOS EN PEREIRA */}
+        <section className="mt-14 space-y-8">
+          <div className="text-center space-y-2">
+            <h2 className="text-xl sm:text-2xl font-extrabold text-[#2D2529]">
+              El Mejor Spa de Uñas en Pereira (Cuba)
+            </h2>
+            <p className="text-xs sm:text-sm text-[#7D6870] max-w-xl mx-auto">
+              En <strong className="text-[#8C243B]">JL Mímate Nails</strong> cuidamos la salud y estética de tus manos y pies con productos de alta gama y técnicas avanzadas en el corazón de Cuba, Pereira.
+            </p>
+          </div>
+
+          {/* TARJETAS DE VALOR SEO */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div className="p-4 rounded-2xl bg-white/80 border border-[#F2C4D2] shadow-xs space-y-1.5">
+              <div className="flex items-center gap-2 text-[#8C243B] font-bold text-sm">
+                <IconSparkles className="w-4 h-4 text-[#C74B66]" />
+                <h3>Especialistas en Acrílico y Rubber</h3>
+              </div>
+              <p className="text-xs text-[#7D6870] leading-relaxed">
+                Técnicas modernas en acrílico esculpido, nivelación base rubber, dipping y press on con acabado natural y máxima durabilidad.
+              </p>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-white/80 border border-[#F2C4D2] shadow-xs space-y-1.5">
+              <div className="flex items-center gap-2 text-[#8C243B] font-bold text-sm">
+                <IconCheck className="w-4 h-4 text-emerald-600" />
+                <h3>Bioseguridad y Esterilización 100%</h3>
+              </div>
+              <p className="text-xs text-[#7D6870] leading-relaxed">
+                Herramientas desinfectadas y esterilizadas rigurosamente bajo protocolos de grado hospitalario para garantizar tu seguridad y bienestar.
+              </p>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-white/80 border border-[#F2C4D2] shadow-xs space-y-1.5">
+              <div className="flex items-center gap-2 text-[#8C243B] font-bold text-sm">
+                <IconCalendar className="w-4 h-4 text-[#8C243B]" />
+                <h3>Citas Online Inmediatas</h3>
+              </div>
+              <p className="text-xs text-[#7D6870] leading-relaxed">
+                Agenda tu cita 24/7 en segundos sin esperas. Elige tu especialista, el servicio exacto y el horario que mejor se adapte a tu día.
+              </p>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-white/80 border border-[#F2C4D2] shadow-xs space-y-1.5">
+              <div className="flex items-center gap-2 text-[#8C243B] font-bold text-sm">
+                <IconMapPin className="w-4 h-4 text-[#C74B66]" />
+                <h3>Ubicación Fácil y Accesible</h3>
+              </div>
+              <p className="text-xs text-[#7D6870] leading-relaxed">
+                Calle 66 bis #26-57, Cuba, Pereira, Risaralda. Sector central, cómodo y de fácil acceso en transporte público o vehículo particular.
+              </p>
+            </div>
+          </div>
+
+          {/* PREGUNTAS FRECUENTES (FAQ ACORDION - SEO RICH SNIPPETS) */}
+          <div className="p-5 sm:p-6 rounded-3xl bg-white/90 border border-[#F2C4D2] shadow-sm space-y-4">
+            <div className="flex items-center gap-2">
+              <IconSparkles className="w-5 h-5 text-[#8C243B]" />
+              <h3 className="text-base sm:text-lg font-extrabold text-[#2D2529]">
+                Preguntas Frecuentes sobre Spa de Uñas en Pereira
+              </h3>
+            </div>
+
+            <div className="divide-y divide-[#FCE8EF]">
+              {[
+                {
+                  id: 1,
+                  q: "¿Dónde queda ubicado el spa de uñas JL Mímate Nails en Pereira?",
+                  a: "Estamos ubicados en Calle 66 bis #26-57, sector Cuba, Pereira, Risaralda, Colombia. Atendemos de Lunes a Sábado de 9:30 am a 5:30 pm con cita previa para garantizarte una atención exclusiva y puntual."
+                },
+                {
+                  id: 2,
+                  q: "¿Qué servicios de uñas ofrecen en JL Mímate Nails?",
+                  a: "Ofrecemos manicure y pedicure tradicional, esmaltado semipermanente, nivelación con base rubber, dipping, press on y uñas acrílicas esculpidas (barrido, retoque y esculpido completo), además de servicios especializados para hombre y retiro seguro."
+                },
+                {
+                  id: 3,
+                  q: "¿Cómo puedo agendar una cita en JL Mímate Nails Pereira?",
+                  a: "Puedes agendar directamente desde esta página web seleccionando tu servicio favorito, fecha y hora disponible. Si se requiere abono de confirmación, podrás realizarlo fácilmente a través de Nequi o Bancolombia para asegurar tu espacio de inmediato."
+                },
+                {
+                  id: 4,
+                  q: "¿Cuánto dura un servicio de uñas semipermanentes o acrílicas?",
+                  a: "La duración varía según el procedimiento: un manicure semipermanente toma aproximadamente 90 minutos, mientras que las uñas acrílicas esculpidas toman 120 minutos. Cada reserva en nuestro sistema aparta el tiempo exacto para una aplicación impecable."
+                }
+              ].map(faq => (
+                <div key={faq.id} className="py-3">
+                  <button
+                    onClick={() => setFaqAbierto(faqAbierto === faq.id ? null : faq.id)}
+                    className="w-full flex items-center justify-between text-left gap-3 text-xs sm:text-sm font-bold text-[#2D2529] hover:text-[#8C243B] transition cursor-pointer"
+                  >
+                    <span>{faq.q}</span>
+                    <span className="text-[#8C243B] shrink-0 font-bold text-base">
+                      {faqAbierto === faq.id ? '−' : '+'}
+                    </span>
+                  </button>
+                  {faqAbierto === faq.id && (
+                    <p className="mt-2 text-xs text-[#7D6870] leading-relaxed pl-1 border-l-2 border-[#8C243B]">
+                      {faq.a}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* CAJA MAPS & CONTACTO */}
+            <div className="pt-3 border-t border-[#FCE8EF] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-[#7D6870]">
+              <div className="flex items-center gap-1.5">
+                <IconMapPin className="w-4 h-4 text-[#8C243B] shrink-0" />
+                <span>Calle 66 bis #26-57, Cuba, Pereira</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <a
+                  href="https://maps.app.goo.gl/KdSvqi1b2iAe5xgg8"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-bold text-[#8C243B] hover:underline flex items-center gap-1"
+                >
+                  <span>Ver en Google Maps</span>
+                  <span>↗</span>
+                </a>
+                <span className="text-gray-300">|</span>
+                <a
+                  href="tel:+573219610896"
+                  className="font-bold text-[#8C243B] hover:underline"
+                >
+                  +57 321 961 0896
+                </a>
+              </div>
+            </div>
           </div>
         </section>
       </main>
