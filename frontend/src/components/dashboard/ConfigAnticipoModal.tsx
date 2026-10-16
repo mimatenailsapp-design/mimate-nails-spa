@@ -4,7 +4,7 @@ import { IconClock, IconCheck, IconX, IconLoader2 } from '@tabler/icons-react';
 
 export interface ConfigAnticipoData {
   exigeAnticipo: boolean;
-  montoAnticipoFijo: number;
+  montoAnticipoFijo?: number;
   porcentajeAnticipo?: number;
   nequiNumero: string;
   bancolombiaNumero: string;
