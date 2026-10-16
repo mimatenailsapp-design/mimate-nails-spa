@@ -98,19 +98,33 @@ export class BaileysService {
     if (raw === '*' || raw.toLowerCase() === 'all' || process.env.BAILEYS_ALLOW_ALL === 'true') {
       return [];
     }
-    const defaultNumbers = [
-      '573134862536',
-      '573022779797',
-      '573223739845',
-      '3134862536',
-      '3022779797',
-      '3223739845',
-    ];
     const envNumbers = raw
       .split(',')
       .map((num) => num.replace(/\D/g, '').trim())
       .filter((num) => num.length > 0);
-    return Array.from(new Set([...defaultNumbers, ...envNumbers]));
+
+    // Si se especificó lista blanca en variables de entorno, usar ÚNICAMENTE esos números
+    if (envNumbers.length > 0) {
+      const allowed: string[] = [];
+      for (const num of envNumbers) {
+        allowed.push(num);
+        if (num.startsWith('57') && num.length > 10) {
+          allowed.push(num.slice(2));
+        } else if (num.length === 10) {
+          allowed.push(`57${num}`);
+        }
+      }
+      return Array.from(new Set(allowed));
+    }
+
+    // Por defecto, solo número de prueba autorizado y el propio bot
+    const defaultNumbers = [
+      '573022779797',
+      '573223739845',
+      '3022779797',
+      '3223739845',
+    ];
+    return defaultNumbers;
   }
 
   /**
@@ -640,14 +654,11 @@ export class BaileysService {
 
     console.log(`[Baileys] 💬 Procesando texto de ${telefonoLimpio}: "${texto}"`);
 
-    // 6. BLINDAJE ANTI-DETECCIÓN (<5% RIESGO):
-    // Esperar entre 1.5 y 2.5 segundos antes de marcar como leído para simular lectura humana
-    await this.delay(1500 + Math.random() * 1000);
-    try {
-      await this.socket.readMessages([m.key as any]);
-    } catch (e) {
-      // Ignorar fallo de marcado de lectura
-    }
+    // 6. BLINDAJE Y PRIVACIDAD:
+    // NO marcar mensajes como leídos (readMessages desactivado) para no alterar las insignias de mensajes
+    // no leídos ni poner en azul los chats personales o clientes en el WhatsApp del usuario.
+    // Se mantiene un retardo natural antes de responder para simular presencia humana.
+    await this.delay(1000 + Math.random() * 1000);
 
     // 7. Obtener complejo/spa
     const complejos = await BookingService.getComplejos();
