@@ -18,15 +18,16 @@ import {
   IconAlertCircle,
   IconChevronLeft,
   IconChevronRight,
-  IconChevronDown,
   IconCalendarEvent,
   IconCalendarMonth,
-  IconSearch,
   IconSettings,
 } from '@tabler/icons-react';
 import { supabase } from '../config/supabase';
 import { BloquearHorarioModal } from './dashboard/BloquearHorarioModal';
 import { ConfigAnticipoModal } from './dashboard/ConfigAnticipoModal';
+import { AgendarCitaModal } from './dashboard/AgendarCitaModal';
+import { ExclusionesBotModal } from './dashboard/ExclusionesBotModal';
+import { DetalleCitaPopover } from './dashboard/DetalleCitaPopover';
 
 interface Cancha {
   id: string;
@@ -837,7 +838,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     return pasadas;
   }, [bloquearFecha, hoyStr, horasOpcionesBloqueoDinamicas, ahora]);
 
-  // 1. Cargar datos del Spa (Equipo, Servicios)
+  // 1. Cargar datos del Spa (Equipo, Servicios, Configuración unificada)
   const cargarInfoSpa = async () => {
     try {
       const res = await fetch('/api/spa/info');
@@ -847,6 +848,17 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
         setIdComplejoDetectado(idReal);
         if (d.equipo) setCanchas(d.equipo);
         if (d.servicios) setServicios(d.servicios);
+        if (d.config) {
+          setConfigAnticipo({
+            exigeAnticipo: Boolean(d.config.exigeAnticipo),
+            porcentajeAnticipo: Number(d.config.porcentajeAnticipo) || 20,
+            nequiNumero: d.config.nequiNumero || '321 961 0896',
+            bancolombiaNumero: d.config.bancolombiaNumero || 'Ahorros 245-000123-88',
+            titularCuenta: d.config.titularCuenta || 'JL Mímate Nails Spa',
+            horaApertura: d.config.horaApertura || '08:00',
+            horaCierre: d.config.horaCierre || '19:00',
+          });
+        }
         cargarReservas(idReal);
       }
     } catch (e) {
@@ -3443,303 +3455,36 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       {/* ==================================================================== */}
       {/* MODAL EXCLUSIVO DE LA ADMIN: AGENDAR CITA CON MENÚS DESPLEGABLES     */}
       {/* ==================================================================== */}
-      <AnimatePresence>
-        {esAdmin && modalAgendarAbierto && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-3xl max-w-md w-full p-6 border border-[#F2C4D2] shadow-2xl space-y-4"
-            >
-              <div className="flex items-center justify-between border-b border-[#FCE8EF] pb-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-xl bg-[#FCE8EF] text-[#8C243B] flex items-center justify-center font-bold text-sm">
-                    💅
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-sm text-[#2D2529] font-serif">
-                      Agendar Cita en el Spa
-                    </h3>
-                    <p className="text-[11px] text-[#7D6870]">
-                      Acceso exclusivo Administradora
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setModalAgendarAbierto(false)}
-                  className="p-1 rounded-full text-[#7D6870] hover:text-[#2D2529] cursor-pointer"
-                >
-                  <IconX className="w-4 h-4" />
-                </button>
-              </div>
-
-              <form onSubmit={handleCrearCitaAdmin} className="space-y-3.5 text-xs">
-                {/* 1. MENÚ DESPLEGABLE ELEGANTE: MANICURISTA */}
-                <div className="relative">
-                  <label className="font-bold text-[#7D6870] block mb-1">
-                    Especialista / Manicurista
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMenuManiAbierto(!menuManiAbierto);
-                      setMenuServicioAbierto(false);
-                      setMenuHoraAbierto(false);
-                    }}
-                    className="w-full px-3.5 py-2.5 bg-[#FFF5F7] border border-[#F2C4D2] hover:border-[#8C243B] rounded-xl font-bold text-[#2D2529] flex items-center justify-between transition cursor-pointer text-left shadow-2xs"
-                  >
-                    <span className="flex items-center gap-2">
-                      <span className="w-5 h-5 rounded-full bg-[#FCE8EF] text-[#8C243B] flex items-center justify-center text-[10px]">
-                        💅
-                      </span>
-                      <span>{manicuristaSeleccionadaForm?.nombre || 'Seleccionar Manicurista'}</span>
-                    </span>
-                    <IconChevronDown className={`w-4 h-4 text-[#8C243B] transition-transform ${menuManiAbierto ? 'rotate-180' : ''}`} />
-                  </button>
-
-                  <AnimatePresence>
-                    {menuManiAbierto && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -4 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -4 }}
-                        className="absolute left-0 right-0 top-full mt-1 z-30 bg-white border border-[#F2C4D2] rounded-2xl shadow-xl p-1.5 space-y-1"
-                      >
-                        {canchas.map((c, i) => {
-                          const estaSel = c.id === agendarManicuristaId;
-                          return (
-                            <div
-                              key={c.id}
-                              onClick={() => {
-                                setAgendarManicuristaId(c.id);
-                                setMenuManiAbierto(false);
-                              }}
-                              className={`p-2 rounded-xl flex items-center justify-between cursor-pointer transition ${
-                                estaSel
-                                  ? 'bg-[#FCE8EF] text-[#8C243B] font-bold'
-                                  : 'hover:bg-[#FFF5F7] text-[#2D2529]'
-                              }`}
-                            >
-                              <div className="flex items-center gap-2">
-                                <span className="w-5 h-5 rounded-full bg-white border border-[#F2C4D2] flex items-center justify-center text-[10px]">
-                                  {i === 0 ? '👑' : `M${i + 1}`}
-                                </span>
-                                <span>{c.nombre}</span>
-                              </div>
-                              {estaSel && <IconCheck className="w-4 h-4 text-[#8C243B]" />}
-                            </div>
-                          );
-                        })}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-
-                {/* 2. MENÚ DESPLEGABLE ELEGANTE: SERVICIO DE UÑAS */}
-                <div className="relative">
-                  <label className="font-bold text-[#7D6870] block mb-1">
-                    Servicio de Uñas
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMenuServicioAbierto(!menuServicioAbierto);
-                      setMenuManiAbierto(false);
-                      setMenuHoraAbierto(false);
-                    }}
-                    className="w-full px-3.5 py-2.5 bg-[#FFF5F7] border border-[#F2C4D2] hover:border-[#8C243B] rounded-xl font-bold text-[#2D2529] flex items-center justify-between transition cursor-pointer text-left shadow-2xs"
-                  >
-                    <div className="truncate pr-2">
-                      <span>{servicioSeleccionadoForm?.nombre || 'Seleccionar Servicio'}</span>
-                      <span className="text-[11px] font-mono text-[#8C243B] ml-2">
-                        (${servicioSeleccionadoForm?.precio.toLocaleString('es-CO')} · {servicioSeleccionadoForm?.duracion} min)
-                      </span>
-                    </div>
-                    <IconChevronDown className={`w-4 h-4 text-[#8C243B] shrink-0 transition-transform ${menuServicioAbierto ? 'rotate-180' : ''}`} />
-                  </button>
-
-                  <AnimatePresence>
-                    {menuServicioAbierto && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -4 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -4 }}
-                        className="absolute left-0 right-0 top-full mt-1 z-30 bg-white border border-[#F2C4D2] rounded-2xl shadow-xl p-1.5 max-h-56 overflow-y-auto space-y-1"
-                      >
-                        {servicios.map((s) => {
-                          const estaSel = s.id === agendarServicioId;
-                          return (
-                            <div
-                              key={s.id}
-                              onClick={() => {
-                                setAgendarServicioId(s.id);
-                                setMenuServicioAbierto(false);
-                              }}
-                              className={`p-2 rounded-xl flex items-center justify-between cursor-pointer transition ${
-                                estaSel
-                                  ? 'bg-[#FCE8EF] text-[#8C243B] font-bold'
-                                  : 'hover:bg-[#FFF5F7] text-[#2D2529]'
-                              }`}
-                            >
-                              <div>
-                                <p className="font-semibold">{s.nombre}</p>
-                                <p className="text-[10px] text-[#7D6870]">
-                                  {s.categoria} · {s.duracion} min
-                                </p>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <span className="font-mono font-bold text-[#8C243B]">
-                                  ${s.precio.toLocaleString('es-CO')}
-                                </span>
-                                {estaSel && <IconCheck className="w-4 h-4 text-[#8C243B]" />}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-
-                {/* 3. FECHA Y HORA (CON MENÚ ELEGANTE DE HORA) */}
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="font-bold text-[#7D6870] block mb-1">Fecha</label>
-                    <input
-                      type="date"
-                      value={agendarFecha}
-                      onChange={(e) => setAgendarFecha(e.target.value)}
-                      className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl font-bold text-[#2D2529] outline-none cursor-pointer"
-                    />
-                  </div>
-
-                    {/* Menú Desplegable Hora */}
-                    <div className="relative">
-                      <label className="font-bold text-[#7D6870] block mb-1">Hora</label>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setMenuHoraAbierto(!menuHoraAbierto);
-                          setMenuManiAbierto(false);
-                          setMenuServicioAbierto(false);
-                        }}
-                        className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] hover:border-[#8C243B] rounded-xl font-bold text-[#2D2529] flex items-center justify-between transition cursor-pointer text-left shadow-2xs"
-                      >
-                        <span className="flex items-center gap-1 font-mono text-[#8C243B]">
-                          <IconClock className="w-3.5 h-3.5 text-[#C74B66]" />
-                          {agendarHora || 'Seleccionar turno'}
-                        </span>
-                        <IconChevronDown className={`w-3.5 h-3.5 text-[#8C243B] transition-transform ${menuHoraAbierto ? 'rotate-180' : ''}`} />
-                      </button>
-
-                      <AnimatePresence>
-                        {menuHoraAbierto && (
-                          <motion.div
-                            initial={{ opacity: 0, y: -4 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -4 }}
-                            className="absolute left-0 right-0 top-full mt-1 z-30 bg-white border border-[#F2C4D2] rounded-2xl shadow-xl p-1.5 max-h-48 overflow-y-auto space-y-1"
-                          >
-                            {horasDisponiblesAgendarAdmin.length === 0 ? (
-                              <div className="p-2.5 text-center text-xs text-[#8C243B] bg-[#FFF5F7] rounded-xl font-medium">
-                                No hay horarios disponibles para esta fecha (todos están ocupados, bloqueados o ya pasaron).
-                              </div>
-                            ) : (
-                              horasDisponiblesAgendarAdmin.map((h) => {
-                                const estaSel = h === agendarHora;
-                                return (
-                                  <div
-                                    key={h}
-                                    onClick={() => {
-                                      setAgendarHora(h);
-                                      setMenuHoraAbierto(false);
-                                    }}
-                                    className={`px-2.5 py-1.5 rounded-lg flex items-center justify-between cursor-pointer font-mono text-xs transition ${
-                                      estaSel
-                                        ? 'bg-[#FCE8EF] text-[#8C243B] font-bold'
-                                        : 'hover:bg-[#FFF5F7] text-[#2D2529]'
-                                    }`}
-                                  >
-                                    <span>{h}</span>
-                                    {estaSel && <IconCheck className="w-3.5 h-3.5 text-[#8C243B]" />}
-                                  </div>
-                                );
-                              })
-                            )}
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-                  </div>
-
-                  {/* 4. DATOS DE LA CLIENTA */}
-                  <div>
-                    <label className="font-bold text-[#7D6870] block mb-1">
-                      Nombre de la Clienta
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Ej: Camila Restrepo"
-                      value={agendarNombre}
-                      onChange={(e) => setAgendarNombre(e.target.value)}
-                      className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl text-[#2D2529] font-medium outline-none focus:border-[#8C243B]"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="font-bold text-[#7D6870] block mb-1">
-                      Teléfono WhatsApp (10 dígitos)
-                    </label>
-                    <input
-                      type="tel"
-                      placeholder="321 961 0896"
-                      value={agendarTelefono}
-                      onChange={(e) => setAgendarTelefono(e.target.value)}
-                      className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl text-[#2D2529] font-mono outline-none focus:border-[#8C243B]"
-                      required
-                    />
-                    <p className="text-[10px] text-[#7D6870] mt-0.5">
-                      Se enviará el voucher de confirmación automáticamente a su WhatsApp.
-                    </p>
-                  </div>
-
-                  {errorAgendar && (
-                    <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-[11px] flex items-center gap-1.5 font-medium">
-                      <IconAlertCircle className="w-4 h-4 shrink-0" />
-                      <span>{errorAgendar}</span>
-                    </div>
-                  )}
-
-                  <div className="flex gap-2 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setModalAgendarAbierto(false)}
-                      className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-[#7D6870] font-semibold rounded-xl transition cursor-pointer"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={guardandoCita || !agendarHora}
-                      className="flex-1 py-2.5 bg-[#8C243B] hover:bg-[#731D30] text-white font-bold rounded-xl transition shadow-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-                    >
-                      {guardandoCita ? (
-                        <>
-                          <IconLoader2 className="w-4 h-4 animate-spin" />
-                          <span>Agendando...</span>
-                        </>
-                      ) : (
-                        <span>Confirmar Cita</span>
-                      )}
-                    </button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      <AgendarCitaModal
+        abierto={esAdmin && modalAgendarAbierto}
+        onClose={() => setModalAgendarAbierto(false)}
+        onSubmit={handleCrearCitaAdmin}
+        canchas={canchas}
+        servicios={servicios}
+        agendarManicuristaId={agendarManicuristaId}
+        setAgendarManicuristaId={setAgendarManicuristaId}
+        menuManiAbierto={menuManiAbierto}
+        setMenuManiAbierto={setMenuManiAbierto}
+        manicuristaSeleccionadaForm={manicuristaSeleccionadaForm}
+        agendarServicioId={agendarServicioId}
+        setAgendarServicioId={setAgendarServicioId}
+        menuServicioAbierto={menuServicioAbierto}
+        setMenuServicioAbierto={setMenuServicioAbierto}
+        servicioSeleccionadoForm={servicioSeleccionadoForm}
+        agendarFecha={agendarFecha}
+        setAgendarFecha={setAgendarFecha}
+        agendarHora={agendarHora}
+        setAgendarHora={setAgendarHora}
+        menuHoraAbierto={menuHoraAbierto}
+        setMenuHoraAbierto={setMenuHoraAbierto}
+        horasDisponiblesAgendarAdmin={horasDisponiblesAgendarAdmin}
+        agendarNombre={agendarNombre}
+        setAgendarNombre={setAgendarNombre}
+        agendarTelefono={agendarTelefono}
+        setAgendarTelefono={setAgendarTelefono}
+        errorAgendar={errorAgendar}
+        guardandoCita={guardandoCita}
+      />
 
       {/* ==================================================================== */}
       {/* MODAL: BLOQUEAR HORARIO (ADMIN Y MANICURISTAS)                       */}
@@ -3785,217 +3530,28 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       />
 
             {/* ==================================================================== */}
-      {/* ==================================================================== */}
       {/* MODAL ELEGANTE: RESTRICCIÓN DE ACCESO AL BOT DE WHATSAPP             */}
       {/* ==================================================================== */}
-      <AnimatePresence>
-        {esAdmin && modalExclusionesAbierto && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-3xl max-w-lg w-full p-6 border border-[#F2C4D2] shadow-2xl space-y-4 max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95"
-            >
-              {/* Encabezado del Modal */}
-              <div className="flex items-center justify-between border-b border-[#FCE8EF] pb-3">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-800 border border-amber-300 flex items-center justify-center font-bold text-lg shadow-2xs">
-                    <IconLock className="w-5 h-5 text-amber-700" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-bold text-base text-[#2D2529] font-serif">
-                        Números Restringidos
-                      </h3>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
-                        Control de Acceso
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-[#7D6870]">
-                      El bot NO responderá ni enviará enlaces de reserva a estos números
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setModalExclusionesAbierto(false)}
-                  className="p-1.5 rounded-full text-[#7D6870] hover:text-[#2D2529] hover:bg-[#FFF5F7] cursor-pointer transition"
-                >
-                  <IconX className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Formulario para Agregar Nuevo Número Restringido */}
-              <form onSubmit={handleAgregarExclusion} className="p-3.5 bg-[#FFF5F7] border border-[#F2C4D2] rounded-2xl space-y-2.5">
-                <p className="text-xs font-bold text-[#8C243B] flex items-center gap-1.5">
-                  <IconPlus className="w-3.5 h-3.5" />
-                  <span>Restringir nuevo número</span>
-                </p>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                  <div>
-                    <label className="text-[11px] font-semibold text-[#7D6870] block mb-1">
-                      Teléfono WhatsApp
-                    </label>
-                    <input
-                      type="tel"
-                      placeholder="Ej: 321 961 0896"
-                      value={nuevoTelExclusion}
-                      onChange={(e) => setNuevoTelExclusion(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-[#F2C4D2] rounded-xl font-mono text-xs text-[#2D2529] outline-none focus:border-[#8C243B] shadow-2xs"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-[11px] font-semibold text-[#7D6870] block mb-1">
-                      Motivo / Identificador (Opcional)
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Ej: Cancela seguido / No asiste"
-                      value={nuevoNombreExclusion}
-                      onChange={(e) => setNuevoNombreExclusion(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-[#F2C4D2] rounded-xl text-xs text-[#2D2529] outline-none focus:border-[#8C243B] shadow-2xs"
-                    />
-                  </div>
-                </div>
-
-                {errorExclusion && (
-                  <p className="text-[11px] text-rose-600 font-medium flex items-center gap-1">
-                    <IconAlertCircle className="w-3.5 h-3.5" />
-                    <span>{errorExclusion}</span>
-                  </p>
-                )}
-
-                <div className="flex justify-end pt-1">
-                  <button
-                    type="submit"
-                    disabled={guardandoExclusion}
-                    className="px-4 py-2 bg-gradient-to-r from-[#8C243B] to-[#C74B66] hover:from-[#731D30] hover:to-[#B03C54] text-white text-xs font-bold rounded-xl transition shadow-xs cursor-pointer flex items-center gap-1.5 disabled:opacity-50 active:scale-95"
-                  >
-                    {guardandoExclusion ? (
-                      <>
-                        <IconLoader2 className="w-3.5 h-3.5 animate-spin" />
-                        <span>Guardando...</span>
-                      </>
-                    ) : (
-                      <>
-                        <IconLock className="w-3.5 h-3.5" />
-                        <span>Restringir Acceso al Bot</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </form>
-
-              {/* Barra de Búsqueda y Contador */}
-              <div className="flex items-center justify-between gap-2 text-xs">
-                <div className="relative flex-1">
-                  <IconSearch className="w-3.5 h-3.5 text-[#7D6870] absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    placeholder="Buscar en la lista..."
-                    value={busquedaExclusion}
-                    onChange={(e) => setBusquedaExclusion(e.target.value)}
-                    className="w-full pl-8 pr-3 py-1.5 bg-[#FFF5F7]/70 border border-[#F2C4D2] rounded-xl text-xs text-[#2D2529] outline-none focus:border-[#8C243B]"
-                  />
-                </div>
-                <span className="text-[11px] text-[#7D6870] font-semibold shrink-0">
-                  {exclusionesBot.length} {exclusionesBot.length === 1 ? 'número restringido' : 'números restringidos'}
-                </span>
-              </div>
-
-              {/* Lista de Números Restringidos */}
-              <div className="flex-1 overflow-y-auto space-y-2 pr-1 min-h-[160px] max-h-[300px]">
-                {cargandoExclusiones ? (
-                  <div className="py-8 text-center text-[#7D6870] text-xs flex items-center justify-center gap-2">
-                    <IconLoader2 className="w-4 h-4 animate-spin text-[#8C243B]" />
-                    <span>Cargando lista...</span>
-                  </div>
-                ) : (() => {
-                  const filtradas = exclusionesBot.filter((item) => {
-                    const q = busquedaExclusion.toLowerCase().trim();
-                    if (!q) return true;
-                    return (
-                      item.telefono.includes(q) ||
-                      (item.nombre && item.nombre.toLowerCase().includes(q))
-                    );
-                  });
-
-                  if (filtradas.length === 0) {
-                    return (
-                      <div className="text-center py-8 text-[#7D6870] space-y-1 bg-[#FFF5F7]/40 rounded-2xl border border-dashed border-[#F2C4D2]">
-                        <p className="text-xs font-bold text-[#8C243B]">
-                          {busquedaExclusion ? 'Sin resultados para la búsqueda' : 'No hay números restringidos'}
-                        </p>
-                        <p className="text-[11px] opacity-75">
-                          {busquedaExclusion ? 'Intenta con otro término' : 'El bot está atendiendo normalmente a los usuarios.'}
-                        </p>
-                      </div>
-                    );
-                  }
-
-                  return filtradas.map((item) => {
-                    const telLimpio = item.telefono.replace(/\D/g, '');
-                    return (
-                      <div
-                        key={item.telefono}
-                        className="p-3 bg-white border border-[#F2C4D2] rounded-2xl flex items-center justify-between gap-3 shadow-2xs hover:border-[#8C243B] transition"
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-900 border border-amber-300 flex items-center justify-center font-bold text-xs shrink-0">
-                            🔒
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-xs font-bold text-[#2D2529] truncate font-serif">
-                              {item.nombre || 'Número restringido'}
-                            </p>
-                            <div className="flex items-center gap-2 text-[11px] text-[#7D6870]">
-                              <span className="font-mono">{item.telefono}</span>
-                              <a
-                                href={`https://wa.me/${telLimpio}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-emerald-700 hover:text-emerald-800 font-semibold flex items-center gap-0.5"
-                                title="Abrir chat en WhatsApp"
-                              >
-                                <IconBrandWhatsapp className="w-3 h-3" />
-                                <span>Abrir</span>
-                              </a>
-                            </div>
-                          </div>
-                        </div>
-
-                        <button
-                          onClick={() => solicitarReactivarBot(item.telefono, item.nombre)}
-                          className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shrink-0 active:scale-95 shadow-2xs"
-                          title="Levantar la restricción y permitir que el bot vuelva a responder"
-                        >
-                          <IconRefresh className="w-3 h-3 text-emerald-700" />
-                          <span>Reactivar Bot</span>
-                        </button>
-                      </div>
-                    );
-                  });
-                })()}
-              </div>
-
-              {/* Pie del Modal */}
-              <div className="pt-2 border-t border-[#FCE8EF] flex items-center justify-between text-[11px] text-[#7D6870]">
-                <span>💡 Los números en esta lista no podrán solicitar enlaces ni agendar por el bot.</span>
-                <button
-                  type="button"
-                  onClick={() => setModalExclusionesAbierto(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-[#7D6870] font-semibold rounded-xl transition cursor-pointer"
-                >
-                  Cerrar
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      <ExclusionesBotModal
+        abierto={esAdmin && modalExclusionesAbierto}
+        onClose={() => setModalExclusionesAbierto(false)}
+        nuevoTelExclusion={nuevoTelExclusion}
+        setNuevoTelExclusion={setNuevoTelExclusion}
+        nuevoNombreExclusion={nuevoNombreExclusion}
+        setNuevoNombreExclusion={setNuevoNombreExclusion}
+        errorExclusion={errorExclusion}
+        guardandoExclusion={guardandoExclusion}
+        handleAgregarExclusion={handleAgregarExclusion}
+        busquedaExclusion={busquedaExclusion}
+        setBusquedaExclusion={setBusquedaExclusion}
+        exclusionesBot={exclusionesBot}
+        cargandoExclusiones={cargandoExclusiones}
+        solicitarReactivarBot={solicitarReactivarBot}
+        exclusionAReactivar={exclusionAReactivar}
+        setExclusionAReactivar={setExclusionAReactivar}
+        reactivandoBot={reactivandoBot}
+        handleConfirmarReactivarBot={handleConfirmarReactivarBot}
+      />
 
       {/* ==================================================================== */}
       {/* MODAL ELEGANTE: CONFIRMAR REACTIVACIÓN DEL BOT (QUITAR RESTRICCIÓN)   */}
@@ -4095,231 +3651,26 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       {/* ============================================================================ */}
       {/* VIEW EMERGENTE (POPOVER FLOTANTE) AL PASAR EL MOUSE POR ENCIMA DE UNA CITA    */}
       {/* ============================================================================ */}
-      {popoverCita && (() => {
-        const { cita, rect } = popoverCita;
-        const horaInicio = obtenerHoraMinutosBogota(cita.fecha_inicio);
-        const horaFin = cita.fecha_fin ? obtenerHoraMinutosBogota(cita.fecha_fin) : '';
-        const durMin = obtenerDuracionMinutosCita(cita.fecha_inicio, cita.fecha_fin);
-        const esBloqueada = cita.estado === 'bloqueada';
-        const { motivo: motivoBloqueo, por: bloqueadoPor } = obtenerDetalleBloqueo(cita);
-        const nombreClienta = obtenerNombreClienta(cita);
-        const servicioNombre = obtenerServicioCita(cita);
-        const telLimpio = String(cita.clientes?.telefono_wa || '').replace(/\D/g, '');
-        const canchaCita = canchas.find((c) => c.id === cita.cancha_id);
-        const puedeDesbloquear = esAdmin || (perfilActual?.canchaId === cita.cancha_id);
-
-        const anchoPopover = 320;
-        const altoAprox = 320;
-        let posX = rect.right + 12;
-        if (typeof window !== 'undefined' && posX + anchoPopover > window.innerWidth - 12) {
-          posX = Math.max(12, rect.left - anchoPopover - 12);
-        }
-        let posY = rect.top;
-        if (typeof window !== 'undefined' && posY + altoAprox > window.innerHeight - 12) {
-          posY = Math.max(12, window.innerHeight - altoAprox - 12);
-        }
-
-        const ahoraMs = ahora.getTime();
-        const inicioMs = new Date(cita.fecha_inicio).getTime();
-        const finMs = cita.fecha_fin ? new Date(cita.fecha_fin).getTime() : inicioMs + 45 * 60000;
-        const estaEnAtencion = !esBloqueada && cita.estado !== 'completada' && cita.estado !== 'cancelada' && ahoraMs >= inicioMs && ahoraMs < finMs;
-
-        return (
-          <div
-            className="fixed z-50 pointer-events-auto transition-all duration-150"
-            style={{ left: `${posX}px`, top: `${posY}px`, width: `${anchoPopover}px` }}
-            onMouseEnter={mantenerPopoverCita}
-            onMouseLeave={cerrarPopoverCita}
-          >
-            <div className="bg-white rounded-2xl border-2 border-[#8C243B]/25 shadow-2xl overflow-hidden p-4 space-y-3 backdrop-blur-md ring-8 ring-black/5 animate-in fade-in zoom-in-95 duration-150">
-              {/* Cabecera del Popover */}
-              <div className="flex items-start justify-between gap-2 border-b border-[#F2C4D2]/70 pb-2.5">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-base shadow-2xs shrink-0 ${
-                    esBloqueada ? 'bg-amber-100 text-amber-800 border border-amber-300' : 'bg-[#FFF5F7] text-[#8C243B] border border-[#F2C4D2]'
-                  }`}>
-                    {esBloqueada ? '🔒' : '💅'}
-                  </div>
-                  <div className="min-w-0">
-                    <h4 className="font-bold text-sm text-[#2D2529] font-serif truncate" title={esBloqueada ? motivoBloqueo : nombreClienta}>
-                      {esBloqueada ? motivoBloqueo : nombreClienta}
-                    </h4>
-                    <p className="text-[11px] text-[#7D6870] truncate">
-                      {esBloqueada ? `Bloqueado por: ${bloqueadoPor}` : (canchaCita ? `💅 ${canchaCita.nombre}` : 'JL Mímate Nails')}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="shrink-0 flex flex-col items-end gap-1">
-                  {estaEnAtencion ? (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-300 shadow-2xs animate-pulse">
-                      <span className="w-1.5 h-1.5 rounded-full bg-rose-600" />
-                      EN ATENCIÓN
-                    </span>
-                  ) : (
-                    <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${
-                      esBloqueada
-                        ? 'bg-amber-100 text-amber-900 border-amber-300'
-                        : cita.estado === 'pendiente_anticipo' || cita.estado === 'pendiente_pago'
-                        ? (cita.notas?.includes('[COMPROBANTE_DUDOSO_REVISION_MANUAL]') || cita.notas?.includes('[COMPROBANTE_VALIDO_IA]'))
-                          ? 'bg-amber-500 text-white border-amber-600 animate-pulse'
-                          : 'bg-amber-100 text-amber-900 border-amber-300'
-                        : cita.estado === 'completada'
-                        ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                        : cita.estado === 'cancelada'
-                        ? 'bg-rose-100 text-rose-800 border-rose-300'
-                        : 'bg-[#FCE8EF] text-[#8C243B] border-[#F2C4D2]'
-                    }`}>
-                      {esBloqueada ? 'BLOQUEADO' : cita.estado.toUpperCase()}
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Horario y Duración */}
-              <div className="bg-[#FFF5F7] rounded-xl p-2.5 border border-[#F2C4D2]/80 flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2">
-                  <IconClock className="w-4 h-4 text-[#C74B66]" />
-                  <span className="font-mono font-bold text-[#8C243B]">
-                    {horaInicio} - {horaFin}
-                  </span>
-                </div>
-                <span className="text-[11px] font-semibold text-[#7D6870] bg-white px-2 py-0.5 rounded-lg border border-[#F2C4D2]">
-                  {durMin} minutos
-                </span>
-              </div>
-
-              {/* Detalle del Servicio y Valor */}
-              {!esBloqueada && (
-                <div className="space-y-1.5 text-xs bg-slate-50/70 p-2.5 rounded-xl border border-slate-200/60">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[#7D6870]">Servicio:</span>
-                    <span className="font-bold text-[#2D2529] text-right truncate max-w-[180px]">{servicioNombre}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[#7D6870]">Valor Total:</span>
-                    <span className="font-black font-mono text-[#8C243B] text-sm">
-                      ${Number(cita.valor_total || 25000).toLocaleString('es-CO')}
-                    </span>
-                  </div>
-                  {cita.clientes?.telefono_wa && (
-                    <div className="flex items-center justify-between pt-1 border-t border-slate-200/60">
-                      <span className="text-[#7D6870]">Teléfono:</span>
-                      <span className="font-mono text-xs text-[#2D2529] font-medium">{cita.clientes.telefono_wa}</span>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Botones de Acción Inmediata */}
-              <div className="pt-2 border-t border-[#F2C4D2]/70 flex items-center gap-2">
-                {esBloqueada ? (
-                  puedeDesbloquear && (
-                    <button
-                      onClick={() => {
-                        handleDesbloquearHorario(cita.id, horaInicio);
-                        setPopoverCita(null);
-                      }}
-                      className="w-full py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer active:scale-95"
-                    >
-                      <IconLockOpen className="w-3.5 h-3.5" />
-                      <span>Desbloquear Horario</span>
-                    </button>
-                  )
-                ) : cita.estado === 'pendiente_anticipo' || cita.estado === 'pendiente_pago' ? (
-                  <>
-                    {telLimpio && (
-                      <a
-                        href={`https://wa.me/${telLimpio}?text=Hola%20${encodeURIComponent(nombreClienta)},%20te%20saludamos%20de%20JL%20M%C3%ADmate%20Nails%20respecto%20al%20abono%20de%20tu%20cita%20de%20las%20${horaInicio}.`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex-1 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold transition flex items-center justify-center gap-1 shadow-2xs"
-                        title="Escribir por WhatsApp"
-                      >
-                        <IconBrandWhatsapp className="w-3.5 h-3.5" />
-                        <span>WhatsApp</span>
-                      </a>
-                    )}
-
-                    {esAdmin && (
-                      <>
-                        <button
-                          disabled={procesandoAccionAnticipo === cita.id}
-                          onClick={() => {
-                            handleAprobarAnticipo(cita.id, nombreClienta);
-                            setPopoverCita(null);
-                          }}
-                          className="flex-1 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center justify-center gap-1 shadow-2xs cursor-pointer active:scale-95 disabled:opacity-50"
-                          title="Aprobar abono recibido y confirmar la cita"
-                        >
-                          <IconCheck className="w-3.5 h-3.5" />
-                          <span>Aprobar Abono</span>
-                        </button>
-
-                        <button
-                          disabled={procesandoAccionAnticipo === cita.id}
-                          onClick={() => {
-                            handleRechazarAnticipo(cita.id, nombreClienta);
-                            setPopoverCita(null);
-                          }}
-                          className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition flex items-center justify-center gap-1 shadow-2xs cursor-pointer active:scale-95 disabled:opacity-50"
-                          title="Rechazar y liberar cupo"
-                        >
-                          <IconX className="w-3.5 h-3.5" />
-                          <span>Rechazar</span>
-                        </button>
-                      </>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    {telLimpio && (
-                      <a
-                        href={`https://wa.me/${telLimpio}?text=Hola%20${encodeURIComponent(nombreClienta)},%20te%20saludamos%20de%20JL%20M%C3%ADmate%20Nails%20respecto%20a%20tu%20cita%20de%20las%20${horaInicio}.`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex-1 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold transition flex items-center justify-center gap-1 shadow-2xs"
-                        title="Escribir por WhatsApp"
-                      >
-                        <IconBrandWhatsapp className="w-3.5 h-3.5" />
-                        <span>WhatsApp</span>
-                      </a>
-                    )}
-
-                    {cita.estado !== 'completada' && cita.estado !== 'cancelada' && (
-                      <>
-                        <button
-                          onClick={() => {
-                            handleCambiarEstado(cita.id, 'completada');
-                            setPopoverCita(null);
-                          }}
-                          className="flex-1 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center justify-center gap-1 shadow-2xs cursor-pointer active:scale-95"
-                        >
-                          <IconCheck className="w-3.5 h-3.5" />
-                          <span>Completada</span>
-                        </button>
-
-                        <button
-                          onClick={() => {
-                            handleCambiarEstado(cita.id, 'cancelada');
-                            setPopoverCita(null);
-                          }}
-                          className="flex-1 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition flex items-center justify-center gap-1 shadow-2xs cursor-pointer active:scale-95"
-                          title="Cancelar cita y liberar el horario inmediatamente"
-                        >
-                          <IconX className="w-3.5 h-3.5" />
-                          <span>Cancelar</span>
-                        </button>
-                      </>
-                    )}
-
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      <DetalleCitaPopover
+        popoverCita={popoverCita}
+        onMouseEnter={mantenerPopoverCita}
+        onMouseLeave={cerrarPopoverCita}
+        esAdmin={esAdmin}
+        perfilActual={perfilActual}
+        canchas={canchas}
+        ahora={ahora}
+        obtenerHoraMinutosBogota={obtenerHoraMinutosBogota}
+        obtenerDuracionMinutosCita={obtenerDuracionMinutosCita}
+        obtenerDetalleBloqueo={obtenerDetalleBloqueo}
+        obtenerNombreClienta={obtenerNombreClienta}
+        obtenerServicioCita={obtenerServicioCita}
+        handleDesbloquearHorario={handleDesbloquearHorario}
+        handleAprobarAnticipo={handleAprobarAnticipo}
+        handleRechazarAnticipo={handleRechazarAnticipo}
+        handleCambiarEstado={handleCambiarEstado}
+        procesandoAccionAnticipo={procesandoAccionAnticipo}
+        onClose={() => setPopoverCita(null)}
+      />
 
     </div>
   );

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   IconBrandWhatsapp,
@@ -640,8 +640,9 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
     }
   };
 
-  const serviciosFiltrados = servicios.filter(
-    (s) => categoriaActiva === 'Todos' || s.categoria === categoriaActiva
+  const serviciosFiltrados = useMemo(
+    () => servicios.filter((s) => categoriaActiva === 'Todos' || s.categoria === categoriaActiva),
+    [servicios, categoriaActiva]
   );
 
   return (
