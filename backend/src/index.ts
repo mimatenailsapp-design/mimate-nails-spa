@@ -518,9 +518,9 @@ app.patch('/api/spa/config', async (req: Request, res: Response) => {
       }
     }
 
-    // Persistir el valor fijo en el campo seguro whatsapp_token (JSON)
+    // Persistir el valor fijo en el campo seguro whatsapp_phone_number_id (VARCHAR que NO es sobreescrito por Baileys)
     if (montoAnticipoFijo !== undefined || porcentajeAnticipo !== undefined || exigeAnticipo !== undefined) {
-      updateData.whatsapp_token = JSON.stringify({ monto_anticipo_fijo: montoFijoValido });
+      updateData.whatsapp_phone_number_id = String(montoFijoValido);
     }
 
     if (nequiNumero !== undefined) updateData.nequi_numero = String(nequiNumero).trim();

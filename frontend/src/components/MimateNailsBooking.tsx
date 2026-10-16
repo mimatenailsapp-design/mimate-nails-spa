@@ -234,7 +234,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
     } catch {}
 
     // 1. Carga unificada de bootstrap (equipo, servicios y configuración de anticipos en 1 solo viaje de red)
-    fetch('/api/spa/info')
+    fetch(`/api/spa/info?_t=${Date.now()}`)
       .then((r) => r.json())
       .then((d) => {
         if (d.equipo && d.equipo.length > 0) {

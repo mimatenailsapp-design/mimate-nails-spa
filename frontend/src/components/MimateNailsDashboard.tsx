@@ -530,6 +530,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
         body: JSON.stringify(configAnticipo),
       });
       if (res.ok) {
+        try { sessionStorage.removeItem('mimate_bootstrap'); } catch {}
         setModalConfigAnticipoAbierto(false);
         cargarReservas();
       } else {

@@ -31,9 +31,14 @@ export function getMontoAnticipoFijo(complejo: any): number {
     const val = Number(complejo.monto_anticipo_fijo);
     if (!isNaN(val) && val > 0) return val;
   }
-  if (complejo?.whatsapp_token) {
+  // Persistencia fija segura en Postgres: whatsapp_phone_number_id (nunca sobreescrito por Baileys)
+  if (complejo?.whatsapp_phone_number_id) {
+    const num = Number(String(complejo.whatsapp_phone_number_id).trim());
+    if (!isNaN(num) && num > 0) return num;
+  }
+  if (complejo?.whatsapp_token && typeof complejo.whatsapp_token === 'string') {
     try {
-      if (typeof complejo.whatsapp_token === 'string' && complejo.whatsapp_token.startsWith('{')) {
+      if (complejo.whatsapp_token.startsWith('{')) {
         const parsed = JSON.parse(complejo.whatsapp_token);
         if (parsed?.monto_anticipo_fijo && !isNaN(Number(parsed.monto_anticipo_fijo))) {
           return Number(parsed.monto_anticipo_fijo);
