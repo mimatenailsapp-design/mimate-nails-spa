@@ -11,6 +11,7 @@ import {
   IconLoader2,
   IconHeart,
   IconChevronDown,
+  IconCalendar,
 } from '@tabler/icons-react';
 import { supabase } from '../config/supabase';
 
@@ -252,8 +253,63 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
   const [servicioSeleccionado, setServicioSeleccionado] = useState<Servicio | null>(null);
 
   // Formulario de reserva
-  const hoyStr = new Date().toISOString().split('T')[0];
+  const hoyStr = useMemo(() => {
+    return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+  }, []);
   const [fecha, setFecha] = useState(hoyStr);
+
+  const formatearFechaElegante = (fechaIso: string) => {
+    if (!fechaIso) return '';
+    const [y, m, d] = fechaIso.split('-').map(Number);
+    const fechaObj = new Date(y, m - 1, d);
+    const dias = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+    const meses = [
+      'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+      'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'
+    ];
+    const diaSemana = dias[fechaObj.getDay()];
+    const diaNum = fechaObj.getDate();
+    const mesNombre = meses[fechaObj.getMonth()];
+
+    if (fechaIso === hoyStr) {
+      return `Hoy · ${diaSemana}, ${diaNum} de ${mesNombre}`;
+    }
+    return `${diaSemana}, ${diaNum} de ${mesNombre}`;
+  };
+
+  const diasRapidos = useMemo(() => {
+    const lista = [];
+    const diasCortos = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+    const [y, m, d] = hoyStr.split('-').map(Number);
+    const base = new Date(y, m - 1, d);
+
+    for (let i = 0; i < 7; i++) {
+      const cur = new Date(base);
+      cur.setDate(base.getDate() + i);
+      const dayOfWeek = cur.getDay();
+      const esDomingo = dayOfWeek === 0;
+
+      const yStr = cur.getFullYear();
+      const mStr = String(cur.getMonth() + 1).padStart(2, '0');
+      const dStr = String(cur.getDate()).padStart(2, '0');
+      const isoStr = `${yStr}-${mStr}-${dStr}`;
+
+      let label = '';
+      if (i === 0) label = 'Hoy';
+      else if (i === 1) label = 'Mañana';
+      else label = `${diasCortos[dayOfWeek]} ${cur.getDate()}`;
+
+      lista.push({
+        iso: isoStr,
+        label,
+        diaNum: cur.getDate(),
+        diaSemana: diasCortos[dayOfWeek],
+        esDomingo,
+      });
+    }
+    return lista;
+  }, [hoyStr]);
+
   const [horaSeleccionada, setHoraSeleccionada] = useState<string | null>(null);
   const [empleadaId, setEmpleadaId] = useState<string>(''); // Vacío = "Cualquiera disponible"
   const [menuEspecialistaAbierto, setMenuEspecialistaAbierto] = useState(false);
@@ -1010,7 +1066,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
               </div>
 
               {/* Contenido según el paso */}
-              <div className="p-5 overflow-y-auto space-y-5">
+              <div className="p-4 sm:p-5 overflow-y-auto space-y-5">
                 {/* PASO 1: SELECCIÓN DE FECHA Y HORARIO */}
                 {paso === 1 && (
                   <div className="space-y-4">
@@ -1092,18 +1148,71 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                       </AnimatePresence>
                     </div>
 
-                    {/* Selector de fecha */}
-                    <div className="space-y-1.5">
-                      <label className="text-[11px] font-bold uppercase tracking-wider text-[#7D6870] block">
-                        Fecha
-                      </label>
-                      <input
-                        type="date"
-                        min={hoyStr}
-                        value={fecha}
-                        onChange={(e) => setFecha(e.target.value)}
-                        className="w-full bg-white border border-[#F2C4D2] rounded-xl px-3 py-2 text-xs font-semibold text-[#2D2529] focus:outline-none focus:ring-2 focus:ring-[#C74B66]/20"
-                      />
+                    {/* Selector de fecha responsive con atajos y calendario nativo */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-bold uppercase tracking-wider text-[#7D6870] block">
+                          Fecha
+                        </label>
+                        <span className="text-[10px] text-[#C74B66] font-medium hidden sm:inline">
+                          Toca para cambiar de día
+                        </span>
+                      </div>
+
+                      {/* Botón interactivo táctil + input nativo invisible que cubre todo */}
+                      <div className="relative">
+                        <div className="w-full bg-white border border-[#F2C4D2] rounded-xl px-3.5 py-2.5 text-xs font-semibold text-[#2D2529] flex items-center justify-between shadow-xs hover:border-[#C74B66] transition cursor-pointer">
+                          <div className="flex items-center gap-2.5 truncate">
+                            <IconCalendar className="w-4 h-4 text-[#C74B66] shrink-0" />
+                            <span className="font-bold text-[#2D2529] truncate capitalize">
+                              {formatearFechaElegante(fecha)}
+                            </span>
+                          </div>
+                          <IconChevronDown className="w-4 h-4 text-[#7D6870] shrink-0" />
+                        </div>
+                        <input
+                          type="date"
+                          min={hoyStr}
+                          value={fecha}
+                          onChange={(e) => setFecha(e.target.value)}
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 text-base"
+                          aria-label="Seleccionar fecha"
+                        />
+                      </div>
+
+                      {/* Píldoras rápidas de fechas (scroll horizontal) */}
+                      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none -mx-0.5 px-0.5">
+                        {diasRapidos.map((d) => {
+                          const activa = fecha === d.iso;
+                          return (
+                            <button
+                              key={d.iso}
+                              type="button"
+                              onClick={() => setFecha(d.iso)}
+                              className={`shrink-0 px-2.5 py-1.5 rounded-xl text-xs font-bold transition flex flex-col items-center justify-center min-w-[54px] cursor-pointer border ${
+                                activa
+                                  ? 'bg-[#8C243B] text-white border-[#8C243B] shadow-xs'
+                                  : d.esDomingo
+                                  ? 'bg-slate-50 text-slate-400 border-slate-200 opacity-60'
+                                  : 'bg-white text-[#2D2529] border-[#F2C4D2] hover:border-[#C74B66]'
+                              }`}
+                              title={d.esDomingo ? 'Domingo cerrado' : d.label}
+                            >
+                              <span className="text-[10px] uppercase font-extrabold tracking-wider leading-none">
+                                {d.diaSemana}
+                              </span>
+                              <span className="text-sm font-bold leading-tight mt-0.5">
+                                {d.diaNum}
+                              </span>
+                              {d.esDomingo && (
+                                <span className="text-[8px] font-normal leading-none mt-0.5">
+                                  Cerrado
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
 
                     {/* Grid de Horarios */}
@@ -1126,12 +1235,12 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                           No hay turnos disponibles para esta fecha.
                         </div>
                       ) : (
-                        <div className="grid grid-cols-4 gap-2">
+                        <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                           {slots.map((s) => (
                             <button
                               key={s}
                               onClick={() => setHoraSeleccionada(s)}
-                              className={`py-2 text-xs font-bold rounded-xl border transition cursor-pointer text-center ${
+                              className={`py-2.5 sm:py-2 text-xs font-bold rounded-xl border transition cursor-pointer text-center ${
                                 horaSeleccionada === s
                                   ? 'bg-[#8C243B] text-white border-[#8C243B] shadow-xs'
                                   : 'bg-white border-[#F2C4D2] text-[#2D2529] hover:border-[#C74B66]'
@@ -1180,7 +1289,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                           placeholder="300 123 4567"
                           value={telefono}
                           onChange={(e) => setTelefono(e.target.value)}
-                          className="w-full bg-white border border-[#F2C4D2] rounded-xl px-3 py-2 text-xs font-semibold text-[#2D2529] focus:outline-none focus:ring-2 focus:ring-[#C74B66]/20"
+                          className="w-full bg-white border border-[#F2C4D2] rounded-xl px-3 py-2 text-base sm:text-xs font-semibold text-[#2D2529] focus:outline-none focus:ring-2 focus:ring-[#C74B66]/20"
                         />
                       </div>
 
@@ -1193,7 +1302,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                           placeholder="Tu nombre y apellido"
                           value={nombre}
                           onChange={(e) => setNombre(e.target.value)}
-                          className="w-full bg-white border border-[#F2C4D2] rounded-xl px-3 py-2 text-xs font-semibold text-[#2D2529] focus:outline-none focus:ring-2 focus:ring-[#C74B66]/20"
+                          className="w-full bg-white border border-[#F2C4D2] rounded-xl px-3 py-2 text-base sm:text-xs font-semibold text-[#2D2529] focus:outline-none focus:ring-2 focus:ring-[#C74B66]/20"
                         />
                       </div>
                     </div>
