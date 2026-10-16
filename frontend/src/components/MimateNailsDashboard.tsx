@@ -2901,7 +2901,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                   : `Planificación Semanal · ${etiquetaSemana}`}
               </h2>
               <span className="text-xs text-[#7D6870]">
-                Horario: 8:00 a.m. a 7:00 p.m.
+                Horario: {configAnticipo.horaApertura || '08:00'} a {configAnticipo.horaCierre || '19:00'}
               </span>
             </div>
 

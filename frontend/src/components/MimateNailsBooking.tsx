@@ -342,6 +342,24 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
     horaCierre: '19:00',
   });
 
+  const formatearHora12h = (hhmm?: string, fallback = '9:30 am') => {
+    if (!hhmm) return fallback;
+    const [hStr, mStr] = hhmm.split(':');
+    const h = parseInt(hStr, 10);
+    const m = parseInt(mStr, 10);
+    if (isNaN(h)) return fallback;
+    const ampm = h >= 12 ? 'pm' : 'am';
+    const h12 = h % 12 === 0 ? 12 : h % 12;
+    const mm = isNaN(m) ? '00' : String(m).padStart(2, '0');
+    return `${h12}:${mm} ${ampm}`;
+  };
+
+  const horarioTexto = useMemo(() => {
+    const aper = formatearHora12h(spaConfig.horaApertura, '9:30 am');
+    const cier = formatearHora12h(spaConfig.horaCierre, '5:30 pm');
+    return `Lun–Sáb ${aper} – ${cier}`;
+  }, [spaConfig.horaApertura, spaConfig.horaCierre]);
+
   const [reservaConfirmada, setReservaConfirmada] = useState<{
     codigo?: string;
     empleada: string;
@@ -388,8 +406,8 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
           if (parsed.equipo && parsed.equipo.length > 0) {
             setEmpleadas(parsed.equipo);
           }
-          if (parsed.config && typeof parsed.config.exigeAnticipo === 'boolean') {
-            setSpaConfig(parsed.config);
+          if (parsed.config) {
+            setSpaConfig((prev) => ({ ...prev, ...parsed.config }));
           }
         }
       }
@@ -405,8 +423,8 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
         if (d.equipo && d.equipo.length > 0) {
           setEmpleadas(d.equipo);
         }
-        if (d.config && typeof d.config.exigeAnticipo === 'boolean') {
-          setSpaConfig(d.config);
+        if (d.config) {
+          setSpaConfig((prev) => ({ ...prev, ...d.config }));
         }
         try {
           sessionStorage.setItem('mimate_bootstrap', JSON.stringify({ ...d, _ts: Date.now() }));
@@ -501,7 +519,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
 
     const dObj = new Date(`${f}T12:00:00-05:00`);
     if (dObj.getDay() === 0) {
-      const aviso = 'Los domingos estamos cerrados. Atendemos con amor de Lunes a Sábado de 9:30 am a 5:30 pm 💕';
+      const aviso = `Los domingos estamos cerrados. Atendemos con amor de ${horarioTexto} 💕`;
       setSlots([]);
       setAvisoSlots(aviso);
       setCargandoSlots(false);
@@ -920,7 +938,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
             </span>
             <p className="text-xs font-bold text-[#2D2529] flex items-center justify-center gap-1">
               <IconClock className="w-3.5 h-3.5 text-[#C74B66] shrink-0" />
-              Lun–Sáb 9:30 am – 5:30 pm
+              {horarioTexto}
             </p>
             <p className="text-[11px] text-[#7D6870]">Domingos cerrado</p>
           </div>
@@ -1033,7 +1051,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
           JL Mímate Nails✦
         </p>
         <p className="text-[11px] opacity-80">
-          Lunes a Sábado 9:30 am a 5:30 pm
+          {horarioTexto}
         </p>
       </footer>
 
@@ -1218,7 +1236,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                     {/* Grid de Horarios */}
                     <div className="space-y-2">
                       <label className="text-[11px] font-bold uppercase tracking-wider text-[#7D6870] block">
-                        Horarios Disponibles (Lun–Sáb 9:30 am – 5:30 pm)
+                        Horarios Disponibles ({horarioTexto})
                       </label>
 
                       {cargandoSlots ? (
