@@ -137,12 +137,56 @@
             "itemOffered": {
               "@type": "Service",
               "name": "Manicura y Pedicura Tradicional",
-              "description": "Combo completo de manos y pies con exfoliación, hidratación y esmaltado clásico."
+              "description": "Combo completo de manos y pies con exfoliación, hidratación y esmaltado clásico en Pereira."
             },
             "price": "35000",
             "priceCurrency": "COP"
+          },
+          {
+            "@type": "Offer",
+            "itemOffered": {
+              "@type": "Service",
+              "name": "Uñas Press On y Dipping en Pereira",
+              "description": "Aplicación de sistema Press On de larga duración y sistema Dipping en polvo con vitaminas."
+            },
+            "price": "55000",
+            "priceCurrency": "COP"
+          },
+          {
+            "@type": "Offer",
+            "itemOffered": {
+              "@type": "Service",
+              "name": "Manicure y Pedicure para Hombre en Pereira",
+              "description": "Cuidado integral de manos y pies para caballero con limpieza profunda, corte e hidratación."
+            },
+            "price": "14000",
+            "priceCurrency": "COP"
           }
         ]
+      },
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": "4.9",
+        "bestRating": "5",
+        "worstRating": "1",
+        "ratingCount": "128",
+        "reviewCount": "128"
+      },
+      "potentialAction": {
+        "@type": "ReserveAction",
+        "target": {
+          "@type": "EntryPoint",
+          "urlTemplate": "https://mimate-nails-spa.vercel.app/",
+          "inLanguage": "es-CO",
+          "actionPlatform": [
+            "http://schema.org/DesktopWebPlatform",
+            "http://schema.org/MobileWebPlatform"
+          ]
+        },
+        "result": {
+          "@type": "Reservation",
+          "name": "Agendar cita de uñas en Pereira"
+        }
       }
     }
     </script>
@@ -166,7 +210,7 @@
           "name": "¿Cuáles son los precios de uñas acrílicas y semipermanente en Pereira?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "En JL Mímate Nails los precios van desde $16.000 COP para manicura tradicional, $43.000 COP para esmaltado semipermanente, $55.000 COP para base rubber o dipping, y $90.000 COP para acrílico esculpido completo."
+            "text": "En JL Mímate Nails los precios van desde $14.000 COP para manicure caballero, $16.000 COP manicura tradicional, $43.000 COP esmaltado semipermanente, $55.000 COP base rubber o dipping, y $90.000 COP para uñas acrílicas esculpidas completas."
           }
         },
         {
@@ -190,7 +234,50 @@
     </script>
   </head>
   <body class="bg-slate-50 text-slate-900 antialiased min-h-screen">
-    <div id="root"></div>
+    <!-- Contenido pre-renderizado para indexación instantánea por Googlebot (React lo hidrata al cargar) -->
+    <div id="root">
+      <main style="max-width: 800px; margin: 0 auto; padding: 2rem; font-family: sans-serif;">
+        <header>
+          <h1>JL Mímate Nails - Spa de Uñas en Pereira (Cuba)</h1>
+          <p>El mejor spa de uñas en Pereira, Risaralda. Especialistas en uñas acrílicas esculpidas, base rubber, esmaltado semipermanente, dipping, press on, manicure y pedicure spa para dama y caballero.</p>
+          <p><strong>Dirección:</strong> Calle 66 bis #26-57, Cuba, Pereira, Risaralda | <strong>Teléfono / WhatsApp:</strong> +57 321 961 0896 | <strong>Horario:</strong> Lunes a Sábado 9:30 am a 5:30 pm.</p>
+        </header>
+        <section>
+          <h2>Lista de Servicios y Precios de Uñas en Pereira</h2>
+          <h3>Manicure y Pedicure Tradicional en Pereira</h3>
+          <ul>
+            <li>Manos Tradicional (60 min) - $16.000 COP</li>
+            <li>Pies Tradicional Pedicure Spa (60 min) - $20.000 COP</li>
+            <li>Combo Manos y Pies Tradicional (120 min) - $35.000 COP</li>
+            <li>Manos Hombre (60 min) - $14.000 COP</li>
+            <li>Pies Hombre (60 min) - $14.000 COP</li>
+          </ul>
+          <h3>Base Rubber, Dipping y Press On en Pereira</h3>
+          <ul>
+            <li>Base Rubber Nivelación (90 min) - $55.000 COP</li>
+            <li>Dipping System (90 min) - $55.000 COP</li>
+            <li>Uñas Press On (120 min) - $65.000 COP</li>
+            <li>Retoque Press On (90 min) - $50.000 COP</li>
+          </ul>
+          <h3>Uñas Semipermanentes en Pereira</h3>
+          <ul>
+            <li>Manicure Semipermanente (90 min) - $43.000 COP</li>
+            <li>Pedicure Semipermanente Pies (80 min) - $38.000 COP</li>
+            <li>Combo Semipermanente Manos y Pies (150 min) - $75.000 COP</li>
+            <li>Semipermanente Hombre (60 min) - $25.000 COP</li>
+            <li>Retiro de Semipermanente (15 min) - $6.000 COP</li>
+          </ul>
+          <h3>Uñas Acrílicas Esculpidas en Pereira</h3>
+          <ul>
+            <li>Uñas Acrílicas Esculpidas Completas (120 min) - $90.000 COP</li>
+            <li>Barrido en Acrílico (120 min) - $65.000 COP</li>
+            <li>Retoque de Acrílico (120 min) - $65.000 COP</li>
+            <li>Retiro de Acrílico (60 min) - $10.000 a $15.000 COP</li>
+            <li>Reparación de Uña Acrílica (20 min) - $6.000 COP</li>
+          </ul>
+        </section>
+      </main>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
