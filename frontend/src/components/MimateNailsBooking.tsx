@@ -216,11 +216,7 @@ const CATEGORIAS = [
 
 export function formatearDuracion(minutos: number): string {
   if (!minutos || minutos <= 0) return '30 min';
-  const h = Math.floor(minutos / 60);
-  const m = minutos % 60;
-  if (h > 0 && m > 0) return `${h}h ${m} min`;
-  if (h > 0) return `${h}h`;
-  return `${m} min`;
+  return `${minutos} min`;
 }
 
 const GOOGLE_MAPS_SPA_URL = 'https://maps.app.goo.gl/KdSvqi1b2iAe5xgg8';
