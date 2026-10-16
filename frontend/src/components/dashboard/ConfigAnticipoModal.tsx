@@ -241,7 +241,7 @@ export const ConfigAnticipoModal: React.FC<ConfigAnticipoModalProps> = ({
               )}
 
               <p className="text-[11px] text-[#7D6870] leading-snug bg-slate-50 p-3 rounded-xl border border-slate-200">
-                ℹ️ <strong>Cómo funciona:</strong> Al activar el anticipo, las clientas que reserven en la web verán el botón <em>"Confirmar pre-reserva"</em> con el abono fijo de ${(configAnticipo.montoAnticipoFijo || configAnticipo.porcentajeAnticipo || 20000).toLocaleString('es-CO')} y tendrán 60 minutos para transferir y enviar el soporte por WhatsApp. La IA auditará el comprobante y podrás aprobarlo o rechazarlo con 1 clic.
+                ℹ️ <strong>Cómo funciona:</strong> Al activar el anticipo, las clientas verán el abono fijo de ${(configAnticipo.montoAnticipoFijo || configAnticipo.porcentajeAnticipo || 20000).toLocaleString('es-CO')} (o el total del servicio si este cuesta menos que el abono) y tendrán 60 minutos para transferir y enviar el soporte por WhatsApp. La IA auditará el comprobante y podrás aprobarlo o rechazarlo con 1 clic.
               </p>
 
               {/* BOTONES */}

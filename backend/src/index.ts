@@ -1633,15 +1633,18 @@ app.post('/api/spa/reservar', async (req: Request, res: Response) => {
         `⏰ *Horario:* ${horaInicioFmt} a ${horaFinFmt}\n` +
         `⏱️ *Duración aprox:* ${duracion_minutos} min\n\n` +
         `💰 *Total del servicio:* ${precioFmt}\n` +
-        `💳 *Abono requerido:* *${anticipoFmt}*\n` +
-        `🏠 *Saldo restante en el spa:* ${saldoRestanteFmt}\n\n` +
+        (saldoRestante === 0
+          ? `💳 *Valor a transferir (100% del servicio):* *${anticipoFmt}*\n` +
+            `🏠 *Saldo restante en el spa:* *$0* (¡Servicio cubierto!)\n\n`
+          : `💳 *Abono requerido:* *${anticipoFmt}*\n` +
+            `🏠 *Saldo restante en el spa:* ${saldoRestanteFmt}\n\n`) +
         `───────────────\n` +
         `*CUENTAS PARA TRANSFERIR:*\n` +
         `📲 *Nequi:* ${complejo.nequi_numero || '321 961 0896'}\n` +
         `🏦 *Bancolombia:* ${complejo.daviplata_numero || 'Ahorros 245-000123-88'}\n` +
         `👤 *Titular:* ${complejo.titular_cuenta || 'JL Mímate Nails Spa'}\n\n` +
         `⏳ *TIEMPO LÍMITE (60 MINUTOS):*\n` +
-        `Para asegurar tu cupo definitivo, por favor transfiere el abono de *${anticipoFmt}* y *envía la foto del comprobante por este mismo chat* dentro de los próximos 60 minutos.\n\n` +
+        `Para asegurar tu cupo definitivo, por favor transfiere ${saldoRestante === 0 ? `el valor total de *${anticipoFmt}*` : `el abono de *${anticipoFmt}*`} y *envía la foto del comprobante por este mismo chat* dentro de los próximos 60 minutos.\n\n` +
         `Pasado este tiempo, el espacio se liberará automáticamente para otra clienta.\n\n` +
         `¡Quedamos atentas a tu comprobante reina! 💕🌸`;
     } else {

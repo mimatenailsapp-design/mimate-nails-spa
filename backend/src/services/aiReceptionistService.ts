@@ -244,7 +244,7 @@ DATOS Y REGLAS EXCLUSIVAS DE ESTE NEGOCIO:
 - Vestimenta/Calzado: ${info.calzado}
 - Servicios ofrecidos: ${info.servicios}
 - Eventos o planes especiales: ${info.eventos || 'Disponibilidad sujeta a previa reserva.'}
-- Políticas de abono/anticipo: ${Number(complejo.porcentaje_anticipo_minimo) > 0 ? `Se requiere un abono fijo de $${getMontoAnticipoFijo(complejo).toLocaleString('es-CO')} para asegurar el cupo.` : 'No se exige anticipo previo; el total del servicio se cancela directamente en el spa.'}
+- Políticas de abono/anticipo: ${Number(complejo.porcentaje_anticipo_minimo) > 0 ? `Se requiere un abono fijo de $${getMontoAnticipoFijo(complejo).toLocaleString('es-CO')} para asegurar el cupo (o el valor total del servicio si el precio del servicio es menor al abono).` : 'No se exige anticipo previo; el total del servicio se cancela directamente en el spa.'}
 - Reservas: 100% automáticas las 24 horas a través de este mismo WhatsApp o la web.
 
 PREGUNTA DEL CLIENTE:

@@ -1055,7 +1055,10 @@ export class WhatsAppFlow {
           `📅 Fecha: *${session.fechaSeleccionada}*\n` +
           `⏰ Horario: *${horaIniNorm} - ${horaFinNorm}*\n` +
           `💰 Total: *${totalFmt}*\n` +
-          `💵 Anticipo requerido: *${anticipoFmt}*\n\n` +
+          (Number(reserva.valor_anticipo_requerido) >= precioTotal
+            ? `💵 Valor a transferir (100% del servicio): *${anticipoFmt}*\n` +
+              `🏠 Saldo restante en el spa: *$0* (¡Servicio cubierto!)\n\n`
+            : `💵 Anticipo requerido: *${anticipoFmt}*\n\n`) +
           `📲 *Cuentas Oficiales de Recaudo:*\n` +
           `• Nequi / Daviplata: *${nequi}*\n` +
           `• Titular: *${titular}*\n\n` +
@@ -1894,10 +1897,14 @@ export class WhatsAppFlow {
       // Si la cita está en estado 'pendiente_pago' y aún no tiene comprobante aprobado por IA o por administración
       const tieneComprobanteAprobado = notasActuales.includes('[COMPROBANTE_VALIDO_IA]') || notasActuales.includes('[PAGO_APROBADO]');
       if (reserva.estado === 'pendiente_pago' && !tieneComprobanteAprobado) {
-        const anticipoRequerido = reserva.valor_anticipo_requerido || getMontoAnticipoFijo(complejoRes);
+        const totalNum = Number(reserva.valor_total || 25000);
+        const montoConfig = getMontoAnticipoFijo(complejoRes);
+        const anticipoRequerido = reserva.valor_anticipo_requerido || Math.min(totalNum, montoConfig);
         const anticipoFmt = '$' + Number(anticipoRequerido).toLocaleString('es-CO');
-        const totalFmt = '$' + Number(reserva.valor_total || 25000).toLocaleString('es-CO');
-        const saldoFmt = '$' + Number((reserva.valor_total || 25000) - anticipoRequerido).toLocaleString('es-CO');
+        const totalFmt = '$' + totalNum.toLocaleString('es-CO');
+        const saldoNum = Math.max(0, totalNum - anticipoRequerido);
+        const saldoFmt = '$' + saldoNum.toLocaleString('es-CO');
+        const esTotalidad = saldoNum === 0;
 
         const cuentasOficiales = [complejoRes.nequi_numero, complejoRes.daviplata_numero].filter(Boolean);
         const nequiNum = complejoRes.nequi_numero || '3219610896';
@@ -1911,15 +1918,18 @@ export class WhatsAppFlow {
             `⏰ Hora: *${horaInicio}*\n` +
             `👩‍🎨 Manicurista: *${cancha.nombre}*\n\n` +
             `💰 Total del servicio: *${totalFmt}*\n` +
-            `💳 *Abono requerido:* *${anticipoFmt}*\n` +
-            `🏠 Saldo restante en el spa: *${saldoFmt}*\n\n` +
+            (esTotalidad
+              ? `💳 *Valor a transferir (100% del servicio):* *${anticipoFmt}*\n` +
+                `🏠 Saldo restante en el spa: *$0* (¡Servicio cubierto!)\n\n`
+              : `💳 *Abono requerido:* *${anticipoFmt}*\n` +
+                `🏠 Saldo restante en el spa: *${saldoFmt}*\n\n`) +
             `───────────────\n` +
             `📲 *CUENTAS OFICIALES PARA TRANSFERIR:*\n` +
             `• Nequi: *${nequiNum}*\n` +
             `• Bancolombia / Daviplata: *${daviNum}*\n` +
             `• Titular: *${titular}*\n\n` +
             `📸 *Para confirmar y asegurar tu cupo definitivamente:*\n` +
-            `Por favor realiza la transferencia de *${anticipoFmt}* y envía la *foto o captura de pantalla del comprobante* por este mismo chat 💕.\n\n` +
+            `Por favor realiza la transferencia de ${esTotalidad ? `*${anticipoFmt}* (total del servicio)` : `*${anticipoFmt}*`} y envía la *foto o captura de pantalla del comprobante* por este mismo chat 💕.\n\n` +
             `¡Una vez recibamos tu comprobante, tu turno quedará 100% confirmado! 💅✨`,
         };
       }

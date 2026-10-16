@@ -1410,34 +1410,47 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                       </div>
                     ) : spaConfig.exigeAnticipo ? (
                       <div className="bg-[#FFF0F4] border border-[#F2C4D2] rounded-2xl p-4 space-y-2.5 text-xs">
-                        <div className="flex items-center gap-1.5 text-[#8C243B] font-bold">
-                          <IconSparkles className="w-4 h-4 text-[#C74B66] shrink-0" />
-                          <span>Abono requerido para pre-confirmar:</span>
-                        </div>
-
                         {(() => {
                           const prec = servicioSeleccionado?.precio || 0;
                           const montoFijo = Number(spaConfig.montoAnticipoFijo || spaConfig.porcentajeAnticipo || 20000);
                           const ant = Math.min(prec, montoFijo);
                           const res = Math.max(0, prec - ant);
+                          const cubreTotal = prec <= montoFijo;
                           return (
-                            <div className="grid grid-cols-2 gap-2 text-center font-medium">
-                              <div className="bg-white p-2.5 rounded-xl border border-[#F2C4D2]">
-                                <span className="text-[10px] text-[#7D6870] uppercase font-bold tracking-wider block">
-                                  Abono fijo requerido
-                                </span>
-                                <span className="font-extrabold text-[#8C243B] text-sm font-mono">
-                                  ${ant.toLocaleString('es-CO')}
-                                </span>
-                              </div>
-                              <div className="bg-white p-2.5 rounded-xl border border-[#F2C4D2]">
-                                <span className="text-[10px] text-[#7D6870] uppercase font-bold tracking-wider block">
-                                  Saldo en el spa
-                                </span>
-                                <span className="font-extrabold text-[#2D2529] text-sm font-mono">
-                                  ${res.toLocaleString('es-CO')}
+                            <div className="space-y-2.5">
+                              <div className="flex items-center gap-1.5 text-[#8C243B] font-bold">
+                                <IconSparkles className="w-4 h-4 text-[#C74B66] shrink-0" />
+                                <span>
+                                  {cubreTotal
+                                    ? 'Valor a transferir para confirmar cupo:'
+                                    : 'Abono requerido para pre-confirmar:'}
                                 </span>
                               </div>
+
+                              <div className="grid grid-cols-2 gap-2 text-center font-medium">
+                                <div className="bg-white p-2.5 rounded-xl border border-[#F2C4D2]">
+                                  <span className="text-[10px] text-[#7D6870] uppercase font-bold tracking-wider block">
+                                    {cubreTotal ? 'Total a transferir (100%)' : 'Abono fijo requerido'}
+                                  </span>
+                                  <span className="font-extrabold text-[#8C243B] text-sm font-mono">
+                                    ${ant.toLocaleString('es-CO')}
+                                  </span>
+                                </div>
+                                <div className="bg-white p-2.5 rounded-xl border border-[#F2C4D2]">
+                                  <span className="text-[10px] text-[#7D6870] uppercase font-bold tracking-wider block">
+                                    Saldo en el spa
+                                  </span>
+                                  <span className="font-extrabold text-[#2D2529] text-sm font-mono">
+                                    {res === 0 ? '$0 (Total cubierto)' : `$${res.toLocaleString('es-CO')}`}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {cubreTotal && (
+                                <p className="text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg p-2 leading-tight">
+                                  ✨ Como este servicio vale menos que la tarifa fija de abono, únicamente transfieres su valor total (<strong>${prec.toLocaleString('es-CO')}</strong>) y tu cita queda completamente paga.
+                                </p>
+                              )}
                             </div>
                           );
                         })()}
@@ -1644,7 +1657,9 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                       {reservaConfirmada.esPreReserva ? (
                         <>
                           <div className="flex justify-between border-b border-[#FCE8EF] pb-1.5 pt-0.5">
-                            <span className="text-[#7D6870] font-bold">Abono fijo requerido:</span>
+                            <span className="text-[#7D6870] font-bold">
+                              {(reservaConfirmada.saldoRestante || 0) === 0 ? 'Total a transferir (100%):' : 'Abono requerido:'}
+                            </span>
                             <span className="font-extrabold text-[#8C243B] font-mono text-xs">
                               ${(reservaConfirmada.anticipoRequerido || 0).toLocaleString('es-CO')}
                             </span>
@@ -1652,7 +1667,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                           <div className="flex justify-between pt-1">
                             <span className="text-[#7D6870] font-bold">Restante a pagar en el spa:</span>
                             <span className="font-extrabold text-[#2D2529] font-mono text-sm">
-                              ${(reservaConfirmada.saldoRestante || 0).toLocaleString('es-CO')}
+                              {(reservaConfirmada.saldoRestante || 0) === 0 ? '$0 (Servicio cubierto)' : `$${(reservaConfirmada.saldoRestante || 0).toLocaleString('es-CO')}`}
                             </span>
                           </div>
                         </>
