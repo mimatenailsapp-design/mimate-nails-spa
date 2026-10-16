@@ -6,7 +6,7 @@ import dotenv from 'dotenv';
 import { supabase } from './config/supabase.js';
 import { WhatsAppFlow, BotResponse } from './bot/whatsappFlow.js';
 import { ReminderService } from './services/reminderService.js';
-import { BookingService } from './services/bookingService.js';
+import { BookingService, getMontoAnticipoFijo } from './services/bookingService.js';
 import { AIReceptionistService } from './services/aiReceptionistService.js';
 import { BotExclusionsService } from './services/botExclusionsService.js';
 import { BaileysService } from './services/baileysService.js';
@@ -474,10 +474,12 @@ app.get('/api/spa/config', async (req: Request, res: Response) => {
 
     const porcentajeMin = Number(complejo.porcentaje_anticipo_minimo) || 0;
     const exigeAnticipo = porcentajeMin > 0;
+    const montoFijo = getMontoAnticipoFijo(complejo);
 
     res.json({
       exigeAnticipo,
-      porcentajeAnticipo: porcentajeMin,
+      montoAnticipoFijo: montoFijo,
+      porcentajeAnticipo: montoFijo, // Compatibilidad
       nequiNumero: complejo.nequi_numero || '321 961 0896',
       bancolombiaNumero: complejo.daviplata_numero || 'Ahorros 245-000123-88',
       titularCuenta: complejo.titular_cuenta || 'JL Mímate Nails Spa',
@@ -494,6 +496,7 @@ app.patch('/api/spa/config', async (req: Request, res: Response) => {
   try {
     const {
       exigeAnticipo,
+      montoAnticipoFijo,
       porcentajeAnticipo,
       nequiNumero,
       bancolombiaNumero,
@@ -502,16 +505,24 @@ app.patch('/api/spa/config', async (req: Request, res: Response) => {
       horaCierre,
     } = req.body;
 
+    const montoFijo = Number(montoAnticipoFijo ?? porcentajeAnticipo);
+    const montoFijoValido = !isNaN(montoFijo) && montoFijo > 0 ? montoFijo : 20000;
+
     const updateData: any = {};
     if (exigeAnticipo !== undefined) {
       if (!exigeAnticipo) {
         updateData.porcentaje_anticipo_minimo = 0;
       } else {
-        updateData.porcentaje_anticipo_minimo = Math.max(1, Number(porcentajeAnticipo) || 20);
+        // Marcamos como 1.00 en la base de datos (seguro para NUMERIC(5,2) sin desbordamiento)
+        updateData.porcentaje_anticipo_minimo = 1;
       }
-    } else if (porcentajeAnticipo !== undefined) {
-      updateData.porcentaje_anticipo_minimo = Math.max(0, Number(porcentajeAnticipo));
     }
+
+    // Persistir el valor fijo en el campo seguro whatsapp_token (JSON)
+    if (montoAnticipoFijo !== undefined || porcentajeAnticipo !== undefined || exigeAnticipo !== undefined) {
+      updateData.whatsapp_token = JSON.stringify({ monto_anticipo_fijo: montoFijoValido });
+    }
+
     if (nequiNumero !== undefined) updateData.nequi_numero = String(nequiNumero).trim();
     if (bancolombiaNumero !== undefined) updateData.daviplata_numero = String(bancolombiaNumero).trim();
     if (titularCuenta !== undefined) updateData.titular_cuenta = String(titularCuenta).trim();
@@ -539,12 +550,14 @@ app.patch('/api/spa/config', async (req: Request, res: Response) => {
     if (error) throw error;
 
     const porcResult = Number(data.porcentaje_anticipo_minimo) || 0;
+    const finalMontoFijo = getMontoAnticipoFijo(data);
 
     res.json({
       success: true,
       config: {
         exigeAnticipo: porcResult > 0,
-        porcentajeAnticipo: porcResult,
+        montoAnticipoFijo: finalMontoFijo,
+        porcentajeAnticipo: finalMontoFijo,
         nequiNumero: data.nequi_numero || '321 961 0896',
         bancolombiaNumero: data.daviplata_numero || 'Ahorros 245-000123-88',
         titularCuenta: data.titular_cuenta || 'JL Mímate Nails Spa',
@@ -1071,9 +1084,11 @@ app.get('/api/spa/info', async (req: Request, res: Response) => {
       .eq('activa', true)
       .order('nombre');
 
+    const montoFijo = getMontoAnticipoFijo(complejo);
     const config = {
       exigeAnticipo: (complejo.porcentaje_anticipo_minimo || 0) > 0,
-      porcentajeAnticipo: complejo.porcentaje_anticipo_minimo || 20,
+      montoAnticipoFijo: montoFijo,
+      porcentajeAnticipo: montoFijo,
       nequiNumero: complejo.nequi_numero || '321 961 0896',
       bancolombiaNumero: complejo.daviplata_numero || 'Ahorros 245-000123-88',
       titularCuenta: complejo.titular_cuenta || 'JL Mímate Nails Spa',
@@ -1332,8 +1347,8 @@ app.post('/api/spa/reservar', async (req: Request, res: Response) => {
     const cliente = await BookingService.getOrCreateCliente(cleanPhone, cliente_nombre.trim());
 
     // Determinar si el spa exige abono/anticipo para reservar
-    const porcentajeAnticipo = Number(complejo.porcentaje_anticipo_minimo) || 0;
-    const exigeAnticipo = porcentajeAnticipo > 0;
+    const exigeAnticipo = (Number(complejo.porcentaje_anticipo_minimo) || 0) > 0;
+    const montoFijoConfigurado = getMontoAnticipoFijo(complejo);
 
     // Si es reagendamiento, buscar cita previa para extraer abono ya pagado y servicio anterior
     let reservaPrevia: any = null;
@@ -1368,8 +1383,8 @@ app.post('/api/spa/reservar', async (req: Request, res: Response) => {
             abonoPrevioReconocido = Number(prev.valor_anticipo_requerido) || 0;
           }
 
-          if (!abonoPrevioReconocido && porcentajeAnticipo > 0) {
-            abonoPrevioReconocido = Math.round((Number(prev.valor_total || 0) * porcentajeAnticipo) / 100);
+          if (!abonoPrevioReconocido && exigeAnticipo) {
+            abonoPrevioReconocido = Math.min(Number(prev.valor_total || 0), montoFijoConfigurado);
           }
 
           if (!abonoPrevioReconocido) {
@@ -1402,8 +1417,9 @@ app.post('/api/spa/reservar', async (req: Request, res: Response) => {
       // Saldo pendiente = PrecioNuevoServicio - AbonoYaPagadoAnterior
       saldoRestante = Math.max(0, numPrecio - abonoPrevioReconocido);
     } else {
-      anticipoCalculado = exigeAnticipo ? Math.round((numPrecio * porcentajeAnticipo) / 100) : 0;
-      saldoRestante = numPrecio - anticipoCalculado;
+      // TARIFA FIJA: se aplica el valor fijo configurado (o el precio total si el servicio cuesta menos que el abono)
+      anticipoCalculado = exigeAnticipo ? Math.min(numPrecio, montoFijoConfigurado) : 0;
+      saldoRestante = Math.max(0, numPrecio - anticipoCalculado);
       estadoInicial = exigeAnticipo ? 'pendiente_pago' : 'confirmada';
       expiracionReserva = exigeAnticipo ? new Date(Date.now() + 60 * 60 * 1000).toISOString() : null;
       esPreReserva = exigeAnticipo;
@@ -1522,7 +1538,7 @@ app.post('/api/spa/reservar', async (req: Request, res: Response) => {
         `⏰ *Horario:* ${horaInicioFmt} a ${horaFinFmt}\n` +
         `⏱️ *Duración aprox:* ${duracion_minutos} min\n\n` +
         `💰 *Total del servicio:* ${precioFmt}\n` +
-        `💳 *Abono requerido (${porcentajeAnticipo}%):* *${anticipoFmt}*\n` +
+        `💳 *Abono requerido:* *${anticipoFmt}*\n` +
         `🏠 *Saldo restante en el spa:* ${saldoRestanteFmt}\n\n` +
         `───────────────\n` +
         `*CUENTAS PARA TRANSFERIR:*\n` +
@@ -1575,9 +1591,10 @@ app.post('/api/spa/reservar', async (req: Request, res: Response) => {
       esPreReserva,
       esReagendamiento,
       abonoPrevio: abonoPrevioReconocido,
+      montoAnticipoFijo: montoFijoConfigurado,
       anticipoRequerido: esReagendamiento ? 0 : anticipoCalculado,
       saldoRestante,
-      porcentajeAnticipo: esReagendamiento ? 0 : porcentajeAnticipo,
+      porcentajeAnticipo: esReagendamiento ? 0 : montoFijoConfigurado,
       nequiNumero: complejo.nequi_numero || '321 961 0896',
       bancolombiaNumero: complejo.daviplata_numero || 'Ahorros 245-000123-88',
       titularCuenta: complejo.titular_cuenta || 'JL Mímate Nails Spa',

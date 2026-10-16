@@ -1,4 +1,4 @@
-import { BookingService, Complejo, Cancha, HorarioDisponible } from '../services/bookingService.js';
+import { BookingService, Complejo, Cancha, HorarioDisponible, getMontoAnticipoFijo } from '../services/bookingService.js';
 import { ReceiptVerificationService } from '../services/receiptVerificationService.js';
 import { AIReceptionistService } from '../services/aiReceptionistService.js';
 import { NLUIntentService } from '../services/nluIntentService.js';
@@ -484,8 +484,10 @@ export class WhatsAppFlow {
       const urlAgenda = `${baseUrl}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
 
       const exigeAnticipo = (Number(complejo.porcentaje_anticipo_minimo) || 0) > 0;
+      const montoFijo = getMontoAnticipoFijo(complejo);
+      const montoFijoFmt = '$' + montoFijo.toLocaleString('es-CO');
       const textoAnticipo = exigeAnticipo
-        ? `💅 Pre-reserva fácil con abono del ${complejo.porcentaje_anticipo_minimo}% para asegurar tu cupo.`
+        ? `💅 Pre-reserva fácil con abono fijo de ${montoFijoFmt} para asegurar tu cupo.`
         : `💅 Sin cobros anticipados (pagas en el spa).`;
 
       const saludoNombre = nombrePush ? ` ${nombrePush}` : '';
@@ -985,8 +987,9 @@ export class WhatsAppFlow {
         };
       }
 
-      const porcentaje = Number(complejo.porcentaje_anticipo_minimo) || 0;
-      const exigeAnticipo = porcentaje > 0;
+      const exigeAnticipo = (Number(complejo.porcentaje_anticipo_minimo) || 0) > 0;
+      const montoFijo = getMontoAnticipoFijo(complejo);
+      const anticipoCalculado = exigeAnticipo ? Math.min(precioTotal, montoFijo) : 0;
 
       const reserva = await BookingService.crearPreReserva({
         canchaId: session.canchaSeleccionada!.id,
@@ -994,7 +997,8 @@ export class WhatsAppFlow {
         fechaInicio: fechaInicioIso,
         fechaFin: fechaFinIso,
         valorTotal: precioTotal,
-        porcentajeAnticipo: porcentaje,
+        montoAnticipo: anticipoCalculado,
+        exigeAnticipo: exigeAnticipo,
       });
 
       const totalFmt = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(precioTotal);
@@ -1051,7 +1055,7 @@ export class WhatsAppFlow {
           `📅 Fecha: *${session.fechaSeleccionada}*\n` +
           `⏰ Horario: *${horaIniNorm} - ${horaFinNorm}*\n` +
           `💰 Total: *${totalFmt}*\n` +
-          `💵 Anticipo requerido: *${anticipoFmt}* (${porcentaje}%)\n\n` +
+          `💵 Anticipo requerido: *${anticipoFmt}*\n\n` +
           `📲 *Cuentas Oficiales de Recaudo:*\n` +
           `• Nequi / Daviplata: *${nequi}*\n` +
           `• Titular: *${titular}*\n\n` +
@@ -1115,8 +1119,11 @@ export class WhatsAppFlow {
       return { texto: 'No hay ninguna reserva en proceso. Escribe *HOLA* para iniciar una nueva.' };
     }
 
-    const porcentaje = Number(complejo.porcentaje_anticipo_minimo) || 0;
-    const anticipoRequerido = (session.horarioSeleccionado?.precio || 0) * (porcentaje / 100);
+    const exigeAnticipo = (Number(complejo.porcentaje_anticipo_minimo) || 0) > 0;
+    const montoFijo = getMontoAnticipoFijo(complejo);
+    const anticipoRequerido = session.horarioSeleccionado?.precio
+      ? Math.min(session.horarioSeleccionado.precio, montoFijo)
+      : montoFijo;
 
     // ==============================================================================
     // CASO 1: EL CLIENTE ENVIÓ UNA IMAGEN (COMPROBANTE MULTIMEDIA -> OPCIÓN B CON IA)
@@ -1330,7 +1337,7 @@ export class WhatsAppFlow {
 
     // 2. Si envió una imagen (directImageBuffer):
     if (directImageBuffer) {
-      const anticipoRequerido = reservaTarget.valor_anticipo_requerido || (reservaTarget.valor_total * 0.2);
+      const anticipoRequerido = reservaTarget.valor_anticipo_requerido || getMontoAnticipoFijo(complejo);
       const mediaDescargado = { buffer: directImageBuffer, mimeType: mediaType || 'image/jpeg' };
 
       if (!mediaDescargado) {
@@ -1546,7 +1553,7 @@ export class WhatsAppFlow {
       }
 
       // Para consultas de pago o clientes en paso ESPERA_PAGO, enviar instrucciones de transferencia:
-      const anticipoRequerido = reservaTarget.valor_anticipo_requerido || (reservaTarget.valor_total * 0.2) || 5000;
+      const anticipoRequerido = reservaTarget.valor_anticipo_requerido || getMontoAnticipoFijo(complejo);
       const anticipoFmt = '$' + Number(anticipoRequerido).toLocaleString('es-CO');
       const nequiNum = complejo.nequi_numero || '3219610896';
       const daviNum = complejo.daviplata_numero || nequiNum;
@@ -1887,7 +1894,7 @@ export class WhatsAppFlow {
       // Si la cita está en estado 'pendiente_pago' y aún no tiene comprobante aprobado por IA o por administración
       const tieneComprobanteAprobado = notasActuales.includes('[COMPROBANTE_VALIDO_IA]') || notasActuales.includes('[PAGO_APROBADO]');
       if (reserva.estado === 'pendiente_pago' && !tieneComprobanteAprobado) {
-        const anticipoRequerido = reserva.valor_anticipo_requerido || (reserva.valor_total * 0.2) || 5000;
+        const anticipoRequerido = reserva.valor_anticipo_requerido || getMontoAnticipoFijo(complejoRes);
         const anticipoFmt = '$' + Number(anticipoRequerido).toLocaleString('es-CO');
         const totalFmt = '$' + Number(reserva.valor_total || 25000).toLocaleString('es-CO');
         const saldoFmt = '$' + Number((reserva.valor_total || 25000) - anticipoRequerido).toLocaleString('es-CO');

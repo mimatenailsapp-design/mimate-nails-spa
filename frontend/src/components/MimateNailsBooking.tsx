@@ -165,7 +165,8 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
   // Configuración de anticipos, cuentas bancarias y horario de atención
   const [spaConfig, setSpaConfig] = useState<{
     exigeAnticipo: boolean;
-    porcentajeAnticipo: number;
+    montoAnticipoFijo: number;
+    porcentajeAnticipo?: number;
     nequiNumero?: string;
     bancolombiaNumero?: string;
     titularCuenta?: string;
@@ -173,7 +174,8 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
     horaCierre?: string;
   }>({
     exigeAnticipo: false,
-    porcentajeAnticipo: 0,
+    montoAnticipoFijo: 20000,
+    porcentajeAnticipo: 20000,
     nequiNumero: '321 961 0896',
     bancolombiaNumero: 'Ahorros 245-000123-88',
     titularCuenta: 'JL Mímate Nails Spa',
@@ -192,6 +194,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
     esPreReserva?: boolean;
     esReagendamiento?: boolean;
     abonoPrevioReconocido?: number;
+    montoAnticipoFijo?: number;
     porcentajeAnticipo?: number;
     anticipoRequerido?: number;
     saldoRestante?: number;
@@ -536,10 +539,10 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
       if (res.ok) {
         const esReag = Boolean(data.esReagendamiento || reagendarId);
         const esPre = esReag ? false : Boolean(data.esPreReserva ?? spaConfig.exigeAnticipo);
-        const porc = esReag ? 0 : Number(data.porcentajeAnticipo ?? spaConfig.porcentajeAnticipo ?? 0);
-        const antReq = esReag ? 0 : (data.anticipoRequerido ?? Math.round((servicioSeleccionado.precio * porc) / 100));
+        const montoFijo = Number(data.montoAnticipoFijo ?? spaConfig.montoAnticipoFijo ?? data.porcentajeAnticipo ?? spaConfig.porcentajeAnticipo ?? 20000);
+        const antReq = esReag ? 0 : (data.anticipoRequerido ?? Math.min(servicioSeleccionado.precio, montoFijo));
         const abonoPrev = Number(data.abonoPrevio ?? citaPreviaInfo?.abonoPrevio ?? 0);
-        const salRest = data.saldoRestante ?? (esReag ? Math.max(0, servicioSeleccionado.precio - abonoPrev) : (servicioSeleccionado.precio - antReq));
+        const salRest = data.saldoRestante ?? (esReag ? Math.max(0, servicioSeleccionado.precio - abonoPrev) : Math.max(0, servicioSeleccionado.precio - antReq));
 
         setReservaConfirmada({
           codigo: data.codigoReserva || data.reserva?.id,
@@ -552,7 +555,8 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
           esPreReserva: esPre,
           esReagendamiento: esReag,
           abonoPrevioReconocido: abonoPrev,
-          porcentajeAnticipo: porc,
+          montoAnticipoFijo: montoFijo,
+          porcentajeAnticipo: montoFijo,
           anticipoRequerido: antReq,
           saldoRestante: salRest,
           nequi: data.nequiNumero || spaConfig.nequiNumero,
@@ -1151,20 +1155,19 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                       <div className="bg-[#FFF0F4] border border-[#F2C4D2] rounded-2xl p-4 space-y-2.5 text-xs">
                         <div className="flex items-center gap-1.5 text-[#8C243B] font-bold">
                           <IconSparkles className="w-4 h-4 text-[#C74B66] shrink-0" />
-                          <span>Abono requerido para pre-confirmar ({spaConfig.porcentajeAnticipo || 20}%):</span>
+                          <span>Abono requerido para pre-confirmar:</span>
                         </div>
 
                         {(() => {
-                          const porc = Number(spaConfig.porcentajeAnticipo || 20);
-                          const porcRest = 100 - porc;
                           const prec = servicioSeleccionado?.precio || 0;
-                          const ant = Math.round((prec * porc) / 100);
-                          const res = prec - ant;
+                          const montoFijo = Number(spaConfig.montoAnticipoFijo || spaConfig.porcentajeAnticipo || 20000);
+                          const ant = Math.min(prec, montoFijo);
+                          const res = Math.max(0, prec - ant);
                           return (
                             <div className="grid grid-cols-2 gap-2 text-center font-medium">
                               <div className="bg-white p-2.5 rounded-xl border border-[#F2C4D2]">
                                 <span className="text-[10px] text-[#7D6870] uppercase font-bold tracking-wider block">
-                                  Abono del {porc}%
+                                  Abono fijo requerido
                                 </span>
                                 <span className="font-extrabold text-[#8C243B] text-sm font-mono">
                                   ${ant.toLocaleString('es-CO')}
@@ -1172,7 +1175,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                               </div>
                               <div className="bg-white p-2.5 rounded-xl border border-[#F2C4D2]">
                                 <span className="text-[10px] text-[#7D6870] uppercase font-bold tracking-wider block">
-                                  Saldo en el spa ({porcRest}%)
+                                  Saldo en el spa
                                 </span>
                                 <span className="font-extrabold text-[#2D2529] text-sm font-mono">
                                   ${res.toLocaleString('es-CO')}
@@ -1383,26 +1386,18 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
 
                       {reservaConfirmada.esPreReserva ? (
                         <>
-                          {(() => {
-                            const pAbono = Number(reservaConfirmada.porcentajeAnticipo || spaConfig.porcentajeAnticipo || 20);
-                            const pRest = 100 - pAbono;
-                            return (
-                              <>
-                                <div className="flex justify-between border-b border-[#FCE8EF] pb-1.5 pt-0.5">
-                                  <span className="text-[#7D6870] font-bold">Abono para confirmar ({pAbono}%):</span>
-                                  <span className="font-extrabold text-[#8C243B] font-mono text-xs">
-                                    ${(reservaConfirmada.anticipoRequerido || 0).toLocaleString('es-CO')}
-                                  </span>
-                                </div>
-                                <div className="flex justify-between pt-1">
-                                  <span className="text-[#7D6870] font-bold">Restante a pagar en el spa ({pRest}%):</span>
-                                  <span className="font-extrabold text-[#2D2529] font-mono text-sm">
-                                    ${(reservaConfirmada.saldoRestante || 0).toLocaleString('es-CO')}
-                                  </span>
-                                </div>
-                              </>
-                            );
-                          })()}
+                          <div className="flex justify-between border-b border-[#FCE8EF] pb-1.5 pt-0.5">
+                            <span className="text-[#7D6870] font-bold">Abono fijo requerido:</span>
+                            <span className="font-extrabold text-[#8C243B] font-mono text-xs">
+                              ${(reservaConfirmada.anticipoRequerido || 0).toLocaleString('es-CO')}
+                            </span>
+                          </div>
+                          <div className="flex justify-between pt-1">
+                            <span className="text-[#7D6870] font-bold">Restante a pagar en el spa:</span>
+                            <span className="font-extrabold text-[#2D2529] font-mono text-sm">
+                              ${(reservaConfirmada.saldoRestante || 0).toLocaleString('es-CO')}
+                            </span>
+                          </div>
                         </>
                       ) : reservaConfirmada.esReagendamiento ? (
                         <>

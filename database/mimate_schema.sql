@@ -42,7 +42,8 @@ CREATE TABLE IF NOT EXISTS complejos (
     nequi_numero VARCHAR(30) DEFAULT '3219610896',
     daviplata_numero VARCHAR(30) DEFAULT '3219610896',
     titular_cuenta VARCHAR(150) DEFAULT 'JL Mímate Nails Spa',
-    porcentaje_anticipo_minimo NUMERIC(5, 2) DEFAULT 0.00,
+    porcentaje_anticipo_minimo NUMERIC(10, 2) DEFAULT 0.00,
+    monto_anticipo_fijo NUMERIC(10, 2) DEFAULT 0.00,
     creado_en TIMESTAMPTZ DEFAULT NOW(),
     actualizado_en TIMESTAMPTZ DEFAULT NOW()
 );

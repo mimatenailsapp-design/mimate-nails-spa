@@ -4,7 +4,8 @@ import { IconClock, IconCheck, IconX, IconLoader2 } from '@tabler/icons-react';
 
 export interface ConfigAnticipoData {
   exigeAnticipo: boolean;
-  porcentajeAnticipo: number;
+  montoAnticipoFijo: number;
+  porcentajeAnticipo?: number;
   nequiNumero: string;
   bancolombiaNumero: string;
   titularCuenta: string;
@@ -124,7 +125,7 @@ export const ConfigAnticipoModal: React.FC<ConfigAnticipoModalProps> = ({
                   </p>
                   <p className="text-[11px] text-[#7D6870] leading-snug">
                     {configAnticipo.exigeAnticipo
-                      ? `Activado: Se pedirá abono del ${configAnticipo.porcentajeAnticipo || 20}% y ventana de 60 min.`
+                      ? `Activado: Se pedirá abono fijo de $${(configAnticipo.montoAnticipoFijo || configAnticipo.porcentajeAnticipo || 20000).toLocaleString('es-CO')} y ventana de 60 min.`
                       : 'Desactivado: Citas 100% directas pagaderas en el spa.'}
                   </p>
                 </div>
@@ -136,7 +137,8 @@ export const ConfigAnticipoModal: React.FC<ConfigAnticipoModalProps> = ({
                       setConfigAnticipo((prev) => ({
                         ...prev,
                         exigeAnticipo: e.target.checked,
-                        porcentajeAnticipo: prev.porcentajeAnticipo || 20,
+                        montoAnticipoFijo: prev.montoAnticipoFijo || prev.porcentajeAnticipo || 20000,
+                        porcentajeAnticipo: prev.montoAnticipoFijo || prev.porcentajeAnticipo || 20000,
                       }))
                     }
                     className="sr-only peer"
@@ -150,22 +152,33 @@ export const ConfigAnticipoModal: React.FC<ConfigAnticipoModalProps> = ({
                 <div className="space-y-3 pt-1 border-t border-[#FCE8EF]">
                   <div>
                     <label className="font-bold text-[#7D6870] block mb-1">
-                      Porcentaje de anticipo (% del valor del servicio)
+                      Tarifa fija de abono ($ COP por reserva)
                     </label>
-                    <input
-                      type="number"
-                      min="5"
-                      max="100"
-                      value={configAnticipo.porcentajeAnticipo}
-                      onChange={(e) =>
-                        setConfigAnticipo((prev) => ({
-                          ...prev,
-                          porcentajeAnticipo: Number(e.target.value) || 20,
-                        }))
-                      }
-                      className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl font-bold text-[#2D2529] outline-none focus:border-[#8C243B]"
-                      required
-                    />
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-[#8C243B] text-sm">
+                        $
+                      </span>
+                      <input
+                        type="number"
+                        min="1000"
+                        step="1000"
+                        value={configAnticipo.montoAnticipoFijo || configAnticipo.porcentajeAnticipo || 20000}
+                        onChange={(e) => {
+                          const val = Number(e.target.value) || 0;
+                          setConfigAnticipo((prev) => ({
+                            ...prev,
+                            montoAnticipoFijo: val,
+                            porcentajeAnticipo: val,
+                          }));
+                        }}
+                        className="w-full pl-7 pr-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl font-bold text-[#2D2529] outline-none focus:border-[#8C243B]"
+                        placeholder="20000"
+                        required
+                      />
+                    </div>
+                    <p className="text-[10px] text-[#7D6870] mt-1">
+                      💡 <em>Valor fijo que cada clienta debe transferir para pre-confirmar su turno. El saldo restante se cancela en el spa.</em>
+                    </p>
                   </div>
 
                   <div>
@@ -228,7 +241,7 @@ export const ConfigAnticipoModal: React.FC<ConfigAnticipoModalProps> = ({
               )}
 
               <p className="text-[11px] text-[#7D6870] leading-snug bg-slate-50 p-3 rounded-xl border border-slate-200">
-                ℹ️ <strong>Cómo funciona:</strong> Al activar el anticipo, las clientas que reserven en la web verán el botón <em>"Confirmar pre-reserva"</em> con el desglose del {configAnticipo.porcentajeAnticipo || 20}% y tendrán 60 minutos para transferir y enviar el soporte por WhatsApp. La IA auditará el comprobante y podrás aprobarlo o rechazarlo con 1 clic.
+                ℹ️ <strong>Cómo funciona:</strong> Al activar el anticipo, las clientas que reserven en la web verán el botón <em>"Confirmar pre-reserva"</em> con el abono fijo de ${(configAnticipo.montoAnticipoFijo || configAnticipo.porcentajeAnticipo || 20000).toLocaleString('es-CO')} y tendrán 60 minutos para transferir y enviar el soporte por WhatsApp. La IA auditará el comprobante y podrás aprobarlo o rechazarlo con 1 clic.
               </p>
 
               {/* BOTONES */}

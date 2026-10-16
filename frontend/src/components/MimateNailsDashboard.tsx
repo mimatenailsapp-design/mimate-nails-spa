@@ -477,7 +477,8 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   // Configuración de Anticipos, Cuentas y Horario de Trabajo (Modal de Configuración)
   const [configAnticipo, setConfigAnticipo] = useState<{
     exigeAnticipo: boolean;
-    porcentajeAnticipo: number;
+    montoAnticipoFijo: number;
+    porcentajeAnticipo?: number;
     nequiNumero: string;
     bancolombiaNumero: string;
     titularCuenta: string;
@@ -485,7 +486,8 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     horaCierre: string;
   }>({
     exigeAnticipo: false,
-    porcentajeAnticipo: 0,
+    montoAnticipoFijo: 20000,
+    porcentajeAnticipo: 20000,
     nequiNumero: '321 961 0896',
     bancolombiaNumero: 'Ahorros 245-000123-88',
     titularCuenta: 'JL Mímate Nails Spa',
@@ -501,9 +503,11 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       const res = await fetch('/api/spa/config');
       if (res.ok) {
         const d = await res.json();
+        const montoFijo = Number(d.montoAnticipoFijo ?? d.porcentajeAnticipo) || 20000;
         setConfigAnticipo({
           exigeAnticipo: Boolean(d.exigeAnticipo),
-          porcentajeAnticipo: Number(d.porcentajeAnticipo) || 0,
+          montoAnticipoFijo: montoFijo,
+          porcentajeAnticipo: montoFijo,
           nequiNumero: d.nequiNumero || '321 961 0896',
           bancolombiaNumero: d.bancolombiaNumero || 'Ahorros 245-000123-88',
           titularCuenta: d.titularCuenta || 'JL Mímate Nails Spa',

@@ -17,6 +17,34 @@ export interface Complejo {
   hora_cierre?: string;
   titular_cuenta?: string;
   porcentaje_anticipo_minimo?: number;
+  monto_anticipo_fijo?: number;
+}
+
+/**
+ * Obtiene la tarifa fija del abono para el spa.
+ * Extrae el valor de la columna monto_anticipo_fijo si existe,
+ * o del campo whatsapp_token (donde se persiste como JSON seguro sin límites de precisión),
+ * o retorna 20.000 COP por defecto.
+ */
+export function getMontoAnticipoFijo(complejo: any): number {
+  if (complejo?.monto_anticipo_fijo !== undefined && complejo?.monto_anticipo_fijo !== null) {
+    const val = Number(complejo.monto_anticipo_fijo);
+    if (!isNaN(val) && val > 0) return val;
+  }
+  if (complejo?.whatsapp_token) {
+    try {
+      if (typeof complejo.whatsapp_token === 'string' && complejo.whatsapp_token.startsWith('{')) {
+        const parsed = JSON.parse(complejo.whatsapp_token);
+        if (parsed?.monto_anticipo_fijo && !isNaN(Number(parsed.monto_anticipo_fijo))) {
+          return Number(parsed.monto_anticipo_fijo);
+        }
+      } else {
+        const num = Number(complejo.whatsapp_token);
+        if (!isNaN(num) && num > 0) return num;
+      }
+    } catch {}
+  }
+  return 20000;
 }
 
 export interface Cancha {
@@ -213,10 +241,21 @@ export class BookingService {
     fechaFin: string;
     valorTotal: number;
     porcentajeAnticipo?: number;
+    montoAnticipo?: number;
+    exigeAnticipo?: boolean;
   }) {
-    const porcentaje = Number(params.porcentajeAnticipo) || 0;
-    const anticipoRequerido = (params.valorTotal * porcentaje) / 100;
-    const esConfirmadaDirecta = porcentaje === 0;
+    let anticipoRequerido = 0;
+    let esConfirmadaDirecta = false;
+
+    if (params.montoAnticipo !== undefined) {
+      anticipoRequerido = Math.min(params.valorTotal, Number(params.montoAnticipo) || 0);
+      esConfirmadaDirecta = params.exigeAnticipo !== undefined ? !params.exigeAnticipo : anticipoRequerido === 0;
+    } else {
+      const porcentaje = Number(params.porcentajeAnticipo) || 0;
+      anticipoRequerido = (params.valorTotal * porcentaje) / 100;
+      esConfirmadaDirecta = porcentaje === 0;
+    }
+
     const expiracion = esConfirmadaDirecta ? null : new Date(Date.now() + 15 * 60 * 1000).toISOString();
     const estado = esConfirmadaDirecta ? 'confirmada' : 'pendiente_pago';
 
