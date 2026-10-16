@@ -558,19 +558,21 @@ export class BaileysService {
       return;
     }
 
-    // 5. Desenvolver contenido del mensaje si viene encapsulado (efímeros, view-once, multimedia con caption)
+    // 5. Desenvolver contenido del mensaje si viene encapsulado (efímeros, view-once, multimedia con caption, deviceSent)
     let messageContent: any = m.message;
     while (
       messageContent?.ephemeralMessage?.message ||
       messageContent?.viewOnceMessage?.message ||
       messageContent?.viewOnceMessageV2?.message ||
-      messageContent?.documentWithCaptionMessage?.message
+      messageContent?.documentWithCaptionMessage?.message ||
+      messageContent?.deviceSentMessage?.message
     ) {
       messageContent =
         messageContent.ephemeralMessage?.message ||
         messageContent.viewOnceMessage?.message ||
         messageContent.viewOnceMessageV2?.message ||
-        messageContent.documentWithCaptionMessage?.message;
+        messageContent.documentWithCaptionMessage?.message ||
+        messageContent.deviceSentMessage?.message;
     }
 
     // Extraer texto y adjuntos del mensaje (incluyendo clics de botones interactivos)
@@ -659,6 +661,13 @@ export class BaileysService {
       ? `57${telefonoLimpio}`
       : telefonoLimpio;
 
+    // Si es chat propio o proviene de un LID de dispositivo propio, responder a su JID telefónico estándar
+    const jidDestino = (m.key.fromMe || isLidUser(normalizedJid))
+      ? `${telefonoNormalizado}@s.whatsapp.net`
+      : normalizedJid;
+
+    this.addDebugEvent('TEXTO_PROCESANDO', { telefonoNormalizado, texto, jidDestino });
+
     // Si envió imagen de comprobante, enviar de inmediato mensaje de espera
     if (directBuffer) {
       const nombreDest = nombrePush ? ` ${nombrePush}` : '';
@@ -666,7 +675,7 @@ export class BaileysService {
         `🌸 *¡Hola${nombreDest}!* Recibimos tu comprobante de pago 💕.\n\n` +
         `⏳ Estamos confirmando tu transferencia, por favor espera un momento mientras validamos los datos... 🔍✨`;
 
-      await this.enviarConTipeoHumano(normalizedJid, msgEspera);
+      await this.enviarConTipeoHumano(jidDestino, msgEspera);
     }
 
     // 8. Procesar con el cerebro de WhatsAppFlow (IA Gemini + Supabase)
@@ -681,7 +690,7 @@ export class BaileysService {
     );
 
     // 9. Enviar respuesta adaptada para Baileys con presencia de tipeo humano
-    await this.enviarConTipeoHumano(normalizedJid, respuestaBot);
+    await this.enviarConTipeoHumano(jidDestino, respuestaBot);
   }
 
   /**
