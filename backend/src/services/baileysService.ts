@@ -250,6 +250,13 @@ export class BaileysService {
       await this.restaurarSesionDesdeSupabase(authDir);
 
       const { state, saveCreds } = await useMultiFileAuthState(authDir);
+      // Asegurar que cada nueva sesión Signal (session-*.json) o PreKey (pre-key-*.json) se respalde en Supabase
+      const originalKeysSet = state.keys.set.bind(state.keys);
+      state.keys.set = async (data) => {
+        await originalKeysSet(data);
+        this.respaldarSesionEnSupabase(authDir);
+      };
+
       const { version } = await fetchLatestBaileysVersion();
 
       console.log('\n======================================================');
@@ -274,6 +281,25 @@ export class BaileysService {
         flushAll: (): void => {},
       };
 
+      // Cache de reintentos que inicia en 1 para que en el primer fallo de cifrado (No session record / Invalid PreKey ID)
+      // Baileys adjunte inmediatamente llaves PreKey nuevas (<keys>) y regenere la sesión al instante
+      const retryMap = new Map<string, number>();
+      const customRetryCache = {
+        get: <T>(key: string): T | undefined => {
+          const val = retryMap.get(key);
+          return (val !== undefined ? val : 1) as unknown as T;
+        },
+        set: <T>(key: string, value: T): void => {
+          retryMap.set(key, Number(value));
+        },
+        del: (key: string): void => {
+          retryMap.delete(key);
+        },
+        flushAll: (): void => {
+          retryMap.clear();
+        },
+      };
+
       // Blindaje de conexión: Browser Fingerprint oficial y keep-alive continuo anti-zombie
       this.socket = makeWASocket({
         version,
@@ -284,6 +310,7 @@ export class BaileysService {
         shouldSyncHistoryMessage: () => false,
         markOnlineOnConnect: false,
         placeholderResendCache: noopPlaceholderCache,
+        msgRetryCounterCache: customRetryCache,
         shouldIgnoreJid: (jid) =>
           !jid ? false : Boolean(isJidBroadcast(jid) || isJidGroup(jid) || jid.endsWith('@newsletter') || jid.includes('@broadcast')),
         generateHighQualityLinkPreview: true,
@@ -371,10 +398,32 @@ export class BaileysService {
             this.addDebugEvent('CONEXION_ABIERTA', { usuario: this.socket?.user?.id });
             console.log('\n✅ ¡BAILEYS CONECTADO EXITOSAMENTE A WHATSAPP!');
             console.log(`📱 Usuario conectado: ${this.socket?.user?.id || 'Sesión Activa'}\n`);
-            this.respaldarSesionEnSupabase(authDir, true);
 
-            // Sincronizar automáticamente LIDs de WhatsApp para los números de la lista blanca
-            setTimeout(() => this.sincronizarLids(), 3000);
+            // Subir PreKeys frescas y asegurar sesiones E2E para evitar errores "Invalid PreKey ID" / "No session record"
+            setTimeout(async () => {
+              try {
+                if (this.socket) {
+                  await this.socket.uploadPreKeys(30);
+                  await this.socket.assertSessions(
+                    [
+                      '89296748961918@lid',
+                      '573223739845@s.whatsapp.net',
+                      '24327567204353@lid',
+                      '272627444801659@lid',
+                      '263677336907937@lid',
+                      '279641092800638@lid',
+                      '573134862536@s.whatsapp.net',
+                      '573022779797@s.whatsapp.net',
+                    ],
+                    true
+                  );
+                  this.respaldarSesionEnSupabase(authDir, true);
+                }
+              } catch (e) {
+                console.warn('[Baileys] Aviso sincronizando PreKeys/Sesiones iniciales:', e);
+              }
+              await this.sincronizarLids();
+            }, 2000);
           }
         }
 
@@ -447,7 +496,15 @@ export class BaileysService {
       stubParams: m.messageStubParameters,
     });
 
-    if (!m.message || !m.key) return;
+    if (!m.message || !m.key) {
+      // Si el mensaje llegó como CIPHERTEXT (stubType 2: No session record / Invalid PreKey ID), regenerar sesión E2E
+      if (m.messageStubType === 2 && rawJid) {
+        try {
+          await this.socket.assertSessions([rawJid], true);
+        } catch (e) {}
+      }
+      return;
+    }
 
     // Guardar copia del mensaje en almacén para reintentos de cifrado
     if (m.key.id && m.message) {
