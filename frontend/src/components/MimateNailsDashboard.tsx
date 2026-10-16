@@ -398,6 +398,18 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   const [servicios, setServicios] = useState<Servicio[]>([]);
   const [reservas, setReservas] = useState<Reserva[]>([]);
   const [cargando, setCargando] = useState(false);
+  const [realtimeConectado, setRealtimeConectado] = useState(false);
+  const [notificacionRealtime, setNotificacionRealtime] = useState<string | null>(null);
+  const notifTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const mostrarNotificacionRealtime = (mensaje: string) => {
+    if (notifTimeoutRef.current) clearTimeout(notifTimeoutRef.current);
+    setNotificacionRealtime(mensaje);
+    notifTimeoutRef.current = setTimeout(() => {
+      setNotificacionRealtime(null);
+    }, 4000);
+  };
+
   const [tabAdmin, setTabAdmin] = useState<'agenda' | 'metricas'>('agenda');
   const [especialistaSeleccionadaId, setEspecialistaSeleccionadaId] = useState<string>('todas');
   // Selector de vista de agenda: Día (diario por horas / 4 columnas) vs Semana (planificador de 7 días)
@@ -874,8 +886,8 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   };
 
   // 2. Cargar Reservas del Spa
-  const cargarReservas = async (overrideId?: string | unknown) => {
-    setCargando(true);
+  const cargarReservas = async (overrideId?: string | unknown, silencioso = false) => {
+    if (!silencioso) setCargando(true);
     try {
       const spaId =
         typeof overrideId === 'string' && overrideId
@@ -889,7 +901,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     } catch (e) {
       console.error('Error cargando reservas:', e);
     } finally {
-      setCargando(false);
+      if (!silencioso) setCargando(false);
     }
   };
 
@@ -898,6 +910,45 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     cargarReservas();
     cargarConfigAnticipo();
   }, [complejoId]);
+
+  // Suscripción Realtime a cambios en reservas (Fase 4)
+  useEffect(() => {
+    const canal = supabase
+      .channel('mimate-reservas-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'reservas',
+        },
+        (payload) => {
+          console.log('⚡ [Realtime] Cambio detectado en reservas:', payload.eventType);
+          if (payload.eventType === 'INSERT') {
+            mostrarNotificacionRealtime('¡Nueva cita agendada en vivo!');
+          } else if (payload.eventType === 'UPDATE') {
+            mostrarNotificacionRealtime('¡Cita o turno actualizado en vivo!');
+          } else if (payload.eventType === 'DELETE') {
+            mostrarNotificacionRealtime('Turno liberado en vivo');
+          }
+          // Refresco silencioso en segundo plano sin bloquear la pantalla
+          cargarReservas(undefined, true);
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('⚡ [Realtime] Conectado a eventos de reservas');
+          setRealtimeConectado(true);
+        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+          setRealtimeConectado(false);
+        }
+      });
+
+    return () => {
+      supabase.removeChannel(canal);
+      if (notifTimeoutRef.current) clearTimeout(notifTimeoutRef.current);
+    };
+  }, [idComplejoDetectado, complejoId]);
 
   // Sincronizar perfiles con IDs de las canchas en la BD
   const perfilesConIds: StaffProfile[] = useMemo(() => {
@@ -2386,6 +2437,21 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   // ============================================================================
   return (
     <div className="min-h-screen bg-[#FFF5F7] text-[#2D2529] flex flex-col font-sans">
+      {/* Toast de actualización en vivo (Supabase Realtime) */}
+      <AnimatePresence>
+        {notificacionRealtime && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            className="fixed top-5 right-5 z-50 flex items-center gap-2.5 bg-[#8C243B] text-white px-4 py-2.5 rounded-2xl shadow-xl border border-white/20 text-xs font-semibold backdrop-blur-md"
+          >
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            <span>{notificacionRealtime}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* BARRA SUPERIOR ELEGANTE */}
       <header className="bg-white/95 backdrop-blur-md sticky top-0 z-40 border-b border-[#F2C4D2] shadow-xs">
         <div className="max-w-7xl mx-auto px-3.5 sm:px-4 py-2.5 sm:py-3">
@@ -2478,14 +2544,37 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
             {/* Lado Derecho: Recargar, Volver Web y Salir ARRIBA; Agenda de Turnos y Métricas DEBAJO (con más separación) */}
             <div className="flex flex-col items-end gap-3 shrink-0">
-              {/* Arriba a la derecha: 3 botones */}
+              {/* Arriba a la derecha: Indicador Realtime y 3 botones */}
               <div className="flex items-center gap-1.5 sm:gap-2">
+                {/* Indicador de conexión Realtime */}
+                <div
+                  className={`flex items-center gap-1.5 px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl text-2xs font-semibold border transition select-none ${
+                    realtimeConectado
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : 'bg-slate-50 text-slate-500 border-slate-200'
+                  }`}
+                  title={
+                    realtimeConectado
+                      ? 'Conexión en vivo activa: Las nuevas citas y cambios se actualizan al instante'
+                      : 'Conectando con Supabase Realtime...'
+                  }
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      realtimeConectado ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
+                    }`}
+                  />
+                  <span className="hidden sm:inline">
+                    {realtimeConectado ? 'En vivo' : 'Conectando'}
+                  </span>
+                </div>
+
                 {/* Recargar datos */}
                 <button
                   onClick={() => cargarReservas()}
                   disabled={cargando}
                   className="p-1.5 sm:p-2 rounded-xl border border-[#F2C4D2] hover:bg-[#FCE8EF] text-[#7D6870] hover:text-[#8C243B] transition cursor-pointer"
-                  title="Actualizar datos"
+                  title="Actualizar datos manualmente"
                 >
                   <IconRefresh className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${cargando ? 'animate-spin' : ''}`} />
                 </button>
