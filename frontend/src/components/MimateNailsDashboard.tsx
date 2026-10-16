@@ -1215,9 +1215,9 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          servicio_nombre: servicioObj?.nombre || 'Manicura tradicional',
-          precio: servicioObj?.precio || 25000,
-          duracion_minutos: servicioObj?.duracion || 45,
+          servicio_nombre: servicioObj?.nombre || 'Manos',
+          precio: servicioObj?.precio || 16000,
+          duracion_minutos: servicioObj?.duracion || 60,
           fecha: agendarFecha,
           hora: agendarHora,
           cancha_id: agendarManicuristaId || undefined,

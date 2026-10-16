@@ -29,77 +29,172 @@ interface Empleada {
 }
 
 const SERVICIOS_DEFAULT: Servicio[] = [
+  // --- TRADICIONAL ---
   {
     id: 1,
-    nombre: 'Manicura tradicional',
+    nombre: 'Pies hombre',
     categoria: 'Tradicional',
-    duracion: 45,
-    precio: 25000,
-    descripcion: 'Limpieza profunda, corte, limado, exfoliación, hidratación y esmaltado tradicional.',
+    duracion: 60,
+    precio: 14000,
+    descripcion: 'Cuidado completo para pies masculinos, limpieza profunda, recorte, limado y exfoliación.',
   },
   {
     id: 2,
-    nombre: 'Pedicure tradicional',
+    nombre: 'Manos hombre',
     categoria: 'Tradicional',
-    duracion: 50,
-    precio: 30000,
-    descripcion: 'Cuidado completo de pies, retiro de callosidades, exfoliación, masaje y esmaltado.',
+    duracion: 60,
+    precio: 14000,
+    descripcion: 'Cuidado para manos masculinas, limpieza de cutícula, limado, exfoliación e hidratación.',
   },
   {
     id: 3,
-    nombre: 'Semipermanente',
-    categoria: 'Semipermanente & Ruber',
-    duracion: 60,
-    precio: 45000,
-    descripcion: 'Esmaltado en gel curado en lámpara LED con brillo espejo y duración de hasta 21 días intacto.',
+    nombre: 'Manos y pies',
+    categoria: 'Tradicional',
+    duracion: 120,
+    precio: 35000,
+    descripcion: 'Combo completo tradicional de manicure y pedicure con exfoliación, hidratación y esmaltado clásico.',
   },
   {
     id: 4,
-    nombre: 'Base ruber',
-    categoria: 'Semipermanente & Ruber',
+    nombre: 'Pies',
+    categoria: 'Tradicional',
     duracion: 60,
-    precio: 55000,
-    descripcion: 'Nivelación y refuerzo estructural con base elástica de alta densidad para uñas frágiles o quebradizas.',
+    precio: 20000,
+    descripcion: 'Pedicure tradicional con limpieza profunda, exfoliación, masaje relajante y esmaltado clásico.',
   },
   {
     id: 5,
-    nombre: 'Dipping',
-    categoria: 'Dipping & Press On',
+    nombre: 'Manos',
+    categoria: 'Tradicional',
     duracion: 60,
-    precio: 60000,
-    descripcion: 'Técnica de polvo de inmersión sin lámpara, extra resistente y acabado ultra natural.',
+    precio: 16000,
+    descripcion: 'Manicure tradicional con limpieza de cutícula, limado, hidratación y esmaltado clásico.',
   },
+
+  // --- RUBBER ---
   {
     id: 6,
-    nombre: 'Uñas press on',
-    categoria: 'Dipping & Press On',
-    duracion: 60,
+    nombre: 'Retoque press',
+    categoria: 'Rubber',
+    duracion: 90,
     precio: 50000,
-    descripcion: 'Tips preformados de gel aplicados con adhesivo curable para largo y forma al instante.',
+    descripcion: 'Mantenimiento y retoque profesional para tus uñas press on, dejándolas como nuevas.',
   },
   {
     id: 7,
-    nombre: 'Acrilico esculpido',
-    categoria: 'Esculpidas & Polygel',
-    duracion: 90,
-    precio: 85000,
-    descripcion: 'Extensión artesanal esculpida a mano con monómero y polímero para estructura perfecta y duradera.',
+    nombre: 'Press on',
+    categoria: 'Rubber',
+    duracion: 120,
+    precio: 65000,
+    descripcion: 'Aplicación completa de tips preformados de gel de alta calidad para largo y forma al instante.',
   },
   {
     id: 8,
-    nombre: 'Uñas polygel',
-    categoria: 'Esculpidas & Polygel',
+    nombre: 'Dipping',
+    categoria: 'Rubber',
     duracion: 90,
-    precio: 80000,
-    descripcion: 'Fusión híbrida de gel y acrílico, liviano, sin olor y con máxima flexibilidad y durabilidad.',
+    precio: 55000,
+    descripcion: 'Técnica de polvo de inmersión sin lámpara, extra resistente y con acabado ultra natural.',
   },
   {
     id: 9,
-    nombre: 'Recubrimiento uña natural',
-    categoria: 'Recubrimiento & Cuidado',
-    duracion: 75,
+    nombre: 'Base Rubber',
+    categoria: 'Rubber',
+    duracion: 90,
+    precio: 55000,
+    descripcion: 'Nivelación y refuerzo estructural con base elástica de alta densidad para uñas frágiles.',
+  },
+
+  // --- SEMIPERMANENTE ---
+  {
+    id: 10,
+    nombre: 'Retiro semi',
+    categoria: 'Semipermanente',
+    duracion: 15,
+    precio: 6000,
+    descripcion: 'Retiro seguro, cuidadoso y profesional de esmalte semipermanente sin maltratar la uña natural.',
+  },
+  {
+    id: 11,
+    nombre: 'Semi hombre',
+    categoria: 'Semipermanente',
+    duracion: 60,
+    precio: 25000,
+    descripcion: 'Esmaltado o tratamiento semipermanente protector y prolijo para caballeros.',
+  },
+  {
+    id: 12,
+    nombre: 'Semi Manos y Pies',
+    categoria: 'Semipermanente',
+    duracion: 150,
+    precio: 75000,
+    descripcion: 'Combo completo de manos y pies con esmaltado semipermanente de larga duración y secado LED.',
+  },
+  {
+    id: 13,
+    nombre: 'Semi pies',
+    categoria: 'Semipermanente',
+    duracion: 80,
+    precio: 38000,
+    descripcion: 'Pedicure spa con esmaltado semipermanente de alto brillo y secado inmediato en lámpara LED.',
+  },
+  {
+    id: 14,
+    nombre: 'Semipermanente',
+    categoria: 'Semipermanente',
+    duracion: 90,
+    precio: 43000,
+    descripcion: 'Esmaltado en gel curado en lámpara LED con brillo espejo y duración de hasta 21 días intacto.',
+  },
+
+  // --- ACRÍLICO ESCULPIDO ---
+  {
+    id: 15,
+    nombre: 'Uña',
+    categoria: 'Acrílico esculpido',
+    duracion: 20,
+    precio: 6000,
+    descripcion: 'Reparación o montaje individual de una uña en acrílico o sistema esculpido.',
+  },
+  {
+    id: 16,
+    nombre: 'Retiro acrilico',
+    categoria: 'Acrílico esculpido',
+    duracion: 60,
+    precio: 10000,
+    descripcion: 'Retiro profesional y delicado de sistema acrílico cuidando la salud de tu uña natural.',
+  },
+  {
+    id: 17,
+    nombre: 'Retiro',
+    categoria: 'Acrílico esculpido',
+    duracion: 60,
+    precio: 15000,
+    descripcion: 'Retiro completo y seguro de sistemas artificiales con nutrición e hidratación profunda.',
+  },
+  {
+    id: 18,
+    nombre: 'Retoque',
+    categoria: 'Acrílico esculpido',
+    duracion: 120,
     precio: 65000,
-    descripcion: 'Capa protectora de acrílico o gel sobre el largo propio para evitar rupturas y permitir crecimiento.',
+    descripcion: 'Mantenimiento y relleno de crecimiento para sistema acrílico esculpido.',
+  },
+  {
+    id: 19,
+    nombre: 'Barrido',
+    categoria: 'Acrílico esculpido',
+    duracion: 120,
+    precio: 65000,
+    descripcion: 'Capa protectora de acrílico sobre el largo natural para aportar máxima firmeza y resistencia.',
+  },
+  {
+    id: 20,
+    nombre: 'Acrilico',
+    categoria: 'Acrílico esculpido',
+    duracion: 120,
+    precio: 90000,
+    descripcion: 'Extensión completa artesanal de uñas acrílicas esculpidas con monómero y polímero para estructura perfecta.',
   },
 ];
 
@@ -113,11 +208,19 @@ const EMPLEADAS_DEFAULT: Empleada[] = [
 const CATEGORIAS = [
   'Todos',
   'Tradicional',
-  'Semipermanente & Ruber',
-  'Dipping & Press On',
-  'Esculpidas & Polygel',
-  'Recubrimiento & Cuidado',
+  'Rubber',
+  'Semipermanente',
+  'Acrílico esculpido',
 ];
+
+export function formatearDuracion(minutos: number): string {
+  if (!minutos || minutos <= 0) return '30 min';
+  const h = Math.floor(minutos / 60);
+  const m = minutos % 60;
+  if (h > 0 && m > 0) return `${h}h ${m} min`;
+  if (h > 0) return `${h}h`;
+  return `${m} min`;
+}
 
 const GOOGLE_MAPS_SPA_URL = 'https://maps.app.goo.gl/KdSvqi1b2iAe5xgg8';
 const APPLE_MAPS_SPA_URL = 'https://maps.apple.com/?q=M%C3%ADmate+Nails&ll=4.8067489,-75.7350633';
@@ -140,7 +243,7 @@ interface Props {
 
 export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
   const [categoriaActiva, setCategoriaActiva] = useState('Todos');
-  const [servicios] = useState<Servicio[]>(SERVICIOS_DEFAULT);
+  const [servicios, setServicios] = useState<Servicio[]>(SERVICIOS_DEFAULT);
   const [empleadas, setEmpleadas] = useState<Empleada[]>(EMPLEADAS_DEFAULT);
 
   // Modal de reserva
@@ -223,6 +326,9 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
       if (cached) {
         const parsed = JSON.parse(cached);
         if (parsed && Date.now() - (parsed._ts || 0) < 5 * 60 * 1000) {
+          if (parsed.servicios && parsed.servicios.length > 0) {
+            setServicios(parsed.servicios);
+          }
           if (parsed.equipo && parsed.equipo.length > 0) {
             setEmpleadas(parsed.equipo);
           }
@@ -237,6 +343,9 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
     fetch(`/api/spa/info?_t=${Date.now()}`)
       .then((r) => r.json())
       .then((d) => {
+        if (d.servicios && d.servicios.length > 0) {
+          setServicios(d.servicios);
+        }
         if (d.equipo && d.equipo.length > 0) {
           setEmpleadas(d.equipo);
         }
@@ -837,7 +946,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                       {s.nombre}
                     </h3>
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#FCE8EF] text-[#8C243B]">
-                      {s.duracion} min
+                      {formatearDuracion(s.duracion)}
                     </span>
                   </div>
                   <p className="text-xs text-[#7D6870] max-w-md leading-relaxed">
@@ -911,7 +1020,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                         <span className="italic text-[#C74B66] font-serif font-bold">esperamos?</span>
                       </h2>
                       <p className="text-xs text-[#7D6870]">
-                        {servicioSeleccionado?.duracion} min · ${servicioSeleccionado?.precio.toLocaleString('es-CO')} COP
+                        {formatearDuracion(servicioSeleccionado?.duracion || 60)} · ${servicioSeleccionado?.precio.toLocaleString('es-CO')} COP
                       </p>
                     </div>
 

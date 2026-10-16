@@ -195,7 +195,7 @@ export class AIReceptionistService {
       nombre: complejo.nombre,
       parqueadero: 'Disponibilidad de parqueadero cercano para clientes en la zona.',
       calzado: 'Instalaciones cómodas y climatizadas para tu mayor relajación.',
-      servicios: 'Manicura tradicional, pedicure tradicional, semipermanente, base ruber, dipping, press on, acrílico esculpido, polygel y recubrimiento.',
+      servicios: 'Tradicional: Pies hombre ($14.000, 1h), Manos hombre ($14.000, 1h), Manos y pies ($35.000, 2h), Pies ($20.000, 1h), Manos ($16.000, 1h). Rubber: Retoque press ($50.000, 1h 30m), Press on ($65.000, 2h), Dipping ($55.000, 1h 30m), Base Rubber ($55.000, 1h 30m). Semipermanente: Retiro semi ($6.000, 15m), Semi hombre ($25.000, 1h), Semi Manos y Pies ($75.000, 2h 30m), Semi pies ($38.000, 1h 20m), Semipermanente ($43.000, 1h 30m). Acrílico esculpido: Uña ($6.000, 20m), Retiro acrílico ($10.000, 1h), Retiro ($15.000, 1h), Retoque ($65.000, 2h), Barrido ($65.000, 2h), Acrílico ($90.000, 2h).',
       eventos: 'Atención personalizada para citas individuales o grupos previa reserva.',
       telefono_admin: complejo.telefono_whatsapp,
     };

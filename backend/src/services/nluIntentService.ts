@@ -226,7 +226,7 @@ export class NLUIntentService {
 
     // 1. Búsqueda por servicios de spa y uñas
     const spaKeywords: Record<string, string[]> = {
-      belleza_unas: ['uñas', 'unas', 'acrilicas', 'semipermanente', 'pedicure', 'manicure', 'spa', 'ruber', 'polygel', 'dipping', 'esculpido'],
+      belleza_unas: ['uñas', 'unas', 'acrilicas', 'semipermanente', 'pedicure', 'manicure', 'spa', 'ruber', 'rubber', 'polygel', 'dipping', 'esculpido', 'barrido', 'press on', 'press', 'retoque'],
     };
 
     // 2. Coincidencia directa por nombres de manicuristas
