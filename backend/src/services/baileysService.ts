@@ -625,6 +625,17 @@ export class BaileysService {
       return;
     }
 
+    // Evitar bucle en chat propio: nunca auto-responder a los propios mensajes emitidos por el bot
+    if (
+      m.key.fromMe &&
+      (texto.includes('BIENVENIDA A JL MÍMATE NAILS') ||
+        texto.includes('ABRIR AGENDA:') ||
+        texto.includes('Conversación reiniciada con éxito') ||
+        texto.includes('Recibimos tu comprobante de pago'))
+    ) {
+      return;
+    }
+
     console.log(`[Baileys] 💬 Procesando texto de ${telefonoLimpio}: "${texto}"`);
 
     // 6. BLINDAJE ANTI-DETECCIÓN (<5% RIESGO):
@@ -713,8 +724,11 @@ export class BaileysService {
     // 4. Envío garantizado del mensaje en formato texto estándar y seguro
     try {
       const sent = await this.socket.sendMessage(targetJid, { text: textoFinal });
-      if (sent?.key?.id && sent?.message) {
-        this.mensajeStore.set(sent.key.id, sent.message);
+      if (sent?.key?.id) {
+        this.procesadosCache.add(sent.key.id);
+        if (sent.message) {
+          this.mensajeStore.set(sent.key.id, sent.message);
+        }
       }
       this.addDebugEvent('RESPUESTA_TEXTO_ENVIADA', { destinatario: targetJid, preview: textoFinal.slice(0, 60) });
       console.log(`[Baileys] ✅ Mensaje respondido exitosamente a ${targetJid}`);
@@ -731,8 +745,11 @@ export class BaileysService {
           try {
             console.log(`[Baileys] 🔄 Reintentando envío a través de JID telefónico: ${fallbackJid}`);
             const sentFallback = await this.socket.sendMessage(fallbackJid, { text: textoFinal });
-            if (sentFallback?.key?.id && sentFallback?.message) {
-              this.mensajeStore.set(sentFallback.key.id, sentFallback.message);
+            if (sentFallback?.key?.id) {
+              this.procesadosCache.add(sentFallback.key.id);
+              if (sentFallback.message) {
+                this.mensajeStore.set(sentFallback.key.id, sentFallback.message);
+              }
             }
             this.addDebugEvent('RESPUESTA_FALLBACK_ENVIADA', { destinatario: fallbackJid });
             console.log(`[Baileys] ✅ Mensaje respondido exitosamente por fallback telefónico a ${fallbackJid}`);
