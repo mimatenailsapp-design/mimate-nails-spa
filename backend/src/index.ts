@@ -2,6 +2,8 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 // @ts-ignore
 import compression from 'compression';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import { supabase } from './config/supabase.js';
 import { WhatsAppFlow, BotResponse } from './bot/whatsappFlow.js';
@@ -16,9 +18,95 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
+// Configuración de Proxy para entornos detrás de reverse proxies (Render / Cloudflare)
+app.set('trust proxy', 1);
+
+// Ocultar cabecera que delata tecnología de servidor
+app.disable('x-powered-by');
+
+// Cabeceras de seguridad HTTP robustas (Anti-Clickjacking, Anti-Sniffing, HSTS)
+app.use(
+  helmet({
+    contentSecurityPolicy: false, // Permite assets web y vistas QR sin bloquear scripts
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    crossOriginEmbedderPolicy: false,
+  })
+);
+
+// CORS seguro y optimizado
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Permitir peticiones de servidor a servidor (cron, curl, uptime) y orígenes válidos
+      callback(null, true);
+    },
+    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+    credentials: true,
+  })
+);
+
 app.use(compression());
-app.use(express.json());
+
+// Límites de tamaño de payload para mitigar ataques DoS / Memory Exhaustion
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+
+// ------------------------------------------------------------------------------
+// RATE LIMITERS (Protección contra DDoS, Fuerza Bruta y Saturación de Endpoints)
+// ------------------------------------------------------------------------------
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 400, // Hasta 400 peticiones por ventana para no afectar navegación legítima
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiadas solicitudes desde esta dirección IP. Por favor intenta de nuevo en unos minutos.' },
+});
+
+// Limiter específico para reservas (evita bots o spam de citas automatizadas)
+const bookingLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30, // 30 reservas por cada 15 min por IP es más que suficiente para clientes reales
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Has alcanzado el límite de intentos de agendamiento. Por favor espera unos minutos.' },
+});
+
+// Limiter para pruebas y simuladores
+const testLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 45,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Límite de simulaciones alcanzado. Intenta de nuevo más tarde.' },
+});
+
+// Aplicar limiter general a todas las rutas de la API
+app.use('/api/', generalLimiter);
+
+// ------------------------------------------------------------------------------
+// HELPERS DE SANITIZACIÓN Y VALIDACIÓN DEFENSIVA (Anti-XSS, Anti-Injection)
+// ------------------------------------------------------------------------------
+export function sanitizeInput(val: any, maxLength = 255): string {
+  if (typeof val !== 'string') return '';
+  return val
+    .replace(/\0/g, '') // Eliminar null bytes
+    .replace(/<[^>]*>?/gm, '') // Eliminar etiquetas HTML / script tags
+    .trim()
+    .slice(0, maxLength);
+}
+
+export function esFormatoFechaValido(f: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(f);
+}
+
+export function esFormatoHoraValido(h: string): boolean {
+  return /^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]$/.test(h);
+}
+
+export function esUUIDValido(id: string): boolean {
+  return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(id);
+}
 
 // ==============================================================================
 // 1. HEALTH CHECK & ESTADO DE CONEXIÓN
@@ -133,7 +221,7 @@ app.get(['/api/debug/whatsapp', '/api/baileys/status', '/api/baileys/diagnostico
 });
 
 // Prueba de envío directo con Baileys
-app.post('/api/debug/test-send', async (req: Request, res: Response) => {
+app.post('/api/debug/test-send', testLimiter, async (req: Request, res: Response) => {
   const { to, text } = req.body;
   if (!to) {
     return res.status(400).json({ error: 'Falta parametro "to" (ej. "573219610896")' });
@@ -146,7 +234,7 @@ app.post('/api/debug/test-send', async (req: Request, res: Response) => {
 
   const enviado = await BaileysService.enviarMensajeDirecto(
     cleanTo,
-    text || '🌸 Mensaje de prueba desde el bot Baileys de JL Mímate Nails Spa 💕'
+    sanitizeInput(text, 500) || '🌸 Mensaje de prueba desde el bot Baileys de JL Mímate Nails Spa 💕'
   );
 
   return res.json({
@@ -158,7 +246,7 @@ app.post('/api/debug/test-send', async (req: Request, res: Response) => {
 });
 
 // Simulación directa de mensaje entrante para pruebas
-app.post('/api/baileys/simular-entrante', async (req: Request, res: Response) => {
+app.post('/api/baileys/simular-entrante', testLimiter, async (req: Request, res: Response) => {
   const { from, text } = req.body;
   const tel = String(from || '573134862536').replace(/\D/g, '');
   const dummyMessage: any = {
@@ -391,9 +479,13 @@ app.delete('/api/bot/exclusiones/:telefono', async (req: Request, res: Response)
 // ==============================================================================
 // 3. SIMULADOR CONVERSACIONAL DE WHATSAPP (SOPORTA SELECCIÓN DE EMPRESA)
 // ==============================================================================
-app.post('/api/bot/simulate', async (req: Request, res: Response) => {
+app.post('/api/bot/simulate', testLimiter, async (req: Request, res: Response) => {
   try {
-    const { telefono = '573009999999', mensaje = 'HOLA', nombre = 'Jugador', complejo_id } = req.body;
+    const rawTelefono = String(req.body.telefono || '573009999999').replace(/\D/g, '').slice(0, 15);
+    const telefono = rawTelefono || '573009999999';
+    const mensaje = sanitizeInput(req.body.mensaje || 'HOLA', 500);
+    const nombre = sanitizeInput(req.body.nombre || 'Clienta', 80);
+    const complejo_id = req.body.complejo_id;
     let complejo = null;
 
     if (complejo_id) {
@@ -445,6 +537,9 @@ app.post('/api/complejos', async (req: Request, res: Response) => {
 // Actualizar configuración de un complejo (WhatsApp Token, Phone ID, Nequi, etc.)
 app.patch('/api/complejos/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
+  if (!esUUIDValido(id)) {
+    return res.status(400).json({ error: 'ID de complejo inválido' });
+  }
   try {
     const { data, error } = await supabase
       .from('complejos')
@@ -573,6 +668,9 @@ app.patch('/api/spa/config', async (req: Request, res: Response) => {
 // Consultar base de conocimiento / FAQ personalizada de un complejo
 app.get('/api/complejos/:id/faq', async (req: Request, res: Response) => {
   const { id } = req.params;
+  if (!esUUIDValido(id)) {
+    return res.status(400).json({ error: 'ID de complejo inválido' });
+  }
   try {
     const complejo = await BookingService.getComplejo(id);
     if (!complejo) return res.status(404).json({ error: 'Complejo no encontrado' });
@@ -586,6 +684,9 @@ app.get('/api/complejos/:id/faq', async (req: Request, res: Response) => {
 // Actualizar base de conocimiento / FAQ personalizada de un complejo
 app.post('/api/complejos/:id/faq', async (req: Request, res: Response) => {
   const { id } = req.params;
+  if (!esUUIDValido(id)) {
+    return res.status(400).json({ error: 'ID de complejo inválido' });
+  }
   try {
     AIReceptionistService.guardarConocimientoComplejo(id, req.body);
     res.json({ success: true, message: 'Conocimiento del recepcionista virtual actualizado con éxito' });
@@ -752,6 +853,7 @@ app.post('/api/bloqueos', async (req: Request, res: Response) => {
 // Desbloquear Horario (Eliminar bloqueo específico)
 app.delete('/api/bloqueos/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
+  if (!esUUIDValido(id)) return res.status(400).json({ error: 'ID de bloqueo inválido' });
   const { error } = await supabase
     .from('reservas')
     .delete()
@@ -765,11 +867,12 @@ app.delete('/api/bloqueos/:id', async (req: Request, res: Response) => {
 // Actualizar estado de una reserva
 app.patch('/api/reservas/:id/estado', async (req: Request, res: Response) => {
   const { id } = req.params;
+  if (!esUUIDValido(id)) return res.status(400).json({ error: 'ID de reserva inválido' });
   const { estado } = req.body;
 
   const { data, error } = await supabase
     .from('reservas')
-    .update({ estado })
+    .update({ estado: sanitizeInput(estado, 30) })
     .eq('id', id)
     .select();
 
@@ -780,6 +883,7 @@ app.patch('/api/reservas/:id/estado', async (req: Request, res: Response) => {
 // Obtener detalles de una reserva por ID
 app.get('/api/reservas/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
+  if (!esUUIDValido(id)) return res.status(400).json({ error: 'ID de reserva inválido' });
   try {
     const { data: reserva, error } = await supabase
       .from('reservas')
@@ -818,6 +922,7 @@ app.get('/api/reservas/:id', async (req: Request, res: Response) => {
 // Eliminar una reserva (Cancelar y remover del sistema)
 app.delete('/api/reservas/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
+  if (!esUUIDValido(id)) return res.status(400).json({ error: 'ID de reserva inválido' });
 
   // Primero eliminamos pagos asociados si los hubiese
   await supabase.from('pagos_anticipos').delete().eq('reserva_id', id);
@@ -838,7 +943,8 @@ app.delete('/api/reservas/:id', async (req: Request, res: Response) => {
 // 1. Aprobar Anticipo manualmente desde el Visor Web
 app.patch('/api/reservas/:id/aprobar-anticipo', async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { notas_admin } = req.body;
+  if (!esUUIDValido(id)) return res.status(400).json({ error: 'ID de reserva inválido' });
+  const notas_admin = sanitizeInput(req.body.notas_admin, 255);
 
   try {
     const { data: reserva, error: errRes } = await supabase
@@ -925,7 +1031,8 @@ app.patch('/api/reservas/:id/aprobar-anticipo', async (req: Request, res: Respon
 // 2. Rechazar Comprobante de Anticipo desde el Visor Web
 app.patch('/api/reservas/:id/rechazar-anticipo', async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { motivo } = req.body;
+  if (!esUUIDValido(id)) return res.status(400).json({ error: 'ID de reserva inválido' });
+  const motivo = sanitizeInput(req.body.motivo, 255);
 
   try {
     const { data: reserva, error: errRes } = await supabase
@@ -1214,16 +1321,23 @@ app.get('/api/spa/bootstrap', (req: Request, res: Response) => {
 // Obtener horarios (slots) disponibles para una fecha y duración específica (Lunes a Sábado, 9:30 am a 5:30 pm)
 app.get('/api/spa/slots', async (req: Request, res: Response) => {
   const { date, cancha_id, duracion_minutos } = req.query;
-  if (!date) return res.status(400).json({ error: 'Parámetro date requerido (YYYY-MM-DD)' });
+  const cleanDate = sanitizeInput(date, 10);
+  if (!cleanDate || !esFormatoFechaValido(cleanDate)) {
+    return res.status(400).json({ error: 'Parámetro date inválido o ausente (se espera YYYY-MM-DD)' });
+  }
+
+  if (cancha_id && !esUUIDValido(String(cancha_id))) {
+    return res.status(400).json({ error: 'ID de especialista inválido' });
+  }
 
   try {
-    const duracion = Math.max(15, parseInt(String(duracion_minutos || 45), 10));
-    const fechaObj = new Date(`${date}T12:00:00-05:00`);
+    const duracion = Math.max(15, Math.min(300, parseInt(String(duracion_minutos || 45), 10)));
+    const fechaObj = new Date(`${cleanDate}T12:00:00-05:00`);
     const diaSemana = fechaObj.getDay(); // 0 = Domingo
 
     if (diaSemana === 0) {
       return res.json({
-        date,
+        date: cleanDate,
         slots: [],
         aviso: 'Los domingos estamos cerrados. Atendemos con amor de Lunes a Sábado de 9:30 am a 5:30 pm 💕',
       });
@@ -1351,9 +1465,9 @@ app.get('/api/spa/slots', async (req: Request, res: Response) => {
   }
 });
 
-// Confirmar reserva web (100% directa, sin anticipo) con Voucher y prevención de duplicados
-app.post('/api/spa/reservar', async (req: Request, res: Response) => {
-  const {
+// Confirmar reserva web (100% directa o con anticipo según fecha/config) con Voucher y prevención de duplicados
+app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response) => {
+  let {
     servicio_nombre,
     precio,
     duracion_minutos = 60,
@@ -1365,8 +1479,31 @@ app.post('/api/spa/reservar', async (req: Request, res: Response) => {
     reagendar_reserva_id
   } = req.body;
 
+  // Sanitización y normalización defensiva contra XSS y desbordamientos
+  cliente_nombre = sanitizeInput(cliente_nombre, 80);
+  servicio_nombre = sanitizeInput(servicio_nombre, 100);
+  fecha = sanitizeInput(fecha, 10);
+  hora = sanitizeInput(hora, 5);
+  cliente_telefono = String(cliente_telefono || '').replace(/\D/g, '').slice(0, 15);
+
   if (!fecha || !hora || !cliente_telefono || !cliente_nombre) {
     return res.status(400).json({ error: 'Faltan datos requeridos (fecha, hora, nombre, teléfono)' });
+  }
+
+  if (!esFormatoFechaValido(fecha)) {
+    return res.status(400).json({ error: 'Formato de fecha inválido. Se espera YYYY-MM-DD.' });
+  }
+
+  if (!esFormatoHoraValido(hora)) {
+    return res.status(400).json({ error: 'Formato de hora inválido. Se espera HH:MM.' });
+  }
+
+  if (cancha_id && !esUUIDValido(cancha_id)) {
+    return res.status(400).json({ error: 'ID de manicurista inválido.' });
+  }
+
+  if (reagendar_reserva_id && !esUUIDValido(reagendar_reserva_id)) {
+    return res.status(400).json({ error: 'ID de reserva a reagendar inválido.' });
   }
 
   try {
@@ -1781,4 +1918,13 @@ app.listen(PORT, async () => {
   setInterval(() => {
     fetch('https://mimate-nails-api.onrender.com/api/baileys/diagnostico').catch(() => {});
   }, 4 * 60 * 1000);
+});
+
+// Manejo seguro de excepciones no controladas para evitar caídas del proceso
+process.on('unhandledRejection', (reason) => {
+  console.error('⚠️ Advertencia: Unhandled Rejection detectada:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('❌ Error no capturado (uncaughtException):', error);
 });

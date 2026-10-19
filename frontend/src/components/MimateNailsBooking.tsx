@@ -1742,6 +1742,8 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                         </label>
                         <input
                           type="tel"
+                          maxLength={15}
+                          autoComplete="tel"
                           placeholder="300 123 4567"
                           value={telefono}
                           onChange={(e) => setTelefono(e.target.value)}
@@ -1755,6 +1757,8 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                         </label>
                         <input
                           type="text"
+                          maxLength={70}
+                          autoComplete="name"
                           placeholder="Tu nombre y apellido"
                           value={nombre}
                           onChange={(e) => setNombre(e.target.value)}
