@@ -1304,11 +1304,15 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                       {faqAbierto === faq.id ? '−' : '+'}
                     </span>
                   </button>
-                  {faqAbierto === faq.id && (
-                    <p className="mt-2 text-xs text-[#7D6870] leading-relaxed pl-1 border-l-2 border-[#8C243B]">
-                      {faq.a}
-                    </p>
-                  )}
+                  <p
+                    className={
+                      faqAbierto === faq.id
+                        ? 'mt-2 text-xs text-[#7D6870] leading-relaxed pl-1 border-l-2 border-[#8C243B]'
+                        : 'hidden'
+                    }
+                  >
+                    {faq.a}
+                  </p>
                 </div>
               ))}
             </div>
