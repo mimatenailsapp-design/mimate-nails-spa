@@ -894,7 +894,7 @@ app.get('/api/reservas/:id', async (req: Request, res: Response) => {
     if (error) return res.status(500).json({ error: error.message });
     if (!reserva) return res.status(404).json({ error: 'Reserva no encontrada' });
 
-    let abonoPrevio = Number(reserva.valor_anticipo_requerido) || 0;
+    let abonoPrevio = 0;
     try {
       const { data: pagos } = await supabase
         .from('pagos_anticipos')
@@ -905,6 +905,11 @@ app.get('/api/reservas/:id', async (req: Request, res: Response) => {
         abonoPrevio = pagos.reduce((acc, p) => acc + Number(p.monto || 0), 0);
       }
     } catch {}
+
+    // Si no hay registro en pagos_anticipos, solo reconocer abono si la reserva estaba confirmada con valor_anticipo_requerido > 0
+    if (abonoPrevio === 0 && reserva.estado === 'confirmada' && Number(reserva.valor_anticipo_requerido) > 0) {
+      abonoPrevio = Number(reserva.valor_anticipo_requerido);
+    }
 
     const matchSvc = (reserva.notas || '').match(/Servicio:\s*([^|[\n]+)/i);
     const servicioNombre = matchSvc && matchSvc[1] ? matchSvc[1].trim() : undefined;
@@ -1600,7 +1605,7 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
           const matchSvc = (prev.notas || '').match(/Servicio:\s*([^|[\n]+)/i);
           if (matchSvc && matchSvc[1]) servicioPrevioNombre = matchSvc[1].trim();
 
-          // Consultar pagos_anticipos si ya tenía pago aprobado
+          // 1. Consultar pagos_anticipos si ya tenía pago aprobado
           const { data: pagos } = await supabase
             .from('pagos_anticipos')
             .select('monto')
@@ -1611,20 +1616,18 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
             abonoPrevioReconocido = pagos.reduce((acc, p) => acc + Number(p.monto || 0), 0);
           }
 
-          if (!abonoPrevioReconocido) {
-            abonoPrevioReconocido = Number(prev.valor_anticipo_requerido) || 0;
-          }
-
-          if (!abonoPrevioReconocido && exigeAnticipo) {
-            abonoPrevioReconocido = Math.min(Number(prev.valor_total || 0), montoFijoConfigurado);
+          // 2. Si no hay registro en pagos_anticipos, solo reconocer abono si la reserva estaba confirmada con valor_anticipo_requerido > 0
+          if (!abonoPrevioReconocido && prev.estado === 'confirmada' && Number(prev.valor_anticipo_requerido) > 0) {
+            abonoPrevioReconocido = Number(prev.valor_anticipo_requerido);
           }
 
           if (!abonoPrevioReconocido) {
-            const matchAbono = (prev.notas || '').match(/Abono:\s*(\d+)/i) || (prev.notas || '').match(/ANTICIPO:\s*\$?([\d\.]+)/i);
+            const matchAbono = (prev.notas || '').match(/Abono previo transferido:\s*\$?([\d\.]+)/i) || (prev.notas || '').match(/ANTICIPO:\s*\$?([\d\.]+)/i);
             if (matchAbono && matchAbono[1]) {
               abonoPrevioReconocido = Number(matchAbono[1].replace(/\./g, '')) || 0;
             }
           }
+          // IMPORTANTE: Si la cita previa no pagó abono, abonoPrevioReconocido se mantiene en 0.
         }
       } catch (errPrev) {
         console.warn('[REAGENDAMIENTO] Error consultando reserva previa:', errPrev);
@@ -1634,6 +1637,9 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
     const esReagendamiento = Boolean(reagendar_reserva_id && reservaPrevia);
     const numPrecio = Number(precio || 35000);
 
+    // Calcular el anticipo total requerido para el servicio y fecha seleccionada
+    const anticipoTotalParaEsteTurno = exigeAnticipo ? Math.min(numPrecio, montoFijoConfigurado) : 0;
+
     let anticipoCalculado = 0;
     let saldoRestante = numPrecio;
     let estadoInicial = 'confirmada';
@@ -1641,16 +1647,27 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
     let esPreReserva = false;
 
     if (esReagendamiento) {
-      // Al reagendar, la cita se CONFIRMA INMEDIATAMENTE sin cobro de nuevo anticipo
-      estadoInicial = 'confirmada';
-      expiracionReserva = null;
-      esPreReserva = false;
-      anticipoCalculado = abonoPrevioReconocido;
-      // Saldo pendiente = PrecioNuevoServicio - AbonoYaPagadoAnterior
-      saldoRestante = Math.max(0, numPrecio - abonoPrevioReconocido);
+      // Calcular si falta pagar anticipo (ejemplo: cita previa en noviembre sin abono y reagendada a diciembre)
+      const anticipoFaltante = Math.max(0, anticipoTotalParaEsteTurno - abonoPrevioReconocido);
+
+      if (anticipoFaltante > 0) {
+        // La nueva cita exige anticipo que no está cubierto: queda pendiente de pago (60 min)
+        anticipoCalculado = anticipoFaltante;
+        saldoRestante = Math.max(0, numPrecio - abonoPrevioReconocido - anticipoFaltante);
+        estadoInicial = 'pendiente_pago';
+        expiracionReserva = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+        esPreReserva = true;
+      } else {
+        // No hay anticipo faltante: se confirma de inmediato
+        anticipoCalculado = 0;
+        saldoRestante = Math.max(0, numPrecio - abonoPrevioReconocido);
+        estadoInicial = 'confirmada';
+        expiracionReserva = null;
+        esPreReserva = false;
+      }
     } else {
-      // TARIFA FIJA: se aplica el valor fijo configurado (o el precio total si el servicio cuesta menos que el abono)
-      anticipoCalculado = exigeAnticipo ? Math.min(numPrecio, montoFijoConfigurado) : 0;
+      // Cita nueva directa (no reagendamiento)
+      anticipoCalculado = anticipoTotalParaEsteTurno;
       saldoRestante = Math.max(0, numPrecio - anticipoCalculado);
       estadoInicial = exigeAnticipo ? 'pendiente_pago' : 'confirmada';
       expiracionReserva = exigeAnticipo ? new Date(Date.now() + 60 * 60 * 1000).toISOString() : null;
@@ -1667,7 +1684,11 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
         ? `Cambio de servicio: "${servicioPrevioNombre}" -> "${servicio_nombre}"`
         : `Mismo servicio: "${servicio_nombre}"`;
 
-      notas = `💅 Servicio: ${servicio_nombre || 'Uñas'} | Clienta: ${cliente_nombre.trim()} | [CITA_REAGENDADA_CONFIRMADA] | ${detalleServicio} | Abono previo transferido: $${abonoPrevioReconocido.toLocaleString('es-CO')} | Excedente en spa: $${saldoRestante.toLocaleString('es-CO')} | [PAGO_APROBADO] [CONFIRMADA_POR_CLIENTA]`;
+      if (esPreReserva) {
+        notas = `💅 Servicio: ${servicio_nombre || 'Uñas'} | Clienta: ${cliente_nombre.trim()} | [CITA_REAGENDADA_PENDIENTE_ANTICIPO: ${anticipoFmt}] | ${detalleServicio}${abonoPrevioReconocido > 0 ? ` | Abono anterior: $${abonoPrevioReconocido.toLocaleString('es-CO')}` : ''} | Excedente en spa: $${saldoRestante.toLocaleString('es-CO')}`;
+      } else {
+        notas = `💅 Servicio: ${servicio_nombre || 'Uñas'} | Clienta: ${cliente_nombre.trim()} | [CITA_REAGENDADA_CONFIRMADA] | ${detalleServicio}${abonoPrevioReconocido > 0 ? ` | Abono previo transferido: $${abonoPrevioReconocido.toLocaleString('es-CO')}` : ''} | Excedente en spa: $${saldoRestante.toLocaleString('es-CO')} | [CONFIRMADA_POR_CLIENTA]`;
+      }
     } else if (exigeAnticipo) {
       notas = `💅 Servicio: ${servicio_nombre || 'Uñas'} | Clienta: ${cliente_nombre.trim()} | Pre-Reserva Web JL Mímate Nails | [PENDIENTE_ANTICIPO: ${anticipoFmt}]`;
     } else {
@@ -1700,7 +1721,7 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
           .update({ reserva_id: reserva.id })
           .eq('reserva_id', reagendar_reserva_id);
 
-        console.log(`[REAGENDAMIENTO] Eliminando cita anterior ID: ${reagendar_reserva_id} tras confirmar nueva cita`);
+        console.log(`[REAGENDAMIENTO] Eliminando cita anterior ID: ${reagendar_reserva_id} tras procesar reagendamiento`);
         await supabase
           .from('reservas')
           .delete()
@@ -1733,10 +1754,48 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
     // Formulación del comprobante oficial / voucher de WhatsApp
     let voucherWhatsApp = '';
 
-    if (esReagendamiento) {
+    if (esReagendamiento && esPreReserva) {
       const detalleServicioInfo = servicioPrevioNombre && servicioPrevioNombre.toLowerCase() !== String(servicio_nombre).toLowerCase()
         ? `✨ _(Cambiaste de ${servicioPrevioNombre} a ${servicio_nombre})_\n`
         : '';
+
+      voucherWhatsApp =
+        `🌸 *JL MÍMATE NAILS* 🌸\n` +
+        `_Pre-Reserva de Cita Reagendada (Temporada Diciembre)_\n` +
+        `───────────────\n\n` +
+        `¡Hola *${cliente_nombre.trim()}*! 💅 Tu solicitud de cambio de horario ha sido *pre-apartada temporalmente*:\n\n` +
+        `💅 *Servicio:* ${servicio_nombre}\n` +
+        detalleServicioInfo +
+        `👩‍🎨 *Especialista:* ${empleadaAsignada.nombre}\n` +
+        `📅 *Nueva Fecha:* ${fechaLegible}\n` +
+        `⏰ *Nuevo Horario:* ${horaInicioFmt} a ${horaFinFmt}\n` +
+        `⏱️ *Duración aprox:* ${duracion_minutos} min\n\n` +
+        `💰 *Valor del servicio:* ${precioFmt}\n` +
+        (abonoPrevioReconocido > 0
+          ? `💳 *Abono anterior reconocido:* $${abonoPrevioReconocido.toLocaleString('es-CO')}\n`
+          : '') +
+        `💳 *Anticipo a transferir:* *${anticipoFmt}*\n` +
+        `🏠 *Saldo restante en el spa:* ${saldoRestanteFmt}\n\n` +
+        `───────────────\n` +
+        `*CUENTAS PARA TRANSFERIR:*\n` +
+        `📲 *Nequi:* ${complejo.nequi_numero || '321 961 0896'}\n` +
+        `🏦 *Bancolombia:* ${complejo.daviplata_numero || 'Ahorros 245-000123-88'}\n` +
+        `👤 *Titular:* ${complejo.titular_cuenta || 'JL Mímate Nails Spa'}\n\n` +
+        `⏳ *TIEMPO LÍMITE (60 MINUTOS):*\n` +
+        `Para asegurar tu cupo en temporada de diciembre, por favor transfiere el abono de *${anticipoFmt}* y *envía el comprobante por este chat* dentro de los próximos 60 minutos.\n\n` +
+        `¡Quedamos atentas a tu comprobante reina! 💕🌸`;
+    } else if (esReagendamiento) {
+      const detalleServicioInfo = servicioPrevioNombre && servicioPrevioNombre.toLowerCase() !== String(servicio_nombre).toLowerCase()
+        ? `✨ _(Cambiaste de ${servicioPrevioNombre} a ${servicio_nombre})_\n`
+        : '';
+
+      const lineaAbono = abonoPrevioReconocido > 0
+        ? `💳 *Abono anterior reconocido:* $${abonoPrevioReconocido.toLocaleString('es-CO')}\n🏠 *Excedente a pagar en el spa:* $${saldoRestante.toLocaleString('es-CO')}\n\n`
+        : `🏠 *Total a pagar en el spa:* ${precioFmt}\n\n`;
+
+      const lineaConfirmacion = abonoPrevioReconocido > 0
+        ? `✅ *Tu cupo está 100% CONFIRMADO.* Tu cita anterior fue cancelada y tu abono ya quedó aplicado.\n\n`
+        : `✅ *Tu cupo está 100% CONFIRMADO.* Tu cita anterior fue cancelada y tu nuevo horario quedó reservado.\n\n`;
 
       voucherWhatsApp =
         `🌸 *JL MÍMATE NAILS* 🌸\n` +
@@ -1750,13 +1809,12 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
         `⏰ *Nuevo Horario:* ${horaInicioFmt} a ${horaFinFmt}\n` +
         `⏱️ *Duración aprox:* ${duracion_minutos} min\n\n` +
         `💰 *Valor del servicio:* ${precioFmt}\n` +
-        `💳 *Abono anterior reconocido:* $${abonoPrevioReconocido.toLocaleString('es-CO')}\n` +
-        `🏠 *Excedente a pagar en el spa:* $${saldoRestante.toLocaleString('es-CO')}\n\n` +
+        lineaAbono +
         `───────────────\n` +
         `📍 *Dirección:* Pereira, Cuba (Calle 66 bis #26-57)\n` +
         `🗺️ *Ubicación Maps:* https://maps.app.goo.gl/KdSvqi1b2iAe5xgg8\n` +
         `🏢 *Lugar:* JL Mímate Nails - Spa de Uñas\n\n` +
-        `✅ *Tu cupo está 100% CONFIRMADO.* Tu cita anterior fue cancelada y tu abono ya quedó aplicado.\n\n` +
+        lineaConfirmacion +
         `¡Te esperamos con todo el amor para consentirte reina! 💕🌸`;
     } else if (exigeAnticipo) {
       voucherWhatsApp =
@@ -1827,9 +1885,9 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
       esReagendamiento,
       abonoPrevio: abonoPrevioReconocido,
       montoAnticipoFijo: montoFijoConfigurado,
-      anticipoRequerido: esReagendamiento ? 0 : anticipoCalculado,
+      anticipoRequerido: anticipoCalculado,
       saldoRestante,
-      porcentajeAnticipo: esReagendamiento ? 0 : montoFijoConfigurado,
+      porcentajeAnticipo: montoFijoConfigurado,
       nequiNumero: complejo.nequi_numero || '321 961 0896',
       bancolombiaNumero: complejo.daviplata_numero || 'Ahorros 245-000123-88',
       titularCuenta: complejo.titular_cuenta || 'JL Mímate Nails Spa',
