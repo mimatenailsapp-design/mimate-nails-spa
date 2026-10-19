@@ -12,6 +12,8 @@ import {
   IconHeart,
   IconChevronDown,
   IconCalendar,
+  IconChevronLeft,
+  IconChevronRight,
 } from '@tabler/icons-react';
 import { supabase } from '../config/supabase';
 
@@ -254,7 +256,145 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
     return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
   }, []);
   const [fecha, setFecha] = useState(hoyStr);
-  const dateInputRef = useRef<HTMLInputElement>(null);
+  const [calendarioAbierto, setCalendarioAbierto] = useState(false);
+  const contenedorCalendarioRef = useRef<HTMLDivElement>(null);
+
+  const [añoVisualizado, setAñoVisualizado] = useState(() => {
+    const [y] = hoyStr.split('-').map(Number);
+    return y;
+  });
+  const [mesVisualizado, setMesVisualizado] = useState(() => {
+    const [, m] = hoyStr.split('-').map(Number);
+    return m - 1;
+  });
+
+  // Cuando se abre el calendario, sincronizar vista con la fecha seleccionada
+  useEffect(() => {
+    if (calendarioAbierto && fecha) {
+      const [y, m] = fecha.split('-').map(Number);
+      if (!isNaN(y) && !isNaN(m)) {
+        setAñoVisualizado(y);
+        setMesVisualizado(m - 1);
+      }
+    }
+  }, [calendarioAbierto, fecha]);
+
+  // Cerrar al hacer clic fuera o presionar Escape
+  useEffect(() => {
+    if (!calendarioAbierto) return;
+    const handleClickAfuera = (event: MouseEvent | TouchEvent) => {
+      if (
+        contenedorCalendarioRef.current &&
+        !contenedorCalendarioRef.current.contains(event.target as Node)
+      ) {
+        setCalendarioAbierto(false);
+      }
+    };
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setCalendarioAbierto(false);
+    };
+    document.addEventListener('mousedown', handleClickAfuera);
+    document.addEventListener('touchstart', handleClickAfuera);
+    window.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleClickAfuera);
+      document.removeEventListener('touchstart', handleClickAfuera);
+      window.removeEventListener('keydown', handleEscape);
+    };
+  }, [calendarioAbierto]);
+
+  const [hoyYear, hoyMonth] = useMemo(() => {
+    const [y, m] = hoyStr.split('-').map(Number);
+    return [y, m - 1];
+  }, [hoyStr]);
+
+  const puedeIrMesAnterior = useMemo(() => {
+    if (añoVisualizado > hoyYear) return true;
+    if (añoVisualizado === hoyYear) return mesVisualizado > hoyMonth;
+    return false;
+  }, [añoVisualizado, mesVisualizado, hoyYear, hoyMonth]);
+
+  const cambiarMes = (delta: number) => {
+    let nuevoMes = mesVisualizado + delta;
+    let nuevoAño = añoVisualizado;
+    if (nuevoMes < 0) {
+      nuevoMes = 11;
+      nuevoAño -= 1;
+    } else if (nuevoMes > 11) {
+      nuevoMes = 0;
+      nuevoAño += 1;
+    }
+    setAñoVisualizado(nuevoAño);
+    setMesVisualizado(nuevoMes);
+  };
+
+  const irAHoy = () => {
+    setAñoVisualizado(hoyYear);
+    setMesVisualizado(hoyMonth);
+    setFecha(hoyStr);
+    setCalendarioAbierto(false);
+  };
+
+  const nombreMesAño = useMemo(() => {
+    const meses = [
+      'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+      'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+    ];
+    return `${meses[mesVisualizado]} ${añoVisualizado}`;
+  }, [mesVisualizado, añoVisualizado]);
+
+  const diasCalendario = useMemo(() => {
+    const res: Array<{
+      tipo: 'prev' | 'current' | 'next';
+      diaNum: number;
+      iso: string;
+      dayOfWeek: number;
+    }> = [];
+
+    const primerDia = new Date(añoVisualizado, mesVisualizado, 1);
+    const primerDiaSemana = (primerDia.getDay() + 6) % 7; // Lunes = 0, Domingo = 6
+    const diasEnMes = new Date(añoVisualizado, mesVisualizado + 1, 0).getDate();
+    const diasEnMesPrev = new Date(añoVisualizado, mesVisualizado, 0).getDate();
+
+    // Días del mes previo
+    for (let i = primerDiaSemana - 1; i >= 0; i--) {
+      const diaNum = diasEnMesPrev - i;
+      res.push({
+        tipo: 'prev',
+        diaNum,
+        iso: '',
+        dayOfWeek: (primerDiaSemana - 1 - i + 1) % 7,
+      });
+    }
+
+    // Días del mes actual
+    for (let d = 1; d <= diasEnMes; d++) {
+      const fechaObj = new Date(añoVisualizado, mesVisualizado, d);
+      const yStr = añoVisualizado;
+      const mStr = String(mesVisualizado + 1).padStart(2, '0');
+      const dStr = String(d).padStart(2, '0');
+      const iso = `${yStr}-${mStr}-${dStr}`;
+      res.push({
+        tipo: 'current',
+        diaNum: d,
+        iso,
+        dayOfWeek: fechaObj.getDay(),
+      });
+    }
+
+    // Días del mes siguiente para completar la cuadrícula (múltiplo de 7)
+    const sobrantes = (7 - (res.length % 7)) % 7;
+    for (let d = 1; d <= sobrantes; d++) {
+      res.push({
+        tipo: 'next',
+        diaNum: d,
+        iso: '',
+        dayOfWeek: (res.length) % 7,
+      });
+    }
+
+    return res;
+  }, [añoVisualizado, mesVisualizado]);
 
   const formatearFechaElegante = (fechaIso: string) => {
     if (!fechaIso) return '';
@@ -1301,7 +1441,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                     </div>
 
                     {/* Selector de fecha responsive con atajos y calendario nativo */}
-                    <div className="space-y-2">
+                    <div className="space-y-2 relative" ref={contenedorCalendarioRef}>
                       <div className="flex items-center justify-between">
                         <label className="text-[11px] font-bold uppercase tracking-wider text-[#7D6870] block">
                           Fecha
@@ -1311,50 +1451,163 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                         </span>
                       </div>
 
-                      {/* Botón interactivo táctil + input nativo invisible que cubre todo */}
-                      <div
-                        onClick={() => {
-                          try {
-                            if (dateInputRef.current) {
-                              if ('showPicker' in HTMLInputElement.prototype) {
-                                dateInputRef.current.showPicker();
-                              } else {
-                                dateInputRef.current.focus();
-                              }
-                            }
-                          } catch {
-                            dateInputRef.current?.focus();
-                          }
-                        }}
-                        className="relative cursor-pointer"
+                      {/* Botón interactivo táctil para abrir/cerrar calendario */}
+                      <button
+                        type="button"
+                        onClick={() => setCalendarioAbierto((prev) => !prev)}
+                        className={`w-full bg-white border rounded-xl px-3.5 py-2.5 text-xs font-semibold text-[#2D2529] flex items-center justify-between shadow-xs transition cursor-pointer active:scale-[0.99] ${
+                          calendarioAbierto
+                            ? 'border-[#8C243B] ring-2 ring-[#C74B66]/20'
+                            : 'border-[#F2C4D2] hover:border-[#C74B66]'
+                        }`}
+                        aria-label="Seleccionar fecha"
+                        aria-expanded={calendarioAbierto}
                       >
-                        <div className="w-full bg-white border border-[#F2C4D2] rounded-xl px-3.5 py-2.5 text-xs font-semibold text-[#2D2529] flex items-center justify-between shadow-xs hover:border-[#C74B66] transition">
-                          <div className="flex items-center gap-2.5 truncate">
-                            <IconCalendar className="w-4 h-4 text-[#C74B66] shrink-0" />
-                            <span className="font-bold text-[#2D2529] truncate capitalize">
-                              {formatearFechaElegante(fecha)}
-                            </span>
-                          </div>
-                          <IconChevronDown className="w-4 h-4 text-[#7D6870] shrink-0" />
+                        <div className="flex items-center gap-2.5 truncate">
+                          <IconCalendar className="w-4 h-4 text-[#C74B66] shrink-0" />
+                          <span className="font-bold text-[#2D2529] truncate capitalize">
+                            {formatearFechaElegante(fecha)}
+                          </span>
                         </div>
-                        <input
-                          ref={dateInputRef}
-                          type="date"
-                          min={hoyStr}
-                          value={fecha}
-                          onChange={(e) => setFecha(e.target.value)}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            try {
-                              if ('showPicker' in HTMLInputElement.prototype) {
-                                e.currentTarget.showPicker();
-                              }
-                            } catch {}
-                          }}
-                          className="date-picker-overlay absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 text-base"
-                          aria-label="Seleccionar fecha"
+                        <IconChevronDown
+                          className={`w-4 h-4 text-[#7D6870] shrink-0 transition-transform duration-200 ${
+                            calendarioAbierto ? 'rotate-180 text-[#8C243B]' : ''
+                          }`}
                         />
-                      </div>
+                      </button>
+
+                      {/* Dropdown de Calendario con los tonos oficiales de JL Mímate Nails */}
+                      <AnimatePresence>
+                        {calendarioAbierto && (
+                          <motion.div
+                            initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                            transition={{ duration: 0.15 }}
+                            className="absolute top-full left-0 right-0 sm:left-auto sm:right-auto sm:w-[350px] mt-2 bg-white/98 backdrop-blur-md border border-[#F2C4D2] rounded-2xl shadow-2xl z-50 p-4 space-y-3"
+                          >
+                            {/* Cabecera del mes y controles */}
+                            <div className="flex items-center justify-between pb-2 border-b border-[#FCE8EF]">
+                              <div className="flex items-center gap-2">
+                                <div className="w-7 h-7 rounded-lg bg-[#FFF0F4] text-[#8C243B] flex items-center justify-center">
+                                  <IconCalendar className="w-4 h-4 text-[#C74B66]" />
+                                </div>
+                                <span className="font-serif font-bold text-sm text-[#2D2529] capitalize">
+                                  {nombreMesAño}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => cambiarMes(-1)}
+                                  disabled={!puedeIrMesAnterior}
+                                  className={`p-1.5 rounded-lg transition ${
+                                    puedeIrMesAnterior
+                                      ? 'hover:bg-[#FCE8EF] text-[#8C243B] cursor-pointer active:scale-95'
+                                      : 'text-gray-300 cursor-not-allowed'
+                                  }`}
+                                  title="Mes anterior"
+                                >
+                                  <IconChevronLeft className="w-4 h-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={irAHoy}
+                                  className="px-2 py-1 text-[10px] font-bold text-[#8C243B] bg-[#FFF0F4] hover:bg-[#8C243B] hover:text-white rounded-md transition cursor-pointer"
+                                  title="Ir al día de hoy"
+                                >
+                                  Hoy
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => cambiarMes(1)}
+                                  className="p-1.5 rounded-lg hover:bg-[#FCE8EF] text-[#8C243B] transition cursor-pointer active:scale-95"
+                                  title="Siguiente mes"
+                                >
+                                  <IconChevronRight className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Días de la semana */}
+                            <div className="grid grid-cols-7 text-center text-[10px] font-extrabold uppercase tracking-wider text-[#7D6870]">
+                              {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((d, idx) => (
+                                <div
+                                  key={d}
+                                  className={`py-1 ${idx === 6 ? 'text-[#C74B66]' : ''}`}
+                                >
+                                  {d}
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* Cuadrícula de fechas */}
+                            <div className="grid grid-cols-7 gap-1">
+                              {diasCalendario.map((d, idx) => {
+                                if (d.tipo === 'prev' || d.tipo === 'next') {
+                                  return (
+                                    <div
+                                      key={`filler-${idx}`}
+                                      className="h-9 flex items-center justify-center text-xs text-slate-300 font-medium select-none"
+                                    >
+                                      {d.diaNum}
+                                    </div>
+                                  );
+                                }
+
+                                const esPasado = d.iso < hoyStr;
+                                const esSeleccionado = d.iso === fecha;
+                                const esHoy = d.iso === hoyStr;
+                                const esDomingo = d.dayOfWeek === 0;
+
+                                return (
+                                  <button
+                                    key={d.iso}
+                                    type="button"
+                                    disabled={esPasado}
+                                    onClick={() => {
+                                      setFecha(d.iso);
+                                      setCalendarioAbierto(false);
+                                    }}
+                                    className={`relative h-9 w-full rounded-xl flex flex-col items-center justify-center text-xs transition cursor-pointer ${
+                                      esSeleccionado
+                                        ? 'bg-gradient-to-tr from-[#8C243B] to-[#C74B66] text-white font-extrabold shadow-sm scale-105 z-10'
+                                        : esPasado
+                                        ? 'text-gray-300 cursor-not-allowed opacity-35'
+                                        : esDomingo
+                                        ? 'text-slate-400 hover:bg-slate-50 border border-dashed border-slate-200'
+                                        : 'text-[#2D2529] hover:bg-[#FFF0F4] hover:text-[#8C243B] font-semibold'
+                                    } ${
+                                      esHoy && !esSeleccionado
+                                        ? 'border border-[#C74B66] text-[#8C243B] bg-[#FFF5F7] font-bold'
+                                        : ''
+                                    }`}
+                                    title={esDomingo ? 'Domingo (Cerrado)' : d.iso}
+                                  >
+                                    <span className="leading-none">{d.diaNum}</span>
+                                    {esDomingo && !esSeleccionado && (
+                                      <span className="text-[7px] leading-none text-slate-400 mt-0.5">cerrado</span>
+                                    )}
+                                    {esHoy && !esSeleccionado && !esDomingo && (
+                                      <span className="w-1 h-1 rounded-full bg-[#C74B66] mt-0.5" />
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>
+
+                            {/* Pie de leyenda */}
+                            <div className="pt-2 border-t border-[#FCE8EF] flex items-center justify-between text-[11px] text-[#7D6870]">
+                              <div className="flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full bg-[#C74B66]" />
+                                <span>Lun–Sáb disponible</span>
+                              </div>
+                              <span className="text-[10px] text-slate-400 italic">Domingos cerrado 💕</span>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
 
                       {/* Píldoras rápidas de fechas (scroll horizontal) */}
                       <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none -mx-0.5 px-0.5">
