@@ -1,5 +1,6 @@
 import { supabase } from '../config/supabase.js';
 import { BaileysService } from './baileysService.js';
+import { requiereAnticipoParaFecha } from './bookingService.js';
 
 export class ReminderService {
   /**
@@ -119,7 +120,7 @@ export class ReminderService {
       const matchSvc = notas.match(/Servicio:\s*([^|[\n]+)/i);
       if (matchSvc && matchSvc[1]) servicio = matchSvc[1].trim();
 
-      const exigeAnticipo = Number(complejo?.porcentaje_anticipo_minimo) > 0;
+      const exigeAnticipo = requiereAnticipoParaFecha(complejo, dInicio) || Number(r.valor_anticipo_requerido) > 0;
       let notaPago = '✨ *Nota:* Recuerda que cancelas el valor en el spa (sin cobros anticipados).';
       if (exigeAnticipo) {
         if (notas.includes('[COMPROBANTE_VALIDO_IA]') || notas.includes('[PAGO_APROBADO]')) {

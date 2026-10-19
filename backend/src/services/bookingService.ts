@@ -52,6 +52,47 @@ export function getMontoAnticipoFijo(complejo: any): number {
   return 20000;
 }
 
+/**
+ * Determina si una fecha (YYYY-MM-DD o timestamp ISO) corresponde al mes de diciembre (mes 12).
+ * En temporada de diciembre SIEMPRE se exige anticipo aunque el switch general esté desactivado.
+ */
+export function esFechaDiciembre(fecha?: string | Date | null): boolean {
+  if (!fecha) return false;
+  if (typeof fecha === 'string') {
+    const limpio = fecha.trim();
+    const matchIso = limpio.match(/^\d{4}-(\d{2})-\d{2}/);
+    if (matchIso) {
+      return matchIso[1] === '12';
+    }
+    const d = new Date(limpio);
+    if (!isNaN(d.getTime())) {
+      const mesCol = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/Bogota',
+        month: '2-digit',
+      }).format(d);
+      return mesCol === '12';
+    }
+    return false;
+  }
+  if (fecha instanceof Date && !isNaN(fecha.getTime())) {
+    const mesCol = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Bogota',
+      month: '2-digit',
+    }).format(fecha);
+    return mesCol === '12';
+  }
+  return false;
+}
+
+/**
+ * Determina si se debe exigir anticipo para una reserva según la configuración del spa
+ * o si la fecha de la cita es en diciembre (en diciembre siempre es obligatorio).
+ */
+export function requiereAnticipoParaFecha(complejo: any, fecha?: string | Date | null): boolean {
+  const checkActivo = (Number(complejo?.porcentaje_anticipo_minimo) || 0) > 0;
+  return checkActivo || esFechaDiciembre(fecha);
+}
+
 export interface Cancha {
   id: string;
   complejo_id: string;

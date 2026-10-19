@@ -833,6 +833,16 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
     setMenuEspecialistaAbierto(false);
   };
 
+  const esCitaDiciembre = useMemo(() => {
+    if (!fecha) return false;
+    const match = fecha.trim().match(/^\d{4}-(\d{2})-\d{2}/);
+    return match ? match[1] === '12' : false;
+  }, [fecha]);
+
+  const exigeAnticipoEfectivo = useMemo(() => {
+    return Boolean(spaConfig.exigeAnticipo || esCitaDiciembre);
+  }, [spaConfig.exigeAnticipo, esCitaDiciembre]);
+
   const handleConfirmarReserva = async () => {
     if (!servicioSeleccionado || !fecha || !horaSeleccionada || !telefono.trim() || !nombre.trim()) return;
 
@@ -859,9 +869,9 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
 
       if (res.ok) {
         const esReag = Boolean(data.esReagendamiento || reagendarId);
-        const esPre = esReag ? false : Boolean(data.esPreReserva ?? spaConfig.exigeAnticipo);
+        const esPre = esReag ? false : Boolean(data.esPreReserva ?? exigeAnticipoEfectivo);
         const montoFijo = Number(data.montoAnticipoFijo ?? spaConfig.montoAnticipoFijo ?? data.porcentajeAnticipo ?? spaConfig.porcentajeAnticipo ?? 20000);
-        const antReq = esReag ? 0 : (data.anticipoRequerido ?? Math.min(servicioSeleccionado.precio, montoFijo));
+        const antReq = esReag ? 0 : (data.anticipoRequerido ?? (esPre ? Math.min(servicioSeleccionado.precio, montoFijo) : 0));
         const abonoPrev = Number(data.abonoPrevio ?? citaPreviaInfo?.abonoPrevio ?? 0);
         const salRest = data.saldoRestante ?? (esReag ? Math.max(0, servicioSeleccionado.precio - abonoPrev) : Math.max(0, servicioSeleccionado.precio - antReq));
 
@@ -920,6 +930,11 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
         const dInicio = new Date(`${fecha}T${horaSeleccionada}:00-05:00`);
         const dFin = new Date(dInicio.getTime() + (Number(servicioSeleccionado.duracion) || 60) * 60 * 1000);
 
+        const esReag = Boolean(reagendarId);
+        const esPreFallback = !esReag && exigeAnticipoEfectivo;
+        const montoFijoFallback = Number(spaConfig.montoAnticipoFijo || spaConfig.porcentajeAnticipo || 20000);
+        const antReqFallback = esPreFallback ? Math.min(servicioSeleccionado.precio, montoFijoFallback) : 0;
+
         if (empAsignada && clienteId) {
           await supabase.from('reservas').insert({
             cancha_id: empAsignada.id,
@@ -927,8 +942,9 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
             fecha_inicio: dInicio.toISOString(),
             fecha_fin: dFin.toISOString(),
             valor_total: servicioSeleccionado.precio,
-            valor_anticipo_requerido: 0,
-            estado: 'confirmada',
+            valor_anticipo_requerido: antReqFallback,
+            estado: esPreFallback ? 'pendiente_pago' : 'confirmada',
+            expiracion_reserva: esPreFallback ? new Date(Date.now() + 60 * 60 * 1000).toISOString() : null,
             notas: `💅 Servicio: ${servicioSeleccionado.nombre} | Clienta: ${nombre.trim()} | Reserva Web JL Mímate Nails`,
           });
 
@@ -937,9 +953,10 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
           }
         }
 
-        const esReag = Boolean(reagendarId);
         const abonoPrev = Number(citaPreviaInfo?.abonoPrevio || 0);
-        const salRest = esReag ? Math.max(0, servicioSeleccionado.precio - abonoPrev) : servicioSeleccionado.precio;
+        const salRest = esReag
+          ? Math.max(0, servicioSeleccionado.precio - abonoPrev)
+          : Math.max(0, servicioSeleccionado.precio - antReqFallback);
 
         setReservaConfirmada({
           codigo: 'WEB-' + Math.floor(1000 + Math.random() * 9000),
@@ -949,10 +966,16 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
           hora: horaSeleccionada,
           precio: servicioSeleccionado.precio,
           telefono: telefono.trim(),
-          esPreReserva: false,
+          esPreReserva: esPreFallback,
           esReagendamiento: esReag,
           abonoPrevioReconocido: abonoPrev,
+          montoAnticipoFijo: montoFijoFallback,
+          porcentajeAnticipo: montoFijoFallback,
+          anticipoRequerido: antReqFallback,
           saldoRestante: salRest,
+          nequi: spaConfig.nequiNumero,
+          bancolombia: spaConfig.bancolombiaNumero,
+          titular: spaConfig.titularCuenta,
         });
         setPaso(3);
         cargarSlots(fecha, empleadaId);
@@ -1798,7 +1821,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                           );
                         })()}
                       </div>
-                    ) : spaConfig.exigeAnticipo ? (
+                    ) : exigeAnticipoEfectivo ? (
                       <div className="bg-[#FFF0F4] border border-[#F2C4D2] rounded-2xl p-4 space-y-2.5 text-xs">
                         {(() => {
                           const prec = servicioSeleccionado?.precio || 0;
@@ -1808,6 +1831,12 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                           const cubreTotal = prec <= montoFijo;
                           return (
                             <div className="space-y-2.5">
+                              {esCitaDiciembre && !spaConfig.exigeAnticipo && (
+                                <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold flex items-center gap-1.5">
+                                  <span>🎄</span>
+                                  <span>Temporada de Diciembre: Para todas las citas de diciembre se requiere abono previo para asegurar tu cupo.</span>
+                                </div>
+                              )}
                               <div className="flex items-center gap-1.5 text-[#8C243B] font-bold">
                                 <IconSparkles className="w-4 h-4 text-[#C74B66] shrink-0" />
                                 <span>
@@ -1878,7 +1907,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                             <span>
                               {reagendarId
                                 ? 'Confirmando reagendamiento...'
-                                : spaConfig.exigeAnticipo
+                                : exigeAnticipoEfectivo
                                 ? 'Apartando pre-reserva...'
                                 : 'Confirmando cita...'}
                             </span>
@@ -1887,7 +1916,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                           <span>
                             {reagendarId
                               ? 'Confirmar cambio de cita'
-                              : spaConfig.exigeAnticipo
+                              : exigeAnticipoEfectivo
                               ? 'Confirmar pre-reserva'
                               : 'Confirmar reserva'}
                           </span>

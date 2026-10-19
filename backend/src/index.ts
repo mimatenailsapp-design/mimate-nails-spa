@@ -6,7 +6,7 @@ import dotenv from 'dotenv';
 import { supabase } from './config/supabase.js';
 import { WhatsAppFlow, BotResponse } from './bot/whatsappFlow.js';
 import { ReminderService } from './services/reminderService.js';
-import { BookingService, getMontoAnticipoFijo } from './services/bookingService.js';
+import { BookingService, getMontoAnticipoFijo, requiereAnticipoParaFecha, esFechaDiciembre } from './services/bookingService.js';
 import { AIReceptionistService } from './services/aiReceptionistService.js';
 import { BotExclusionsService } from './services/botExclusionsService.js';
 import { BaileysService } from './services/baileysService.js';
@@ -1441,8 +1441,8 @@ app.post('/api/spa/reservar', async (req: Request, res: Response) => {
 
     const cliente = await BookingService.getOrCreateCliente(cleanPhone, cliente_nombre.trim());
 
-    // Determinar si el spa exige abono/anticipo para reservar
-    const exigeAnticipo = (Number(complejo.porcentaje_anticipo_minimo) || 0) > 0;
+    // Determinar si el spa exige abono/anticipo para reservar (o si la cita es en diciembre, donde SIEMPRE se exige abono)
+    const exigeAnticipo = requiereAnticipoParaFecha(complejo, fecha);
     const montoFijoConfigurado = getMontoAnticipoFijo(complejo);
 
     // Si es reagendamiento, buscar cita previa para extraer abono ya pagado y servicio anterior

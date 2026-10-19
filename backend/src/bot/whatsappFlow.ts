@@ -1,4 +1,4 @@
-import { BookingService, Complejo, Cancha, HorarioDisponible, getMontoAnticipoFijo } from '../services/bookingService.js';
+import { BookingService, Complejo, Cancha, HorarioDisponible, getMontoAnticipoFijo, requiereAnticipoParaFecha } from '../services/bookingService.js';
 import { ReceiptVerificationService } from '../services/receiptVerificationService.js';
 import { AIReceptionistService } from '../services/aiReceptionistService.js';
 import { NLUIntentService } from '../services/nluIntentService.js';
@@ -1021,7 +1021,7 @@ export class WhatsAppFlow {
         };
       }
 
-      const exigeAnticipo = (Number(complejo.porcentaje_anticipo_minimo) || 0) > 0;
+      const exigeAnticipo = requiereAnticipoParaFecha(complejo, session.fechaSeleccionada);
       const montoFijo = getMontoAnticipoFijo(complejo);
       const anticipoCalculado = exigeAnticipo ? Math.min(precioTotal, montoFijo) : 0;
 
@@ -1975,7 +1975,7 @@ export class WhatsAppFlow {
           .eq('id', reserva.id);
       }
 
-      const exigeAnticipo = Number(complejoRes.porcentaje_anticipo_minimo) > 0;
+      const exigeAnticipo = requiereAnticipoParaFecha(complejoRes, reserva.fecha_inicio) || Number(reserva.valor_anticipo_requerido) > 0;
       let detallePagoConfirmado = '';
       if (exigeAnticipo) {
         detallePagoConfirmado = `\n💳 Tu abono de anticipo se encuentra registrado y validado. El saldo restante lo pagas al finalizar tu servicio en el spa.\n`;

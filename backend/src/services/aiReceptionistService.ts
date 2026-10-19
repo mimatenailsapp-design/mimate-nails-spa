@@ -498,7 +498,8 @@ INSTRUCCIONES IMPORTANTES:
             `• El saldo restante lo pagas directamente en el spa al finalizar tu atención.\n` +
             `• *Cuentas oficiales:* Nequi / Bancolombia / Daviplata *${nequiNum}* a nombre de *${titular}*.\n` +
             `• También recibimos efectivo y transferencia en el local 💕.`
-          : `• Puedes pagar en efectivo, Nequi, Bancolombia o Daviplata directamente en el spa 💕.`) +
+          : `• Puedes pagar en efectivo, Nequi, Bancolombia o Daviplata directamente en el spa 💕.\n` +
+            `• *Nota de temporada:* Para todas las citas del mes de *diciembre* sí se solicita un abono fijo de *$${montoAbono.toLocaleString('es-CO')} COP* para asegurar el cupo.`) +
         pie
       );
     }

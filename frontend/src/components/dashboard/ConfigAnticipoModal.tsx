@@ -126,7 +126,7 @@ export const ConfigAnticipoModal: React.FC<ConfigAnticipoModalProps> = ({
                   <p className="text-[11px] text-[#7D6870] leading-snug">
                     {configAnticipo.exigeAnticipo
                       ? `Activado: Se pedirá abono fijo de $${(configAnticipo.montoAnticipoFijo || configAnticipo.porcentajeAnticipo || 20000).toLocaleString('es-CO')} y ventana de 60 min.`
-                      : 'Desactivado: Citas 100% directas pagaderas en el spa.'}
+                      : `Desactivado: Citas directas pagaderas en el spa (excepto citas para Diciembre, que siempre exigen el abono de $${(configAnticipo.montoAnticipoFijo || configAnticipo.porcentajeAnticipo || 20000).toLocaleString('es-CO')}).`}
                   </p>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer shrink-0">
@@ -147,101 +147,105 @@ export const ConfigAnticipoModal: React.FC<ConfigAnticipoModalProps> = ({
                 </label>
               </div>
 
-              {/* SI ESTÁ ACTIVADO, MOSTRAR CAMPOS EDITABLES */}
-              {configAnticipo.exigeAnticipo && (
-                <div className="space-y-3 pt-1 border-t border-[#FCE8EF]">
-                  <div>
-                    <label className="font-bold text-[#7D6870] block mb-1">
-                      Tarifa fija de abono ($ COP por reserva)
-                    </label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-[#8C243B] text-sm">
-                        $
-                      </span>
-                      <input
-                        type="number"
-                        min="1000"
-                        step="1000"
-                        value={configAnticipo.montoAnticipoFijo || configAnticipo.porcentajeAnticipo || 20000}
-                        onChange={(e) => {
-                          const val = Number(e.target.value) || 0;
-                          setConfigAnticipo((prev) => ({
-                            ...prev,
-                            montoAnticipoFijo: val,
-                            porcentajeAnticipo: val,
-                          }));
-                        }}
-                        className="w-full pl-7 pr-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl font-bold text-[#2D2529] outline-none focus:border-[#8C243B]"
-                        placeholder="20000"
-                        required
-                      />
-                    </div>
-                    <p className="text-[10px] text-[#7D6870] mt-1">
-                      💡 <em>Valor fijo que cada clienta debe transferir para pre-confirmar su turno. El saldo restante se cancela en el spa.</em>
-                    </p>
+              {/* CAMPOS EDITABLES DE MONTO Y CUENTAS (SIEMPRE VISIBLES POR REGLA DE DICIEMBRE) */}
+              <div className="space-y-3 pt-1 border-t border-[#FCE8EF]">
+                {!configAnticipo.exigeAnticipo && (
+                  <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900 leading-snug">
+                    🎄 <strong>Regla automática de Diciembre:</strong> Aunque el switch general esté desactivado, cualquier cita agendada para el mes de <strong>diciembre</strong> exigirá automáticamente el abono y las cuentas configuradas aquí abajo.
                   </div>
+                )}
 
-                  <div>
-                    <label className="font-bold text-[#7D6870] block mb-1">
-                      Número Nequi de recaudo
-                    </label>
+                <div>
+                  <label className="font-bold text-[#7D6870] block mb-1">
+                    Tarifa fija de abono ($ COP por reserva)
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-[#8C243B] text-sm">
+                      $
+                    </span>
                     <input
-                      type="text"
-                      value={configAnticipo.nequiNumero}
-                      onChange={(e) =>
+                      type="number"
+                      min="1000"
+                      step="1000"
+                      value={configAnticipo.montoAnticipoFijo || configAnticipo.porcentajeAnticipo || 20000}
+                      onChange={(e) => {
+                        const val = Number(e.target.value) || 0;
                         setConfigAnticipo((prev) => ({
                           ...prev,
-                          nequiNumero: e.target.value,
-                        }))
-                      }
-                      placeholder="321 961 0896"
-                      className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl font-medium text-[#2D2529] outline-none focus:border-[#8C243B]"
+                          montoAnticipoFijo: val,
+                          porcentajeAnticipo: val,
+                        }));
+                      }}
+                      className="w-full pl-7 pr-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl font-bold text-[#2D2529] outline-none focus:border-[#8C243B]"
+                      placeholder="20000"
                       required
                     />
                   </div>
-
-                  <div>
-                    <label className="font-bold text-[#7D6870] block mb-1">
-                      Cuenta Bancolombia / Daviplata
-                    </label>
-                    <input
-                      type="text"
-                      value={configAnticipo.bancolombiaNumero}
-                      onChange={(e) =>
-                        setConfigAnticipo((prev) => ({
-                          ...prev,
-                          bancolombiaNumero: e.target.value,
-                        }))
-                      }
-                      placeholder="Ahorros 245-000123-88"
-                      className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl font-medium text-[#2D2529] outline-none focus:border-[#8C243B]"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="font-bold text-[#7D6870] block mb-1">
-                      Titular de la cuenta
-                    </label>
-                    <input
-                      type="text"
-                      value={configAnticipo.titularCuenta}
-                      onChange={(e) =>
-                        setConfigAnticipo((prev) => ({
-                          ...prev,
-                          titularCuenta: e.target.value,
-                        }))
-                      }
-                      placeholder="JL Mímate Nails Spa"
-                      className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl font-medium text-[#2D2529] outline-none focus:border-[#8C243B]"
-                      required
-                    />
-                  </div>
+                  <p className="text-[10px] text-[#7D6870] mt-1">
+                    💡 <em>Valor fijo que cada clienta debe transferir para pre-confirmar su turno (cuando el switch está activo o la cita es para diciembre). El saldo restante se cancela en el spa.</em>
+                  </p>
                 </div>
-              )}
+
+                <div>
+                  <label className="font-bold text-[#7D6870] block mb-1">
+                    Número Nequi de recaudo
+                  </label>
+                  <input
+                    type="text"
+                    value={configAnticipo.nequiNumero}
+                    onChange={(e) =>
+                      setConfigAnticipo((prev) => ({
+                        ...prev,
+                        nequiNumero: e.target.value,
+                      }))
+                    }
+                    placeholder="321 961 0896"
+                    className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl font-medium text-[#2D2529] outline-none focus:border-[#8C243B]"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-[#7D6870] block mb-1">
+                    Cuenta Bancolombia / Daviplata
+                  </label>
+                  <input
+                    type="text"
+                    value={configAnticipo.bancolombiaNumero}
+                    onChange={(e) =>
+                      setConfigAnticipo((prev) => ({
+                        ...prev,
+                        bancolombiaNumero: e.target.value,
+                      }))
+                    }
+                    placeholder="Ahorros 245-000123-88"
+                    className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl font-medium text-[#2D2529] outline-none focus:border-[#8C243B]"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-[#7D6870] block mb-1">
+                    Titular de la cuenta
+                  </label>
+                  <input
+                    type="text"
+                    value={configAnticipo.titularCuenta}
+                    onChange={(e) =>
+                      setConfigAnticipo((prev) => ({
+                        ...prev,
+                        titularCuenta: e.target.value,
+                      }))
+                    }
+                    placeholder="JL Mímate Nails Spa"
+                    className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl font-medium text-[#2D2529] outline-none focus:border-[#8C243B]"
+                    required
+                  />
+                </div>
+              </div>
 
               <p className="text-[11px] text-[#7D6870] leading-snug bg-slate-50 p-3 rounded-xl border border-slate-200">
-                ℹ️ <strong>Cómo funciona:</strong> Al activar el anticipo, las clientas verán el abono fijo de ${(configAnticipo.montoAnticipoFijo || configAnticipo.porcentajeAnticipo || 20000).toLocaleString('es-CO')} (o el total del servicio si este cuesta menos que el abono) y tendrán 60 minutos para transferir y enviar el soporte por WhatsApp. La IA auditará el comprobante y podrás aprobarlo o rechazarlo con 1 clic.
+                ℹ️ <strong>Cómo funciona:</strong> Cuando aplica anticipo (switch activado o cita en el mes de <strong>Diciembre</strong>), las clientas verán el abono fijo de ${(configAnticipo.montoAnticipoFijo || configAnticipo.porcentajeAnticipo || 20000).toLocaleString('es-CO')} (o el total del servicio si este cuesta menos que el abono) y tendrán 60 minutos para transferir y enviar el soporte por WhatsApp.
               </p>
 
               {/* BOTONES */}
