@@ -59,6 +59,7 @@ interface UserSession {
   reservaId?: string;
   nombreCliente?: string;
   ultimoMensaje: number;
+  linkEnviado?: boolean;
   pedidoInfo?: {
     detalle: string;
     total: number;
@@ -101,7 +102,7 @@ export class WhatsAppFlow {
       // Manejo de reinicio explícito para pruebas o limpiar conversaciones previas
       if (input === 'reiniciar' || input === 'reset' || input === 'limpiar' || input === 'borrar') {
         sesiones.delete(telefono);
-        session = { paso: 'INICIO', complejoId: complejo.id, ultimoMensaje: ahora };
+        session = { paso: 'INICIO', complejoId: complejo.id, ultimoMensaje: ahora, linkEnviado: true };
         sesiones.set(telefono, session);
         const esSpa = complejo.slug === 'mimate-nails' || complejo.tipo_negocio === 'belleza_unas';
         if (esSpa) {
@@ -149,9 +150,20 @@ export class WhatsAppFlow {
 
       const esSpa = complejo.slug === 'mimate-nails' || complejo.tipo_negocio === 'belleza_unas';
 
-      // 1. Detección de saludos, menú, inicio o solicitud de agenda
-      const esSoloSaludo = [
+      // 1. Detección de comprobante de pago o seguimiento de pre-reserva pendiente
+      // Solo si envió imagen, si está en espera de pago, o si menciona pago/comprobante explícitamente teniendo una reserva pendiente
+      const esConsultaPago = ['comprobante', 'abono', 'pago', 'transferencia', 'transferi', 'nequi', 'daviplata', 'cuenta', 'cuentas', 'soporte', 'pagar'].some(k => input.includes(k));
+      if (mediaId || directImageBuffer || session.paso === 'ESPERA_PAGO' || esConsultaPago) {
+        const resComprobante = await this.manejarRecepcionComprobante(telefono, complejo, session, mediaId, mediaType, texto, directImageBuffer);
+        if (resComprobante) {
+          return resComprobante;
+        }
+      }
+
+      // 2. Detección de saludos puros o solicitud explícita del link de agenda
+      const esSaludoOLinkDirecto = [
         'hola',
+        'hola!',
         'buenas',
         'buen dia',
         'buenos dias',
@@ -163,11 +175,42 @@ export class WhatsAppFlow {
         'comenzar',
         'agendar',
         'agenda',
+        'link',
+        'enlace',
         'cita',
         'citas',
-        'servicios',
-        'precios',
-      ].includes(input) || input.startsWith('hola') || input.startsWith('buenas') || input.includes('cita') || input.includes('agend');
+      ].includes(input);
+
+      // Si es una pregunta en lenguaje natural (ej. "hola, cuánto valen las acrílicas?", "dónde están ubicados?", etc.)
+      const tienePreguntaNatural =
+        AIReceptionistService.esSolicitudHumano(input) ||
+        AIReceptionistService.esPreguntaFrecuente(input);
+
+      // Si el bot YA envió el link antes y el usuario escribe cualquier cosa en lenguaje natural (no solo un comando de reinicio/link),
+      // responderle de forma inteligente a su pregunta o mensaje
+      if (esSpa && !mediaId && !directImageBuffer && !esSaludoOLinkDirecto && (session.linkEnviado || tienePreguntaNatural)) {
+        const consulta = await AIReceptionistService.responderConsulta(texto, complejo, true);
+        if (consulta.esPreguntaOAtencion && consulta.respuestaTexto) {
+          session.linkEnviado = true;
+          return { texto: consulta.respuestaTexto };
+        }
+      }
+
+      // Si aún no se había enviado el link pero el primer mensaje mismo ya es una pregunta específica (ej. "cuánto vale el semipermanente?")
+      if (!mediaId && !directImageBuffer && !esSaludoOLinkDirecto && tienePreguntaNatural) {
+        const consulta = await AIReceptionistService.responderConsulta(texto, complejo, true);
+        if (consulta.esPreguntaOAtencion && consulta.respuestaTexto) {
+          session.linkEnviado = true;
+          return { texto: consulta.respuestaTexto };
+        }
+      }
+
+      const esSoloSaludo =
+        esSaludoOLinkDirecto ||
+        input.startsWith('hola') ||
+        input.startsWith('buenas') ||
+        input.includes('cita') ||
+        input.includes('agend');
 
       if (esSoloSaludo || input === 'cancelar' || input === 'menu' || input === 'inicio') {
         session.paso = 'INICIO';
@@ -182,22 +225,12 @@ export class WhatsAppFlow {
         }
       }
 
-      // 2. Detección de comprobante de pago o seguimiento de pre-reserva pendiente
-      // Solo si envió imagen, si está en espera de pago, o si menciona pago/comprobante explícitamente
-      const esConsultaPago = ['comprobante', 'abono', 'pago', 'transferencia', 'transferi', 'nequi', 'daviplata', 'cuenta', 'cuentas', 'soporte', 'pagar'].some(k => input.includes(k));
-      if (mediaId || directImageBuffer || session.paso === 'ESPERA_PAGO' || esConsultaPago) {
-        const resComprobante = await this.manejarRecepcionComprobante(telefono, complejo, session, mediaId, mediaType, texto, directImageBuffer);
-        if (resComprobante) {
-          return resComprobante;
-        }
-      }
-
-      // Si es Spa y está en inicio, garantizar siempre la respuesta con el botón de agenda
+      // Si es Spa y está en inicio (primer mensaje sin haber enviado el link aún), enviar la bienvenida con el link
       if (esSpa && session.paso === 'INICIO' && !mediaId && !directImageBuffer) {
         return await this.manejarInicio(telefono, session, complejo, nombrePush, texto);
       }
 
-      // Detección inteligente de consultas libres (FAQ) y derivación a asesor humano
+      // Detección inteligente de consultas libres (FAQ) y derivación a asesor humano para otros negocios
       if (!mediaId && (AIReceptionistService.esSolicitudHumano(input) || AIReceptionistService.esPreguntaFrecuente(input))) {
         const consulta = await AIReceptionistService.responderConsulta(texto, complejo);
         if (consulta.esPreguntaOAtencion && consulta.respuestaTexto) {
@@ -476,6 +509,7 @@ export class WhatsAppFlow {
 
     if (esSpa) {
       session.paso = 'INICIO';
+      session.linkEnviado = true;
       const baseUrl = process.env.FRONTEND_URL || 'https://mimate-nails-spa.vercel.app';
       const cleanTel = telefono.replace(/\D/g, '');
       const queryParams = new URLSearchParams();
