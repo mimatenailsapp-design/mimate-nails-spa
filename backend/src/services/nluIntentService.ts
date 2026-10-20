@@ -360,7 +360,13 @@ Devuelve ÚNICAMENTE un objeto JSON válido con este formato:
   "duracionHoras": 1 o 2
 }`;
 
-    const modelos = ['gemini-2.5-flash', 'gemini-1.5-flash'];
+    const modelos = [
+      process.env.GEMINI_MODEL,
+      'gemini-3-flash-preview',
+      'gemini-3.8-flash',
+      'gemini-2.5-flash',
+      'gemini-1.5-flash',
+    ].filter(Boolean) as string[];
     for (const m of modelos) {
       try {
         const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`;
