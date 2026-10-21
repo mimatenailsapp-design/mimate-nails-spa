@@ -37,10 +37,17 @@ export class BaileysService {
 
   // Mapeo verificado de LIDs de WhatsApp a números de teléfono reales autorizados
   public static lidToPhoneMap: Map<string, string> = new Map([
-    // Contacto 3134862536 (LID oficial verificado por onWhatsApp)
+    // Contacto 3134862536 (LIDs oficiales registrados)
     ['272627444801659', '573134862536'],
+    ['134634406961213', '573134862536'],
+    ['279641092800638', '573134862536'],
 
-    // Contacto 3022779797 (LID oficial verificado por onWhatsApp)
+    // Contacto 3108108166 (Nuevo número agregado)
+    ['240905336418420', '573108108166'],
+    ['24327567204353', '573108108166'],
+    ['156534478762129', '573108108166'],
+
+    // Contacto 3022779797 (LID oficial verificado)
     ['263677336907937', '573022779797'],
 
     // Bot Mímate Nails Spa (Teléfono propio 3223739845)
@@ -54,25 +61,34 @@ export class BaileysService {
     try {
       if (!this.socket) return;
       const wl = this.getWhitelist();
+      // Extraer números celulares reales de 10 dígitos (Colombia: 3XXXXXXXXX o 573XXXXXXXXX)
       const phones = wl
-        .filter((n) => n.length >= 10 && !n.startsWith('27') && !n.startsWith('89'))
-        .map((n) => `+${n.startsWith('57') ? n : '57' + n}`);
+        .map((n) => n.replace(/\D/g, ''))
+        .filter((n) => {
+          const ten = n.length >= 10 ? n.slice(-10) : '';
+          return ten.startsWith('3') && ten.length === 10;
+        })
+        .map((n) => `57${n.slice(-10)}`);
+
       const uniquePhones = Array.from(new Set(phones));
 
       if (uniquePhones.length > 0) {
+        // Enviar a WhatsApp SIN el signo '+'
         const results = await this.socket.onWhatsApp(...uniquePhones);
-        if (results) {
+        if (results && Array.isArray(results)) {
+          this.addDebugEvent('SYNC_LIDS_SUCCESS', { count: results.length, items: results });
           for (const r of (results as any[])) {
             if (r.lid && r.jid) {
-              const lidId = String(r.lid).split('@')[0];
-              const phoneId = String(r.jid).split('@')[0];
+              const lidId = String(r.lid).split('@')[0].replace(/\D/g, '');
+              const phoneId = String(r.jid).split('@')[0].replace(/\D/g, '');
               this.lidToPhoneMap.set(lidId, phoneId);
               console.log(`[Baileys] 🔗 LID Mapeado dinámicamente: ${lidId} -> ${phoneId}`);
             }
           }
         }
       }
-    } catch (errSync) {
+    } catch (errSync: any) {
+      this.addDebugEvent('SYNC_LIDS_ERROR', { error: errSync?.message || String(errSync) });
       console.warn('[Baileys] Error sincronizando LIDs:', errSync);
     }
   }
@@ -667,10 +683,10 @@ export class BaileysService {
       ? `57${telefonoLimpio}`
       : telefonoLimpio;
 
-    // Si es chat propio o proviene de un LID de dispositivo propio, responder a su JID telefónico estándar
-    const jidDestino = (m.key.fromMe || isLidUser(normalizedJid))
+    // Enviar respuesta al chat de origen (o a número telefónico si es chat propio)
+    const jidDestino = m.key.fromMe
       ? `${telefonoNormalizado}@s.whatsapp.net`
-      : normalizedJid;
+      : rawJid;
 
     this.addDebugEvent('TEXTO_PROCESANDO', { telefonoNormalizado, texto, jidDestino });
 

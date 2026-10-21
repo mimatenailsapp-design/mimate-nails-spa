@@ -197,6 +197,17 @@ app.all('/webhook', (req: Request, res: Response) => {
   });
 });
 
+// Forzar sincronización dinámica de LIDs de WhatsApp
+app.get(['/api/baileys/sync-lids', '/api/debug/sync-lids'], async (req: Request, res: Response) => {
+  await BaileysService.sincronizarLids();
+  return res.json({
+    ok: true,
+    lids_mapeados: Array.from(BaileysService.lidToPhoneMap.entries()),
+    whitelist: BaileysService.getWhitelist(),
+    eventos: BaileysService.eventosDebug.slice(0, 10),
+  });
+});
+
 // Diagnóstico general y detallado del servicio WhatsApp Baileys
 app.get(['/api/debug/whatsapp', '/api/baileys/status', '/api/baileys/diagnostico'], (req: Request, res: Response) => {
   const estado = BaileysService.getEstado();
