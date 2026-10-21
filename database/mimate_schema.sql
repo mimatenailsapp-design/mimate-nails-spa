@@ -172,3 +172,18 @@ CREATE POLICY "Acceso total a clientes" ON clientes FOR ALL USING (true) WITH CH
 
 DROP POLICY IF EXISTS "Lectura pública de faqs" ON faqs;
 CREATE POLICY "Lectura pública de faqs" ON faqs FOR SELECT USING (true);
+
+
+-- 11. Permisos explícitos Data API (Supabase Security Best Practice - Octubre 2026)
+GRANT SELECT ON public.complejos TO anon, authenticated;
+GRANT ALL ON public.complejos TO service_role;
+
+GRANT SELECT ON public.canchas TO anon, authenticated;
+GRANT ALL ON public.canchas TO service_role;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.reservas TO anon, authenticated, service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.clientes TO anon, authenticated, service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.pagos_anticipos TO anon, authenticated, service_role;
+
+GRANT SELECT ON public.faqs TO anon, authenticated;
+GRANT ALL ON public.faqs TO service_role;
