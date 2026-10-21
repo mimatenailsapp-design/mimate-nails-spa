@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   IconBrandWhatsapp,
+  IconBrandInstagram,
   IconClock,
   IconMapPin,
   IconSparkles,
@@ -1351,6 +1352,17 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                 >
                   +57 321 961 0896
                 </a>
+                <span className="text-gray-300">|</span>
+                <a
+                  href="https://www.instagram.com/mimate.nais/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-bold text-[#8C243B] hover:underline flex items-center gap-1"
+                  title="Instagram @mimate.nais"
+                >
+                  <IconBrandInstagram className="w-3.5 h-3.5 text-[#C74B66]" />
+                  <span>@mimate.nais</span>
+                </a>
               </div>
             </div>
           </div>
@@ -1358,10 +1370,23 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
       </main>
 
       {/* FOOTER */}
-      <footer className="text-center py-8 text-xs text-[#7D6870] border-t border-[#F2C4D2]/60 space-y-1">
-        <p className="font-semibold text-[#8C243B]">
+      <footer className="text-center py-8 text-xs text-[#7D6870] border-t border-[#F2C4D2]/60 space-y-2.5">
+        <p className="font-semibold text-[#8C243B] text-sm tracking-wide">
           JL Mímate Nails✦
         </p>
+        <div className="flex items-center justify-center">
+          <a
+            href="https://www.instagram.com/mimate.nais/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white border border-[#F2C4D2] hover:border-[#C74B66] text-[#8C243B] hover:text-[#C74B66] font-semibold text-xs transition-all shadow-xs hover:shadow-sm group cursor-pointer"
+            title="Síguenos en Instagram @mimate.nais"
+          >
+            <IconBrandInstagram className="w-4 h-4 text-[#C74B66] group-hover:scale-110 transition-transform" />
+            <span>@mimate.nais</span>
+            <span className="text-[10px] text-[#7D6870] group-hover:text-[#C74B66] transition-colors">↗</span>
+          </a>
+        </div>
         <p className="text-[11px] opacity-80">
           {horarioTexto}
         </p>
