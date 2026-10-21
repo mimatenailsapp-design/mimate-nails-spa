@@ -53,12 +53,19 @@ export class BaileysService {
     ['89296748961918', '573223739845'],
   ]);
 
+  private static ultimoSyncLids = 0;
+
   /**
    * Sincroniza dinámicamente los LIDs de WhatsApp para los números autorizados en la lista blanca
    */
-  public static async sincronizarLids(): Promise<void> {
+  public static async sincronizarLids(forzar: boolean = false): Promise<void> {
     try {
       if (!this.socket) return;
+      const ahora = Date.now();
+      if (!forzar && ahora - this.ultimoSyncLids < 20000) {
+        return; // Evitar saturación de consultas hacia WhatsApp
+      }
+      this.ultimoSyncLids = ahora;
       const wl = this.getWhitelist();
       // Extraer números celulares reales de 10 dígitos (Colombia: 3XXXXXXXXX o 573XXXXXXXXX)
       const phones = wl
@@ -866,6 +873,24 @@ export class BaileysService {
 
     await this.enviarConTipeoHumano(remoteJid, textoSalida);
     return true;
+  }
+
+  public static getSocketUser(): any {
+    return this.socket?.user || null;
+  }
+
+  public static async reconectarSuave(): Promise<void> {
+    try {
+      this.addDebugEvent('RECONEXION_MANUAL', { timestamp: new Date().toISOString() });
+      if (this.socket) {
+        try {
+          (this.socket as any).end(new Error('Manual reconnect'));
+        } catch {}
+      }
+      setTimeout(() => this.iniciar(), 2000);
+    } catch (e: any) {
+      console.error('[Baileys] Error reconectando:', e?.message);
+    }
   }
 
   /**

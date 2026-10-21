@@ -279,6 +279,12 @@ app.post('/api/baileys/simular-entrante', testLimiter, async (req: Request, res:
   });
 });
 
+// Reconectar WebSocket suavemente manteniendo credenciales
+app.all(['/api/baileys/reconnect', '/api/debug/reconnect'], async (req: Request, res: Response) => {
+  await BaileysService.reconectarSuave();
+  return res.json({ ok: true, mensaje: 'Reconexión suave de WhatsApp solicitada exitosamente' });
+});
+
 // Desvincular sesión y forzar generación de nuevo QR
 app.all('/api/baileys/relink', async (req: Request, res: Response) => {
   await BaileysService.desvincularYReiniciar();
