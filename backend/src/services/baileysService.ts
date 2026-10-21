@@ -35,20 +35,21 @@ export class BaileysService {
   private static reconectarTimeout: NodeJS.Timeout | null = null;
   private static flushInterval: NodeJS.Timeout | null = null;
 
-  // Mapeo oficial verificado directamente por los servidores de WhatsApp (onWhatsApp)
+  // Mapeo oficial verificado directamente por los servidores de WhatsApp (onWhatsApp) y dispositivos autorizados
   public static lidToPhoneMap: Map<string, string> = new Map([
-    // Contacto 3134862536 (LID del dispositivo móvil: 279641092800638 y server: 272627444801659)
+    // Contacto 3134862536 (LIDs autorizados)
     ['279641092800638', '573134862536'],
     ['272627444801659', '573134862536'],
 
-    // Contacto 3022779797 (LID del dispositivo móvil: 134634406961213 y server: 263677336907937)
+    // Contacto 3022779797 (LIDs autorizados: móvil 24327567204353, web 134634406961213 y server 263677336907937)
+    ['24327567204353', '573022779797'],
     ['134634406961213', '573022779797'],
     ['263677336907937', '573022779797'],
 
-    // Contacto 3108108166 (Verificado por WhatsApp server: 207953860776112)
+    // Contacto 3108108166 (Clienta autorizada: 207953860776112)
     ['207953860776112', '573108108166'],
 
-    // Contacto 3217176154 (Verificado por WhatsApp server: 163436390572209)
+    // Contacto 3217176154 (Clienta autorizada: 163436390572209)
     ['163436390572209', '573217176154'],
 
     // Bot Mímate Nails Spa (Teléfono propio 3223739845: 89296748961918)
@@ -732,15 +733,8 @@ export class BaileysService {
   private static async enviarConTipeoHumano(remoteJid: string, response: string | BotResponse): Promise<void> {
     if (!this.socket) return;
 
-    let targetJid = jidNormalizedUser(remoteJid);
-    if (isLidUser(targetJid)) {
-      const lidOnly = targetJid.split('@')[0].replace(/\D/g, '');
-      const telReal = this.lidToPhoneMap.get(lidOnly);
-      if (telReal) {
-        targetJid = `${telReal}@s.whatsapp.net`;
-      }
-    }
-
+    // Responder SIEMPRE directamente al chat exacto desde donde provino el mensaje
+    const targetJid = jidNormalizedUser(remoteJid);
     const textoFinal = this.formatearTextoParaBaileys(response);
     if (!textoFinal.trim()) {
       console.warn(`[Baileys] Texto final vacío para ${targetJid}, no se envía mensaje.`);
