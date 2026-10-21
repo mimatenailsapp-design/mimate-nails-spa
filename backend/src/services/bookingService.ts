@@ -1,5 +1,6 @@
 import { supabase } from '../config/supabase.js';
 import { BaileysService } from './baileysService.js';
+import { notificarCambioReservas } from './realtimeService.js';
 
 export interface Complejo {
   id: string;
@@ -327,6 +328,9 @@ export class BookingService {
       throw error;
     }
 
+    if (data?.id) {
+      notificarCambioReservas('INSERT', { id: data.id });
+    }
     return data;
   }
 
@@ -368,6 +372,9 @@ export class BookingService {
       .single();
 
     if (reservaError) throw reservaError;
+    if (reserva?.id) {
+      notificarCambioReservas('UPDATE', { id: reserva.id });
+    }
     return { pago, reserva };
   }
 

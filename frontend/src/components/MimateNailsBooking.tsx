@@ -869,6 +869,13 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
       const data = await res.json();
 
       if (res.ok) {
+        try {
+          supabase.channel('mimate-reservas-realtime').send({
+            type: 'broadcast',
+            event: 'cambio-reservas',
+            payload: { eventType: 'INSERT', timestamp: Date.now() },
+          }).catch(() => {});
+        } catch (e) {}
         const esReag = Boolean(data.esReagendamiento || reagendarId);
         const abonoPrev = Number(data.abonoPrevio ?? citaPreviaInfo?.abonoPrevio ?? 0);
         const montoFijo = Number(data.montoAnticipoFijo ?? spaConfig.montoAnticipoFijo ?? data.porcentajeAnticipo ?? spaConfig.porcentajeAnticipo ?? 20000);

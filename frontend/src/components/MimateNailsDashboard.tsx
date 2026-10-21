@@ -911,7 +911,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     cargarConfigAnticipo();
   }, [complejoId]);
 
-  // Suscripción Realtime a cambios en reservas (Fase 4)
+  // Suscripción Realtime a cambios en reservas (Broadcast + Postgres + Polling inteligente)
   useEffect(() => {
     const canal = supabase
       .channel('mimate-reservas-realtime')
@@ -923,7 +923,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
           table: 'reservas',
         },
         (payload) => {
-          console.log('⚡ [Realtime] Cambio detectado en reservas:', payload.eventType);
+          console.log('⚡ [Realtime Postgres] Cambio detectado en reservas:', payload.eventType);
           if (payload.eventType === 'INSERT') {
             mostrarNotificacionRealtime('¡Nueva cita agendada en vivo!');
           } else if (payload.eventType === 'UPDATE') {
@@ -935,6 +935,18 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
           cargarReservas(undefined, true);
         }
       )
+      .on('broadcast', { event: 'cambio-reservas' }, (payload: any) => {
+        console.log('⚡ [Realtime Broadcast] Cambio en reservas recibido:', payload);
+        const evType = payload.payload?.eventType || payload.payload?.accion || 'UPDATE';
+        if (evType === 'INSERT') {
+          mostrarNotificacionRealtime('¡Nueva cita agendada en vivo!');
+        } else if (evType === 'UPDATE') {
+          mostrarNotificacionRealtime('¡Cita o turno actualizado en vivo!');
+        } else if (evType === 'DELETE') {
+          mostrarNotificacionRealtime('Turno liberado en vivo');
+        }
+        cargarReservas(undefined, true);
+      })
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           console.log('⚡ [Realtime] Conectado a eventos de reservas');
@@ -944,7 +956,24 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
         }
       });
 
+    // Polling inteligente de respaldo cada 5 segundos (silencioso, sin parpadeos ni spinners)
+    const pollTimer = setInterval(() => {
+      cargarReservas(undefined, true);
+    }, 5000);
+
+    // Actualización automática instantánea al cambiar o enfocar la pestaña
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        cargarReservas(undefined, true);
+      }
+    };
+    window.addEventListener('focus', onVisibilityChange);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
     return () => {
+      clearInterval(pollTimer);
+      window.removeEventListener('focus', onVisibilityChange);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
       supabase.removeChannel(canal);
       if (notifTimeoutRef.current) clearTimeout(notifTimeoutRef.current);
     };

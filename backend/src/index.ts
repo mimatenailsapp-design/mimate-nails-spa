@@ -12,6 +12,7 @@ import { BookingService, getMontoAnticipoFijo, requiereAnticipoParaFecha, esFech
 import { AIReceptionistService } from './services/aiReceptionistService.js';
 import { BotExclusionsService } from './services/botExclusionsService.js';
 import { BaileysService } from './services/baileysService.js';
+import { notificarCambioReservas } from './services/realtimeService.js';
 
 dotenv.config();
 
@@ -894,6 +895,7 @@ app.patch('/api/reservas/:id/estado', async (req: Request, res: Response) => {
     .select();
 
   if (error) return res.status(500).json({ error: error.message });
+  notificarCambioReservas('UPDATE', { id });
   res.json(data);
 });
 
@@ -955,6 +957,7 @@ app.delete('/api/reservas/:id', async (req: Request, res: Response) => {
     .eq('id', id);
 
   if (error) return res.status(500).json({ error: error.message });
+  notificarCambioReservas('DELETE', { id });
   res.json({ success: true, message: 'Reserva eliminada con éxito' });
 });
 
@@ -1891,6 +1894,8 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
     } catch (e: any) {
       console.warn('No se pudo enviar WhatsApp inmediato:', e.message);
     }
+
+    notificarCambioReservas('INSERT', { id: reserva.id });
 
     res.status(201).json({
       success: true,
