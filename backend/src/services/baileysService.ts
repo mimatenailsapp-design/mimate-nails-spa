@@ -74,8 +74,11 @@ export class BaileysService {
             if (r.lid && r.jid) {
               const lidId = String(r.lid).split('@')[0].replace(/\D/g, '');
               const phoneId = String(r.jid).split('@')[0].replace(/\D/g, '');
-              this.lidToPhoneMap.set(lidId, phoneId);
-              console.log(`[Baileys] 🔗 LID Mapeado dinámicamente: ${lidId} -> ${phoneId}`);
+              // Seguridad estricta: Solo registrar el LID si el número telefónico devuelto por WhatsApp pertenece a la lista blanca
+              if (this.estaEnListaBlanca(phoneId)) {
+                this.lidToPhoneMap.set(lidId, phoneId);
+                console.log(`[Baileys] 🔗 LID legítimo verificado con WhatsApp server: ${lidId} -> ${phoneId}`);
+              }
             }
           }
         }
@@ -515,14 +518,14 @@ export class BaileysService {
       this.procesadosCache.clear();
     }
 
-    // Si viene de un LID pero trae participant con número telefónico, auto-mapear de inmediato
+    // Si viene de un LID pero trae participant con número telefónico, verificar primero lista blanca
     const participantJid = m.key?.participant ? jidNormalizedUser(m.key.participant) : '';
     if (isLidUser(normalizedJid) && participantJid && !isLidUser(participantJid)) {
       const lidRaw = normalizedJid.split('@')[0].replace(/\D/g, '');
       const telReal = participantJid.split('@')[0].replace(/\D/g, '');
-      if (telReal.length >= 10) {
+      if (telReal.length >= 10 && this.estaEnListaBlanca(telReal)) {
         this.lidToPhoneMap.set(lidRaw, telReal);
-        console.log(`[Baileys] 🔗 LID ${lidRaw} mapeado desde participant a: ${telReal}`);
+        console.log(`[Baileys] 🔗 LID ${lidRaw} mapeado legítimamente para número autorizado: ${telReal}`);
       }
     }
 
