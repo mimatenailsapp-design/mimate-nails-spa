@@ -1475,64 +1475,72 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                     </div>
 
                     {/* SECCIÓN SERVICIOS EXTRA / ADICIONALES */}
-                    <div className="bg-[#FFF5F7] border border-[#F2C4D2] rounded-2xl p-3.5 space-y-2.5">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <span className="text-xs font-bold text-[#8C243B] flex items-center gap-1.5">
-                            <span>💅 Servicios en tu cita</span>
-                            <span className="bg-[#FCE8EF] text-[#8C243B] text-[10px] font-extrabold px-1.5 py-0.2 rounded-full border border-[#F2C4D2]">
+                    <div className="bg-[#FFF5F7] border-2 border-[#F2C4D2] rounded-2xl p-4 sm:p-5 space-y-3.5 shadow-xs">
+                      {/* Cabecera y Servicios seleccionados (intercambiado arriba) */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm sm:text-base font-extrabold text-[#8C243B] flex items-center gap-2">
+                            <span className="text-lg">💅</span>
+                            <span>Servicios en tu cita</span>
+                            <span className="bg-[#FCE8EF] text-[#8C243B] text-xs font-black px-2.5 py-0.5 rounded-full border border-[#F2C4D2]">
                               {todosLosServicios.length}
                             </span>
                           </span>
-                          <p className="text-[10px] text-[#7D6870]">
-                            ¿Deseas agregar otro servicio? (ej. Retiro, Pies, etc.)
-                          </p>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => setSelectorExtrasAbierto(!selectorExtrasAbierto)}
-                          className="text-xs font-bold text-[#8C243B] hover:text-[#C74B66] bg-white border border-[#F2C4D2] px-2.5 py-1.5 rounded-xl shadow-2xs hover:shadow-xs transition flex items-center gap-1 cursor-pointer"
-                        >
-                          <span>+ Agregar extra</span>
-                          <IconChevronDown
-                            className={`w-3.5 h-3.5 text-[#8C243B] transition-transform duration-200 ${
-                              selectorExtrasAbierto ? 'rotate-180' : ''
-                            }`}
-                          />
-                        </button>
-                      </div>
 
-                      {/* Chips de servicios ya seleccionados */}
-                      <div className="flex flex-wrap gap-1.5">
-                        {/* Principal */}
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white border border-[#F2C4D2] text-[#2D2529] rounded-xl text-xs font-semibold shadow-2xs">
-                          <span>✨ {servicioSeleccionado?.nombre}</span>
-                          <span className="text-[10px] text-[#7D6870] font-normal">
-                            ({formatearDuracion(servicioSeleccionado?.duracion || 60)} · ${servicioSeleccionado?.precio.toLocaleString('es-CO')})
-                          </span>
-                        </span>
-
-                        {/* Extras */}
-                        {serviciosExtras.map((extra) => (
-                          <span
-                            key={extra.id}
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#FCE8EF] border border-[#F2C4D2] text-[#8C243B] rounded-xl text-xs font-semibold shadow-2xs"
-                          >
-                            <span>+ {extra.nombre}</span>
-                            <span className="text-[10px] text-[#8C243B]/80 font-normal">
-                              (+{extra.duracion} min · +${extra.precio.toLocaleString('es-CO')})
+                        {/* Chips de servicios ya seleccionados (arriba donde antes estaba el botón) */}
+                        <div className="flex flex-wrap gap-2 pt-1">
+                          {/* Principal */}
+                          <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-[#F2C4D2] text-[#2D2529] rounded-xl text-xs sm:text-sm font-semibold shadow-xs">
+                            <span className="text-[#C74B66]">✨</span>
+                            <span className="font-bold">{servicioSeleccionado?.nombre}</span>
+                            <span className="text-xs text-[#7D6870] font-medium bg-[#FFF5F7] px-2 py-0.5 rounded-md border border-[#F2C4D2]/60">
+                              {formatearDuracion(servicioSeleccionado?.duracion || 60)} · ${servicioSeleccionado?.precio.toLocaleString('es-CO')}
                             </span>
-                            <button
-                              type="button"
-                              onClick={() => toggleServicioExtra(extra)}
-                              className="ml-0.5 hover:text-red-700 text-sm font-bold cursor-pointer"
-                              title="Eliminar este servicio extra"
+                          </div>
+
+                          {/* Extras */}
+                          {serviciosExtras.map((extra) => (
+                            <div
+                              key={extra.id}
+                              className="inline-flex items-center gap-2 px-3 py-1.5 bg-[#FCE8EF] border border-[#C74B66]/40 text-[#8C243B] rounded-xl text-xs sm:text-sm font-semibold shadow-xs animate-in fade-in duration-200"
                             >
-                              ✕
-                            </button>
-                          </span>
-                        ))}
+                              <span className="font-bold">+</span>
+                              <span className="font-bold">{extra.nombre}</span>
+                              <span className="text-xs text-[#8C243B]/80 font-medium bg-white/80 px-2 py-0.5 rounded-md border border-[#F2C4D2]">
+                                +{extra.duracion} min · +${extra.precio.toLocaleString('es-CO')}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => toggleServicioExtra(extra)}
+                                className="w-5 h-5 rounded-full bg-white/80 hover:bg-red-50 text-[#8C243B] hover:text-red-700 font-bold flex items-center justify-center text-xs transition cursor-pointer ml-1"
+                                title="Eliminar este servicio"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          ))}
+                        </div>
                       </div>
+
+                      {/* Botón para agregar otro servicio (intercambiado en la posición principal de servicios) */}
+                      <button
+                        type="button"
+                        onClick={() => setSelectorExtrasAbierto(!selectorExtrasAbierto)}
+                        className={`w-full py-3 px-4 rounded-xl font-bold text-sm sm:text-base transition-all flex items-center justify-center gap-2 shadow-xs cursor-pointer border-2 ${
+                          selectorExtrasAbierto
+                            ? 'bg-[#8C243B] text-white border-[#8C243B] shadow-sm'
+                            : 'bg-white hover:bg-[#FDF0F4] text-[#8C243B] border-[#F2C4D2] hover:border-[#8C243B]'
+                        }`}
+                      >
+                        <span className="text-lg leading-none font-extrabold">+</span>
+                        <span className="tracking-wide">Agregar otro servicio</span>
+                        <IconChevronDown
+                          className={`w-4 h-4 transition-transform duration-200 ${
+                            selectorExtrasAbierto ? 'rotate-180 text-white' : 'text-[#8C243B]'
+                          }`}
+                        />
+                      </button>
 
                       {/* Selector desplegable de extras */}
                       <AnimatePresence>
@@ -1541,8 +1549,11 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                             initial={{ opacity: 0, height: 0 }}
                             animate={{ opacity: 1, height: 'auto' }}
                             exit={{ opacity: 0, height: 0 }}
-                            className="bg-white border border-[#F2C4D2] rounded-xl p-1.5 max-h-48 overflow-y-auto space-y-1 shadow-md"
+                            className="bg-white border-2 border-[#F2C4D2] rounded-2xl p-2.5 max-h-60 overflow-y-auto space-y-2 shadow-md"
                           >
+                            <p className="text-xs font-bold text-[#7D6870] px-2 py-1">
+                              Toca para agregar o quitar servicios adicionales a tu cita:
+                            </p>
                             {servicios
                               .filter((s) => s.id !== servicioSeleccionado?.id)
                               .map((s) => {
@@ -1551,27 +1562,27 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                                   <div
                                     key={s.id}
                                     onClick={() => toggleServicioExtra(s)}
-                                    className={`p-2 rounded-lg flex items-center justify-between text-xs cursor-pointer transition ${
+                                    className={`p-3 rounded-xl flex items-center justify-between text-sm cursor-pointer transition border ${
                                       yaAgregado
-                                        ? 'bg-[#FCE8EF] text-[#8C243B] font-bold'
-                                        : 'hover:bg-[#FFF5F7] text-[#2D2529]'
+                                        ? 'bg-[#FCE8EF] border-[#8C243B] text-[#8C243B] font-bold shadow-2xs'
+                                        : 'hover:bg-[#FFF5F7] border-transparent hover:border-[#F2C4D2] text-[#2D2529]'
                                     }`}
                                   >
                                     <div>
-                                      <p className="font-semibold">{s.nombre}</p>
-                                      <p className="text-[10px] text-[#7D6870]">
-                                        {s.categoria} · +{s.duracion} min
+                                      <p className="font-bold text-sm sm:text-base text-[#2D2529]">{s.nombre}</p>
+                                      <p className="text-xs text-[#7D6870]">
+                                        {s.categoria} · {s.duracion} min
                                       </p>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                      <span className="font-mono font-bold text-[#8C243B]">
+                                    <div className="flex items-center gap-3">
+                                      <span className="font-mono font-bold text-sm sm:text-base text-[#8C243B]">
                                         +${s.precio.toLocaleString('es-CO')}
                                       </span>
                                       <span
-                                        className={`w-5 h-5 rounded-full flex items-center justify-center text-xs ${
+                                        className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-sm transition ${
                                           yaAgregado
-                                            ? 'bg-[#8C243B] text-white'
-                                            : 'border border-[#F2C4D2] text-[#7D6870]'
+                                            ? 'bg-[#8C243B] text-white shadow-xs'
+                                            : 'bg-white border-2 border-[#F2C4D2] text-[#7D6870]'
                                         }`}
                                       >
                                         {yaAgregado ? '✓' : '+'}
@@ -1585,21 +1596,22 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                       </AnimatePresence>
 
                       {/* Barra de Total en Vivo */}
-                      <div className="pt-2 border-t border-[#F2C4D2]/60 flex items-center justify-between text-xs">
-                        <span className="text-[#7D6870] font-medium">Total de tu cita:</span>
-                        <div className="flex items-center gap-3 font-bold">
-                          <span className="text-[#2D2529] flex items-center gap-1 font-mono">
-                            <IconClock className="w-3.5 h-3.5 text-[#C74B66]" />
+                      <div className="pt-3 border-t border-[#F2C4D2] flex items-center justify-between text-xs sm:text-sm">
+                        <span className="text-[#7D6870] font-bold text-xs sm:text-sm">
+                          Total estimado de tu cita:
+                        </span>
+                        <div className="flex items-center gap-3 sm:gap-4 font-bold">
+                          <span className="text-[#2D2529] flex items-center gap-1.5 font-mono text-xs sm:text-sm bg-white px-2.5 py-1 rounded-lg border border-[#F2C4D2]">
+                            <IconClock className="w-4 h-4 text-[#C74B66]" />
                             {formatearDuracion(duracionTotal)}
                           </span>
-                          <span className="text-[#8C243B] font-mono text-sm">
+                          <span className="text-[#8C243B] font-mono text-base sm:text-lg font-black">
                             ${precioTotal.toLocaleString('es-CO')} COP
                           </span>
                         </div>
                       </div>
                     </div>
 
-                    {/* Selector opcional de manicurista */}
                     <div className="space-y-1.5 relative">
                       <label className="text-[11px] font-bold uppercase tracking-wider text-[#7D6870] block">
                         Especialista de uñas

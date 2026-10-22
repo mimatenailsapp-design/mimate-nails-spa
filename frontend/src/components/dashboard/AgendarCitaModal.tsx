@@ -269,32 +269,77 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
               </div>
 
               {/* 2B. SERVICIOS EXTRA / ADICIONALES (OPCIONAL) */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="font-bold text-[#7D6870] flex items-center gap-1.5">
-                    <span>Servicios Extra / Adicionales</span>
-                    <span className="text-[10px] font-normal text-[#C74B66] bg-[#FCE8EF] px-1.5 py-0.2 rounded-full">
-                      Opcional
-                    </span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMenuExtrasAbierto(!menuExtrasAbierto);
-                      setMenuManiAbierto(false);
-                      setMenuServicioAbierto(false);
-                      setMenuHoraAbierto(false);
-                    }}
-                    className="text-[11px] font-bold text-[#8C243B] hover:text-[#C74B66] flex items-center gap-1 cursor-pointer transition"
-                  >
-                    <span>+ Añadir extra</span>
-                    <IconChevronDown
-                      className={`w-3.5 h-3.5 transition-transform ${
-                        menuExtrasAbierto ? 'rotate-180' : ''
-                      }`}
-                    />
-                  </button>
+              <div className="bg-[#FFF5F7] border border-[#F2C4D2] rounded-2xl p-3.5 space-y-2.5">
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-[#8C243B] flex items-center gap-1.5">
+                      <span>💅 Servicios en la cita</span>
+                      <span className="text-[10px] font-bold text-[#8C243B] bg-[#FCE8EF] px-2 py-0.5 rounded-full border border-[#F2C4D2]">
+                        {1 + agendarServiciosExtrasIds.length}
+                      </span>
+                    </label>
+                  </div>
+
+                  {/* Chips de extras seleccionados (arriba donde antes estaba el botón) */}
+                  <div className="flex flex-wrap gap-1.5 pt-0.5">
+                    {servicioSeleccionadoForm && (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-white text-[#2D2529] border border-[#F2C4D2] rounded-full text-xs font-semibold shadow-2xs">
+                        <span>✨ {servicioSeleccionadoForm.nombre}</span>
+                        <span className="font-mono text-[11px] text-[#7D6870]">
+                          ({servicioSeleccionadoForm.duracion}m · ${servicioSeleccionadoForm.precio.toLocaleString('es-CO')})
+                        </span>
+                      </span>
+                    )}
+                    {servicios
+                      .filter((s) => agendarServiciosExtrasIds.includes(s.id))
+                      .map((extra) => (
+                        <span
+                          key={extra.id}
+                          className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2] rounded-full text-xs font-semibold shadow-2xs"
+                        >
+                          <span className="font-bold">+ {extra.nombre}</span>
+                          <span className="font-mono text-[10px] text-[#8C243B]/80">
+                            (+{extra.duracion}m · +${extra.precio.toLocaleString('es-CO')})
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setAgendarServiciosExtrasIds((prev) =>
+                                prev.filter((id) => id !== extra.id)
+                              )
+                            }
+                            className="hover:text-red-700 ml-0.5 text-xs font-bold cursor-pointer"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                  </div>
                 </div>
+
+                {/* Botón para agregar otro servicio (intercambiado abajo) */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuExtrasAbierto(!menuExtrasAbierto);
+                    setMenuManiAbierto(false);
+                    setMenuServicioAbierto(false);
+                    setMenuHoraAbierto(false);
+                  }}
+                  className={`w-full py-2.5 px-3 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 shadow-2xs cursor-pointer border ${
+                    menuExtrasAbierto
+                      ? 'bg-[#8C243B] text-white border-[#8C243B]'
+                      : 'bg-white hover:bg-[#FDF0F4] text-[#8C243B] border-[#F2C4D2] hover:border-[#8C243B]'
+                  }`}
+                >
+                  <span className="text-base leading-none font-extrabold">+</span>
+                  <span>Agregar otro servicio</span>
+                  <IconChevronDown
+                    className={`w-3.5 h-3.5 transition-transform ${
+                      menuExtrasAbierto ? 'rotate-180 text-white' : 'text-[#8C243B]'
+                    }`}
+                  />
+                </button>
 
                 <AnimatePresence>
                   {menuExtrasAbierto && (
@@ -302,7 +347,7 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: 'auto' }}
                       exit={{ opacity: 0, height: 0 }}
-                      className="bg-white border border-[#F2C4D2] rounded-2xl shadow-md p-1.5 max-h-48 overflow-y-auto space-y-1"
+                      className="bg-white border border-[#F2C4D2] rounded-xl shadow-md p-1.5 max-h-48 overflow-y-auto space-y-1"
                     >
                       {servicios
                         .filter((s) => s.id !== agendarServicioId)
@@ -318,7 +363,7 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                                     : [...prev, s.id]
                                 );
                               }}
-                              className={`p-2 rounded-xl flex items-center justify-between cursor-pointer transition ${
+                              className={`p-2.5 rounded-lg flex items-center justify-between text-xs cursor-pointer transition ${
                                 yaAgregado
                                   ? 'bg-[#FCE8EF] text-[#8C243B] font-bold'
                                   : 'hover:bg-[#FFF5F7] text-[#2D2529]'
@@ -350,36 +395,6 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                     </motion.div>
                   )}
                 </AnimatePresence>
-
-                {/* Lista de extras seleccionados (chips) */}
-                {agendarServiciosExtrasIds.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 pt-1">
-                    {servicios
-                      .filter((s) => agendarServiciosExtrasIds.includes(s.id))
-                      .map((extra) => (
-                        <span
-                          key={extra.id}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2] rounded-full text-[11px] font-medium shadow-2xs"
-                        >
-                          <span>✨ {extra.nombre}</span>
-                          <span className="font-mono text-[10px] text-[#8C243B]/80">
-                            (+{extra.duracion}m · +${extra.precio.toLocaleString('es-CO')})
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setAgendarServiciosExtrasIds((prev) =>
-                                prev.filter((id) => id !== extra.id)
-                              )
-                            }
-                            className="hover:text-red-700 ml-0.5 text-xs font-bold cursor-pointer"
-                          >
-                            ×
-                          </button>
-                        </span>
-                      ))}
-                  </div>
-                )}
               </div>
 
               {/* 3. FECHA Y HORA (CON MENÚ ELEGANTE DE HORA) */}
