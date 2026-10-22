@@ -982,12 +982,17 @@ app.patch('/api/reservas/:id/aprobar-anticipo', async (req: Request, res: Respon
       return res.status(404).json({ error: 'Reserva no encontrada' });
     }
 
+    const notasPrevias = (reserva.notas || '').trim();
+    const notasActualizadas = notasPrevias
+      ? `${notasPrevias} | [ANTICIPO_APROBADO_MANUAL: ${notas_admin || 'Aprobado desde Visor Web'}]`
+      : (notas_admin || 'Anticipo aprobado manualmente por administrador en Visor Web');
+
     const { data: reservaActualizada, error: errUpd } = await supabase
       .from('reservas')
       .update({
         estado: 'confirmada',
         expiracion_reserva: null,
-        notas: notas_admin || 'Anticipo aprobado manualmente por administrador en Visor Web',
+        notas: notasActualizadas,
       })
       .eq('id', id)
       .select()
@@ -1070,11 +1075,16 @@ app.patch('/api/reservas/:id/rechazar-anticipo', async (req: Request, res: Respo
       return res.status(404).json({ error: 'Reserva no encontrada' });
     }
 
+    const notasPrevias = (reserva.notas || '').trim();
+    const notasActualizadas = notasPrevias
+      ? `${notasPrevias} | [RECHAZADO_ADMIN: ${motivo || 'Comprobante no válido o pago no recibido'}]`
+      : `Rechazado por admin: ${motivo || 'Comprobante no válido o pago no recibido'}`;
+
     const { data: reservaActualizada, error: errUpd } = await supabase
       .from('reservas')
       .update({
         estado: 'cancelada',
-        notas: `Rechazado por admin: ${motivo || 'Comprobante no válido o pago no recibido'}`,
+        notas: notasActualizadas,
       })
       .eq('id', id)
       .select()

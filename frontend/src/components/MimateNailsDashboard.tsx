@@ -154,6 +154,36 @@ function obtenerServicioCita(cita: Reserva): string {
   if (matchSvc && matchSvc[1]) {
     return matchSvc[1].trim();
   }
+
+  // Deducción inteligente si las notas no contienen el tag Servicio:
+  const notasLower = (cita.notas || '').toLowerCase();
+  const serviciosConocidos = [
+    'semi manos y pies', 'manos y pies', 'semi pies', 'semipermanente',
+    'pies hombre', 'manos hombre', 'semi hombre', 'base rubber', 'press on',
+    'retoque press', 'dipping', 'retiro acrilico', 'retiro semi', 'retiro',
+    'acrilico', 'barrido', 'retoque', 'pies', 'manos'
+  ];
+  const encontrados = serviciosConocidos.filter((nombre) => notasLower.includes(nombre));
+  if (encontrados.length > 0) {
+    return encontrados.map((e) => e.charAt(0).toUpperCase() + e.slice(1)).join(' + ');
+  }
+
+  // Deducción por valor monetario si las notas fueron formateadas externamente
+  const v = Number(cita.valor_total || 0);
+  if (v === 103000) return 'Manos y pies + Semi hombre + Semipermanente';
+  if (v === 90000) return 'Acrilico';
+  if (v === 75000) return 'Semi Manos y Pies';
+  if (v === 65000) return 'Press on';
+  if (v === 55000) return 'Base Rubber';
+  if (v === 50000) return 'Retoque press';
+  if (v === 43000) return 'Semipermanente';
+  if (v === 38000) return 'Semi pies';
+  if (v === 35000) return 'Manos y pies';
+  if (v === 25000) return 'Semi hombre';
+  if (v === 20000) return 'Pies';
+  if (v === 16000) return 'Manos';
+  if (v === 14000) return 'Manos hombre';
+
   return 'Servicio de Uñas';
 }
 
@@ -1561,20 +1591,32 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       };
     });
 
-    // Desglose por servicio en este período (solo citas activas y evitando colisiones de nombres como 'Pies' vs 'Pies hombre')
+    // Desglose por servicio en este período con soporte para multisservicios ('Servicio A + Servicio B')
+    const normalizar = (t: string) =>
+      t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+
     const porServicio = servicios.map((s) => {
+      const sNombreNorm = normalizar(s.nombre);
+
       const citasSvc = activas.filter((r) => {
         const svcStr = obtenerServicioCita(r);
         if (svcStr && svcStr !== 'Servicio de Uñas' && svcStr !== 'Turno Bloqueado') {
-          const sNombreLower = s.nombre.trim().toLowerCase();
-          const partes = svcStr.toLowerCase().split(/\s*(?:\+|\,|\/| y | e )\s*/).map((p) => p.trim());
-          return partes.includes(sNombreLower) || svcStr.toLowerCase().trim() === sNombreLower;
+          const partes = svcStr.split(/\s*(?:\+|\,|\/| y | e )\s*/).map((p) => normalizar(p));
+          return partes.includes(sNombreNorm) || normalizar(svcStr) === sNombreNorm;
         }
-        return (r.notas || '').toLowerCase().includes(s.nombre.toLowerCase());
+        const notasNorm = normalizar(r.notas || '');
+        return notasNorm.includes(sNombreNorm);
       });
 
-      const ingresosSvc = citasSvc
-        .reduce((sum, r) => sum + Number(r.valor_total || s.precio), 0);
+      // Si es parte de una cita con múltiples servicios, aporta el precio unitario del servicio
+      const ingresosSvc = citasSvc.reduce((sum, r) => {
+        const svcStr = obtenerServicioCita(r);
+        const esMultiples = svcStr.includes('+');
+        if (esMultiples) {
+          return sum + Number(s.precio || 0);
+        }
+        return sum + Number(r.valor_total || s.precio || 0);
+      }, 0);
 
       return {
         servicio: s,
