@@ -125,7 +125,7 @@ export const ConfigAnticipoModal: React.FC<ConfigAnticipoModalProps> = ({
                   </p>
                   <p className="text-[11px] text-[#7D6870] leading-snug">
                     {configAnticipo.exigeAnticipo
-                      ? `Activado: Se pedirá abono fijo de $${(configAnticipo.montoAnticipoFijo || configAnticipo.porcentajeAnticipo || 20000).toLocaleString('es-CO')} y ventana de 60 min.`
+                      ? `Activado: Se pedirá abono fijo de $${(configAnticipo.montoAnticipoFijo || configAnticipo.porcentajeAnticipo || 20000).toLocaleString('es-CO')} y ventana de 30 min.`
                       : `Desactivado: Citas directas pagaderas en el spa (excepto citas para Diciembre, que siempre exigen el abono de $${(configAnticipo.montoAnticipoFijo || configAnticipo.porcentajeAnticipo || 20000).toLocaleString('es-CO')}).`}
                   </p>
                 </div>
@@ -245,7 +245,7 @@ export const ConfigAnticipoModal: React.FC<ConfigAnticipoModalProps> = ({
               </div>
 
               <p className="text-[11px] text-[#7D6870] leading-snug bg-slate-50 p-3 rounded-xl border border-slate-200">
-                ℹ️ <strong>Cómo funciona:</strong> Cuando aplica anticipo (switch activado o cita en el mes de <strong>Diciembre</strong>), las clientas verán el abono fijo de ${(configAnticipo.montoAnticipoFijo || configAnticipo.porcentajeAnticipo || 20000).toLocaleString('es-CO')} (o el total del servicio si este cuesta menos que el abono) y tendrán 60 minutos para transferir y enviar el soporte por WhatsApp.
+                ℹ️ <strong>Cómo funciona:</strong> Cuando aplica anticipo (switch activado o cita en el mes de <strong>Diciembre</strong>), las clientas verán el abono fijo de ${(configAnticipo.montoAnticipoFijo || configAnticipo.porcentajeAnticipo || 20000).toLocaleString('es-CO')} (o el total del servicio si este cuesta menos que el abono) y tendrán 30 minutos para transferir y enviar el soporte por WhatsApp.
               </p>
 
               {/* BOTONES */}

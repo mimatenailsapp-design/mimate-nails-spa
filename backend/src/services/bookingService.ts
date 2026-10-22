@@ -303,7 +303,7 @@ export class BookingService {
       esConfirmadaDirecta = porcentaje === 0;
     }
 
-    const expiracion = esConfirmadaDirecta ? null : new Date(Date.now() + 15 * 60 * 1000).toISOString();
+    const expiracion = esConfirmadaDirecta ? null : new Date(Date.now() + 30 * 60 * 1000).toISOString();
     const estado = esConfirmadaDirecta ? 'confirmada' : 'pendiente_pago';
 
     const { data, error } = await supabase
@@ -379,7 +379,7 @@ export class BookingService {
   }
 
   /**
-   * Libera reservas pendientes cuyo tiempo de pago superó el límite establecido (60 min)
+   * Libera reservas pendientes cuyo tiempo de pago superó el límite establecido (30 min)
    */
   static async liberarReservasExpiradas() {
     const ahora = new Date().toISOString();

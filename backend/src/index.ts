@@ -1671,11 +1671,11 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
       const anticipoFaltante = Math.max(0, anticipoTotalParaEsteTurno - abonoPrevioReconocido);
 
       if (anticipoFaltante > 0) {
-        // La nueva cita exige anticipo que no está cubierto: queda pendiente de pago (60 min)
+        // La nueva cita exige anticipo que no está cubierto: queda pendiente de pago (30 min)
         anticipoCalculado = anticipoFaltante;
         saldoRestante = Math.max(0, numPrecio - abonoPrevioReconocido - anticipoFaltante);
         estadoInicial = 'pendiente_pago';
-        expiracionReserva = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+        expiracionReserva = new Date(Date.now() + 30 * 60 * 1000).toISOString();
         esPreReserva = true;
       } else {
         // No hay anticipo faltante: se confirma de inmediato
@@ -1690,7 +1690,7 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
       anticipoCalculado = anticipoTotalParaEsteTurno;
       saldoRestante = Math.max(0, numPrecio - anticipoCalculado);
       estadoInicial = exigeAnticipo ? 'pendiente_pago' : 'confirmada';
-      expiracionReserva = exigeAnticipo ? new Date(Date.now() + 60 * 60 * 1000).toISOString() : null;
+      expiracionReserva = exigeAnticipo ? new Date(Date.now() + 30 * 60 * 1000).toISOString() : null;
       esPreReserva = exigeAnticipo;
     }
 
@@ -1801,8 +1801,8 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
         `📲 *Nequi:* ${complejo.nequi_numero || '321 961 0896'}\n` +
         `🏦 *Bancolombia:* ${complejo.daviplata_numero || 'Ahorros 245-000123-88'}\n` +
         `👤 *Titular:* ${complejo.titular_cuenta || 'JL Mímate Nails Spa'}\n\n` +
-        `⏳ *TIEMPO LÍMITE (60 MINUTOS):*\n` +
-        `Para asegurar tu cupo en temporada de diciembre, por favor transfiere el abono de *${anticipoFmt}* y *envía el comprobante por este chat* dentro de los próximos 60 minutos.\n\n` +
+        `⏳ *TIEMPO LÍMITE (30 MINUTOS):*\n` +
+        `Para asegurar tu cupo en temporada de diciembre, por favor transfiere el abono de *${anticipoFmt}* y *envía el comprobante por este chat* dentro de los próximos 30 minutos.\n\n` +
         `¡Quedamos atentas a tu comprobante reina! 💕🌸`;
     } else if (esReagendamiento) {
       const detalleServicioInfo = servicioPrevioNombre && servicioPrevioNombre.toLowerCase() !== String(servicio_nombre).toLowerCase()
@@ -1858,8 +1858,8 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
         `📲 *Nequi:* ${complejo.nequi_numero || '321 961 0896'}\n` +
         `🏦 *Bancolombia:* ${complejo.daviplata_numero || 'Ahorros 245-000123-88'}\n` +
         `👤 *Titular:* ${complejo.titular_cuenta || 'JL Mímate Nails Spa'}\n\n` +
-        `⏳ *TIEMPO LÍMITE (60 MINUTOS):*\n` +
-        `Para asegurar tu cupo definitivo, por favor transfiere ${saldoRestante === 0 ? `el valor total de *${anticipoFmt}*` : `el abono de *${anticipoFmt}*`} y *envía la foto del comprobante por este mismo chat* dentro de los próximos 60 minutos.\n\n` +
+        `⏳ *TIEMPO LÍMITE (30 MINUTOS):*\n` +
+        `Para asegurar tu cupo definitivo, por favor transfiere ${saldoRestante === 0 ? `el valor total de *${anticipoFmt}*` : `el abono de *${anticipoFmt}*`} y *envía la foto del comprobante por este mismo chat* dentro de los próximos 30 minutos.\n\n` +
         `Pasado este tiempo, el espacio se liberará automáticamente para otra clienta.\n\n` +
         `¡Quedamos atentas a tu comprobante reina! 💕🌸`;
     } else {

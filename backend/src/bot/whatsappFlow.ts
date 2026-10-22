@@ -1296,7 +1296,7 @@ export class WhatsAppFlow {
   /**
    * Procesa la recepción de comprobantes de anticipo enviados por WhatsApp (foto/captura)
    * Verifica con IA (Gemini Vision) que sea un soporte bancario auténtico,
-   * pausa el temporizador de 60 minutos para proteger el cupo y notifica al administrador.
+   * pausa el temporizador de 30 minutos para proteger el cupo y notifica al administrador.
    */
   private static async manejarRecepcionComprobante(
     telefono: string,
@@ -1406,7 +1406,7 @@ export class WhatsAppFlow {
         });
         const anticipoFmt = '$' + Number(anticipoRequerido).toLocaleString('es-CO');
 
-        let tiempoRestanteMsg = 'tienes hasta 60 minutos desde tu pre-reserva antes de que el turno se libere automáticamente';
+        let tiempoRestanteMsg = 'tienes hasta 30 minutos desde tu pre-reserva antes de que el turno se libere automáticamente';
         if (reservaTarget.expiracion_reserva) {
           const expMs = new Date(reservaTarget.expiracion_reserva).getTime();
           const diffMin = Math.round((expMs - Date.now()) / (1000 * 60));
@@ -1469,7 +1469,7 @@ export class WhatsAppFlow {
         return {
           texto: `📸 *¡Comprobante recibido en revisión especial!* ⏳\n\n` +
             `Detectamos que el soporte de pago enviado presenta un formato o aspecto visual que requiere validación manual por parte del equipo del spa (${indicios}).\n\n` +
-            `🔒 *¡Tu turno está asegurado y protegido!* El límite de 1 hora ha sido pausado. Una administradora revisará directamente la cuenta bancaria antes de confirmar. Te notificaremos en breves minutos 💕💅.`,
+            `🔒 *¡Tu turno está asegurado y protegido!* El límite de 30 minutos ha sido pausado. Una administradora revisará directamente la cuenta bancaria antes de confirmar. Te notificaremos en breves minutos 💕💅. `,
         };
       }
 
@@ -1612,7 +1612,7 @@ export class WhatsAppFlow {
           month: '2-digit',
         });
 
-        let tiempoRestanteMsg = 'tienes 60 minutos desde tu pre-reserva para enviar el comprobante';
+        let tiempoRestanteMsg = 'tienes 30 minutos desde tu pre-reserva para enviar el comprobante';
         if (reservaTarget.expiracion_reserva) {
           const expMs = new Date(reservaTarget.expiracion_reserva).getTime();
           const diffMin = Math.round((expMs - Date.now()) / (1000 * 60));

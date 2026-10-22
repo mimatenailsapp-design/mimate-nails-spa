@@ -2026,7 +2026,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                                     <span>🎄</span>
                                     <span>
                                       {abono === 0
-                                        ? 'Temporada de Diciembre: Como tu cita previa no tenía abono, se requiere transferir el anticipo para apartar tu turno en diciembre (60 min).'
+                                        ? 'Temporada de Diciembre: Como tu cita previa no tenía abono, se requiere transferir el anticipo para apartar tu turno en diciembre (30 min).'
                                         : `Temporada de Diciembre: Se reconoce tu abono previo de $${abono.toLocaleString('es-CO')}. Para tu cita de diciembre debes transferir la diferencia de $${anticipoFaltante.toLocaleString('es-CO')}.`}
                                     </span>
                                   </div>
@@ -2064,7 +2064,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                                   <div className="flex items-center justify-between text-[#8C243B] font-bold text-[11px]">
                                     <span>Cuentas oficiales para el abono:</span>
                                     <span className="text-[10px] bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full border border-amber-300">
-                                      Ventana de 60 min
+                                      Ventana de 30 min
                                     </span>
                                   </div>
                                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] font-mono">
@@ -2078,7 +2078,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                                     </div>
                                   </div>
                                   <p className="text-[10px] text-[#7D6870] italic">
-                                    Titular: <strong>{spaConfig.titularCuenta || 'JL Mímate Nails Spa'}</strong> · Tu nuevo turno se apartará por 60 min mientras envías el comprobante por WhatsApp.
+                                    Titular: <strong>{spaConfig.titularCuenta || 'JL Mímate Nails Spa'}</strong> · Tu nuevo turno se apartará por 30 min mientras envías el comprobante por WhatsApp.
                                   </p>
                                 </div>
                               </div>
@@ -2186,7 +2186,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                         })()}
 
                         <p className="text-[11px] text-[#7D6870] leading-snug">
-                          🔒 Tu turno quedará <strong>pre-apartado por 60 minutos</strong> mientras realizas la transferencia y envías el comprobante a nuestro WhatsApp.
+                          🔒 Tu turno quedará <strong>pre-apartado por 30 minutos</strong> mientras realizas la transferencia y envías el comprobante a nuestro WhatsApp.
                         </p>
                       </div>
                     ) : (
@@ -2222,7 +2222,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                                 const montoFijo = Number(spaConfig.montoAnticipoFijo || spaConfig.porcentajeAnticipo || 20000);
                                 const antTotal = exigeAnticipoEfectivo ? Math.min(prec, montoFijo) : 0;
                                 const faltante = reagendarId ? Math.max(0, antTotal - abono) : antTotal;
-                                if (faltante > 0) return 'Apartando pre-reserva (60 min)...';
+                                if (faltante > 0) return 'Apartando pre-reserva (30 min)...';
                                 return reagendarId ? 'Confirmando reagendamiento...' : 'Confirmando cita...';
                               })()}
                             </span>
@@ -2270,7 +2270,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                     <div className="space-y-1">
                       {reservaConfirmada.esPreReserva && (
                         <div className="inline-flex items-center gap-1 px-3 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300 mb-1">
-                          <span>⏳ {reservaConfirmada.esReagendamiento ? 'Reagendamiento pre-apartado por 60 min' : 'Pre-apartada por 60 minutos'}</span>
+                          <span>⏳ {reservaConfirmada.esReagendamiento ? 'Reagendamiento pre-apartado por 30 min' : 'Pre-apartada por 30 minutos'}</span>
                         </div>
                       )}
                       {!reservaConfirmada.esPreReserva && reservaConfirmada.esReagendamiento && (
@@ -2311,7 +2311,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                             <span>Cuentas oficiales para el abono:</span>
                           </span>
                           <span className="text-[10px] bg-amber-100 text-amber-900 font-bold px-2 py-0.5 rounded-full border border-amber-300">
-                            Límite: 1 hora
+                            Límite: 30 minutos
                           </span>
                         </div>
 
@@ -2337,7 +2337,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                         </div>
 
                         <p className="text-[11px] text-[#7D6870] leading-snug">
-                          📸 <strong>Paso final:</strong> Envía la foto o captura del comprobante al chat de WhatsApp. Nuestro sistema lo verificará para proteger tu turno. Si no se envía en 60 minutos, el espacio se liberará.
+                          📸 <strong>Paso final:</strong> Envía la foto o captura del comprobante al chat de WhatsApp. Nuestro sistema lo verificará para proteger tu turno. Si no se envía en 30 minutos, el espacio se liberará.
                         </p>
                       </div>
                     )}
@@ -2348,8 +2348,8 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                           <span>⏳</span>
                           <span>
                             {(reservaConfirmada.abonoPrevioReconocido || 0) > 0
-                              ? `Se reconoce tu abono previo de $${(reservaConfirmada.abonoPrevioReconocido || 0).toLocaleString('es-CO')}. Para asegurar tu cupo en diciembre, por favor transfiere el anticipo de $${(reservaConfirmada.anticipoRequerido || 0).toLocaleString('es-CO')} en los próximos 60 minutos.`
-                              : `Para asegurar tu cupo en diciembre, por favor transfiere el anticipo de $${(reservaConfirmada.anticipoRequerido || 0).toLocaleString('es-CO')} en los próximos 60 minutos.`}
+                              ? `Se reconoce tu abono previo de $${(reservaConfirmada.abonoPrevioReconocido || 0).toLocaleString('es-CO')}. Para asegurar tu cupo en diciembre, por favor transfiere el anticipo de $${(reservaConfirmada.anticipoRequerido || 0).toLocaleString('es-CO')} en los próximos 30 minutos.`
+                              : `Para asegurar tu cupo en diciembre, por favor transfiere el anticipo de $${(reservaConfirmada.anticipoRequerido || 0).toLocaleString('es-CO')} en los próximos 30 minutos.`}
                           </span>
                         </div>
                       ) : (
@@ -2427,7 +2427,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                           )}
                           <div className="flex justify-between border-b border-[#FCE8EF] pb-1.5 pt-0.5">
                             <span className="text-[#8C243B] font-bold">
-                              Anticipo a transferir (60 min):
+                              Anticipo a transferir (30 min):
                             </span>
                             <span className="font-extrabold text-[#8C243B] font-mono text-xs">
                               ${(reservaConfirmada.anticipoRequerido || 0).toLocaleString('es-CO')}
