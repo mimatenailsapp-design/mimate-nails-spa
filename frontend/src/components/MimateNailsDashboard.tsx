@@ -19,6 +19,7 @@ import {
   IconChevronLeft,
   IconChevronRight,
   IconCalendarEvent,
+  IconCalendarWeek,
   IconCalendarMonth,
   IconSettings,
 } from '@tabler/icons-react';
@@ -416,7 +417,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   const [vistaAgenda, setVistaAgenda] = useState<'dia' | 'semana'>('dia');
 
   // Estado para la pestaña de Métricas (Por Día vs Por Mes)
-  const [modoMetricas, setModoMetricas] = useState<'dia' | 'mes'>('dia');
+  const [modoMetricas, setModoMetricas] = useState<'dia' | 'semana' | 'mes'>('dia');
   const [mesSeleccionado, setMesSeleccionado] = useState<string>(() => {
     const hoy = new Date();
     const y = hoy.getFullYear();
@@ -1525,11 +1526,13 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       }); // formato 'YYYY-MM-DD'
       if (modoMetricas === 'dia') {
         return fechaCita === fechaSeleccionada;
+      } else if (modoMetricas === 'semana') {
+        return diasDeLaSemana.some((d) => d.fechaIso === fechaCita);
       } else {
         return fechaCita.startsWith(mesSeleccionado);
       }
     });
-  }, [reservas, modoMetricas, fechaSeleccionada, mesSeleccionado]);
+  }, [reservas, modoMetricas, fechaSeleccionada, diasDeLaSemana, mesSeleccionado]);
 
   // Métricas financieras calculadas para la Admin según el período seleccionado
   const metricasSpa = useMemo(() => {
@@ -3263,6 +3266,11 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                       Visualizando balance del día:{' '}
                       <strong className="text-[#8C243B] font-semibold">{fechaLegible}</strong>
                     </>
+                  ) : modoMetricas === 'semana' ? (
+                    <>
+                      Visualizando balance de la semana:{' '}
+                      <strong className="text-[#8C243B] font-semibold">{etiquetaSemana}</strong>
+                    </>
                   ) : (
                     <>
                       Visualizando balance mensual consolidado de:{' '}
@@ -3274,7 +3282,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
               {/* CONTROLES DE CAMBIO DE MODO Y NAVEGACIÓN */}
               <div className="flex flex-wrap items-center gap-2.5">
-                {/* Switch de modo: Día vs Mes */}
+                {/* Switch de modo: Día vs Semana vs Mes */}
                 <div className="flex items-center bg-[#FCE8EF] p-1 rounded-2xl border border-[#F2C4D2]">
                   <button
                     onClick={() => setModoMetricas('dia')}
@@ -3286,6 +3294,17 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                   >
                     <IconCalendarEvent className="w-3.5 h-3.5" />
                     <span>Métricas por Día</span>
+                  </button>
+                  <button
+                    onClick={() => setModoMetricas('semana')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs ${
+                      modoMetricas === 'semana'
+                        ? 'bg-[#8C243B] text-white shadow-xs'
+                        : 'text-[#7D6870] hover:text-[#2D2529]'
+                    }`}
+                  >
+                    <IconCalendarWeek className="w-3.5 h-3.5" />
+                    <span>Métricas por Semana</span>
                   </button>
                   <button
                     onClick={() => setModoMetricas('mes')}
@@ -3341,6 +3360,40 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                   </div>
                 )}
 
+                {/* Si está en modo SEMANA: Navegación de Semanas */}
+                {modoMetricas === 'semana' && (
+                  <div className="flex items-center gap-1 bg-[#FFF5F7] p-1 rounded-2xl border border-[#F2C4D2]">
+                    <button
+                      onClick={() => cambiarSemana(-1)}
+                      className="p-1.5 rounded-xl bg-white hover:bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2] transition cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
+                      title="Semana anterior"
+                    >
+                      <IconChevronLeft className="w-3.5 h-3.5 stroke-[2.5]" />
+                    </button>
+                    <button
+                      onClick={() => setFechaSeleccionada(hoyStr)}
+                      className="px-2.5 py-1 rounded-xl text-xs font-bold bg-[#8C243B] text-white shadow-2xs cursor-pointer min-w-[70px] text-center"
+                      title="Volver a la semana actual"
+                    >
+                      Esta Semana
+                    </button>
+                    <button
+                      onClick={() => cambiarSemana(1)}
+                      className="p-1.5 rounded-xl bg-white hover:bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2] transition cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
+                      title="Semana siguiente"
+                    >
+                      <IconChevronRight className="w-3.5 h-3.5 stroke-[2.5]" />
+                    </button>
+                    <input
+                      type="date"
+                      value={fechaSeleccionada}
+                      onChange={(e) => setFechaSeleccionada(e.target.value)}
+                      className="px-2 py-1 bg-white border border-[#F2C4D2] rounded-xl text-xs font-bold text-[#2D2529] outline-none cursor-pointer hover:border-[#8C243B] transition"
+                      title="Seleccionar fecha de la semana"
+                    />
+                  </div>
+                )}
+
                 {/* Si está en modo MES: Navegación de Meses */}
                 {modoMetricas === 'mes' && (
                   <div className="flex items-center gap-1 bg-[#FFF5F7] p-1 rounded-2xl border border-[#F2C4D2]">
@@ -3376,7 +3429,11 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
               <div className="bg-white rounded-2xl p-4 border border-[#F2C4D2] shadow-xs space-y-1">
                 <span className="text-[11px] font-bold text-[#7D6870] uppercase">
-                  {modoMetricas === 'dia' ? 'Ingresos del Día' : 'Ingresos del Mes'}
+                  {modoMetricas === 'dia'
+                    ? 'Ingresos del Día'
+                    : modoMetricas === 'semana'
+                    ? 'Ingresos de la Semana'
+                    : 'Ingresos del Mes'}
                 </span>
                 <p className="text-xl sm:text-2xl font-black font-mono text-[#8C243B]">
                   ${metricasSpa.ingresosTotales.toLocaleString('es-CO')}
@@ -3388,13 +3445,21 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
               <div className="bg-white rounded-2xl p-4 border border-[#F2C4D2] shadow-xs space-y-1">
                 <span className="text-[11px] font-bold text-[#7D6870] uppercase">
-                  {modoMetricas === 'dia' ? 'Citas Agendadas Hoy' : 'Total Citas del Mes'}
+                  {modoMetricas === 'dia'
+                    ? 'Citas Agendadas Hoy'
+                    : modoMetricas === 'semana'
+                    ? 'Citas de la Semana'
+                    : 'Total Citas del Mes'}
                 </span>
                 <p className="text-xl sm:text-2xl font-black font-mono text-[#2D2529]">
                   {metricasSpa.total}
                 </p>
                 <p className="text-[10px] text-[#7D6870]">
-                  {modoMetricas === 'dia' ? `Para el ${fechaLegible}` : `En todo ${nombreMesLegible}`}
+                  {modoMetricas === 'dia'
+                    ? `Para el ${fechaLegible}`
+                    : modoMetricas === 'semana'
+                    ? `Semana: ${etiquetaSemana}`
+                    : `En todo ${nombreMesLegible}`}
                 </p>
               </div>
 
@@ -3414,7 +3479,11 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
               <div className="bg-white rounded-2xl p-4 border border-[#F2C4D2] shadow-xs space-y-1">
                 <span className="text-[11px] font-bold text-[#7D6870] uppercase">
-                  {modoMetricas === 'dia' ? 'Citas Pendientes / Turnos' : 'Efectividad Mensual'}
+                  {modoMetricas === 'dia'
+                    ? 'Citas Pendientes / Turnos'
+                    : modoMetricas === 'semana'
+                    ? 'Efectividad Semanal'
+                    : 'Efectividad Mensual'}
                 </span>
                 <p className="text-xl sm:text-2xl font-black font-mono text-[#C74B66]">
                   {modoMetricas === 'dia' ? metricasSpa.pendientesCount : `${metricasSpa.total - metricasSpa.canceladasCount}`}
@@ -3431,10 +3500,10 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
             <div className="bg-white rounded-2xl border border-[#F2C4D2] shadow-xs overflow-hidden space-y-3 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="font-bold text-sm text-[#2D2529] font-serif">
-                  Rendimiento por Manicurista ({modoMetricas === 'dia' ? 'Día' : 'Mes'})
+                  Rendimiento por Manicurista ({modoMetricas === 'dia' ? 'Día' : modoMetricas === 'semana' ? 'Semana' : 'Mes'})
                 </h3>
                 <span className="text-[11px] text-[#7D6870]">
-                  {modoMetricas === 'dia' ? fechaLegible : nombreMesLegible}
+                  {modoMetricas === 'dia' ? fechaLegible : modoMetricas === 'semana' ? etiquetaSemana : nombreMesLegible}
                 </span>
               </div>
               <div className="overflow-x-auto">
@@ -3484,10 +3553,10 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
             <div className="bg-white rounded-2xl border border-[#F2C4D2] shadow-xs overflow-hidden space-y-3 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="font-bold text-sm text-[#2D2529] font-serif">
-                  Demanda por Servicio de Uñas ({modoMetricas === 'dia' ? 'Día' : 'Mes'})
+                  Demanda por Servicio de Uñas ({modoMetricas === 'dia' ? 'Día' : modoMetricas === 'semana' ? 'Semana' : 'Mes'})
                 </h3>
                 <span className="text-[11px] text-[#7D6870]">
-                  {modoMetricas === 'dia' ? fechaLegible : nombreMesLegible}
+                  {modoMetricas === 'dia' ? fechaLegible : modoMetricas === 'semana' ? etiquetaSemana : nombreMesLegible}
                 </span>
               </div>
               <div className="overflow-x-auto">
