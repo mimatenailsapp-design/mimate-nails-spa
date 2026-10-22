@@ -1572,6 +1572,9 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       };
     }).sort((a, b) => b.cantidad - a.cantidad);
 
+    const totalCitasServicios = porServicio.reduce((sum, s) => sum + s.cantidad, 0);
+    const totalDineroServicios = porServicio.reduce((sum, s) => sum + s.ingresos, 0);
+
     return {
       total,
       confirmadasCount: confirmadas.length,
@@ -1581,6 +1584,8 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       ingresosTotales,
       porManicurista,
       porServicio,
+      totalCitasServicios,
+      totalDineroServicios,
     };
   }, [reservasFiltradasMetricas, canchas, servicios]);
 
@@ -3372,10 +3377,12 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                     </button>
                     <button
                       onClick={() => setFechaSeleccionada(hoyStr)}
-                      className="px-2.5 py-1 rounded-xl text-xs font-bold bg-[#8C243B] text-white shadow-2xs cursor-pointer min-w-[70px] text-center"
-                      title="Volver a la semana actual"
+                      className="px-2.5 py-1 rounded-xl text-xs font-bold bg-[#8C243B] text-white shadow-2xs cursor-pointer min-w-[75px] text-center"
+                      title="Semana activa. Clic para volver a la actual"
                     >
-                      Esta Semana
+                      {diasDeLaSemana.some((d) => d.esHoy)
+                        ? 'Esta Semana'
+                        : `Semana ${diasDeLaSemana[0]?.diaNum} - ${diasDeLaSemana[6]?.diaNum}`}
                     </button>
                     <button
                       onClick={() => cambiarSemana(1)}
@@ -3587,7 +3594,48 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                       </tr>
                     ))}
                   </tbody>
+                  <tfoot className="bg-[#FFF5F7] border-t-2 border-[#F2C4D2] font-bold">
+                    <tr>
+                      <td colSpan={4} className="py-3 px-3 text-[#2D2529] font-bold uppercase text-[11px] tracking-wider">
+                        Total {modoMetricas === 'dia' ? 'del Día' : modoMetricas === 'semana' ? 'de la Semana' : 'del Mes'}
+                      </td>
+                      <td className="py-3 px-3 font-mono font-black text-sm text-[#8C243B]">
+                        {metricasSpa.totalCitasServicios}
+                      </td>
+                      <td className="py-3 px-3 font-mono font-black text-sm text-[#2D2529]">
+                        ${metricasSpa.totalDineroServicios.toLocaleString('es-CO')}
+                      </td>
+                    </tr>
+                  </tfoot>
                 </table>
+              </div>
+
+              {/* Resumen consolidado al pie de la lista */}
+              <div className="bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#8C243B]" />
+                  <span className="font-bold text-[#2D2529]">
+                    Balance Total por Servicios ({modoMetricas === 'dia' ? 'Día' : modoMetricas === 'semana' ? 'Semana' : 'Mes'})
+                  </span>
+                  <span className="text-[#7D6870] text-[11px]">
+                    · {modoMetricas === 'dia' ? fechaLegible : modoMetricas === 'semana' ? etiquetaSemana : nombreMesLegible}
+                  </span>
+                </div>
+                <div className="flex items-center gap-4 sm:gap-6">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[#7D6870] font-medium">Total Citas Agendadas:</span>
+                    <span className="font-mono font-black text-[#8C243B] text-sm sm:text-base">
+                      {metricasSpa.totalCitasServicios} {metricasSpa.totalCitasServicios === 1 ? 'cita' : 'citas'}
+                    </span>
+                  </div>
+                  <span className="text-[#F2C4D2]">|</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[#7D6870] font-medium">Total Dinero Generado:</span>
+                    <span className="font-mono font-black text-[#2D2529] text-sm sm:text-base">
+                      ${metricasSpa.totalDineroServicios.toLocaleString('es-CO')}
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
