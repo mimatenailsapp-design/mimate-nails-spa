@@ -28,7 +28,8 @@ import { BloquearHorarioModal } from './dashboard/BloquearHorarioModal';
 import { ConfigAnticipoModal } from './dashboard/ConfigAnticipoModal';
 import { AgendarCitaModal } from './dashboard/AgendarCitaModal';
 import { ExclusionesBotModal } from './dashboard/ExclusionesBotModal';
-import { DetalleCitaPopover } from './dashboard/DetalleCitaPopover';
+import { DetalleCitaPopover, sumarAdicionalesCita } from './dashboard/DetalleCitaPopover';
+import { ModalAgregarAdicional } from './dashboard/ModalAgregarAdicional';
 
 interface Cancha {
   id: string;
@@ -541,6 +542,107 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   const [modalConfigAnticipoAbierto, setModalConfigAnticipoAbierto] = useState(false);
   const [guardandoConfigAnticipo, setGuardandoConfigAnticipo] = useState(false);
   const [procesandoAccionAnticipo, setProcesandoAccionAnticipo] = useState<string | null>(null);
+
+  // Estado para el modal de añadir servicio adicional (decorados, cristales, diseño extra)
+  const [citaParaAdicional, setCitaParaAdicional] = useState<Reserva | null>(null);
+  const [guardandoAdicional, setGuardandoAdicional] = useState(false);
+
+  const abrirModalAdicional = (cita: Reserva) => {
+    setCitaParaAdicional(cita);
+  };
+
+  const handleGuardarAdicional = async (reservaId: string, monto: number) => {
+    setGuardandoAdicional(true);
+    try {
+      const citaActual = reservas.find((r) => r.id === reservaId);
+      if (!citaActual) throw new Error('Cita no encontrada');
+
+      const nuevoValorTotal = Number(citaActual.valor_total || 0) + monto;
+      const notaExtra = ` | ✨ Adicional: +$${monto.toLocaleString('es-CO')} [ADICIONAL:${monto}]`;
+      const nuevasNotas = (citaActual.notas || '') + notaExtra;
+
+      const { error } = await supabase
+        .from('reservas')
+        .update({
+          valor_total: nuevoValorTotal,
+          notas: nuevasNotas,
+          actualizado_en: new Date().toISOString(),
+        })
+        .eq('id', reservaId);
+
+      if (error) throw error;
+
+      // Actualizar estado local de reservas
+      setReservas((prev) =>
+        prev.map((r) =>
+          r.id === reservaId
+            ? { ...r, valor_total: nuevoValorTotal, notas: nuevasNotas }
+            : r
+        )
+      );
+
+      // Si el popover está abierto con esta misma cita, refrescarlo
+      if (popoverCita && popoverCita.cita.id === reservaId) {
+        setPopoverCita({
+          ...popoverCita,
+          cita: {
+            ...popoverCita.cita,
+            valor_total: nuevoValorTotal,
+            notas: nuevasNotas,
+          },
+        });
+      }
+    } finally {
+      setGuardandoAdicional(false);
+    }
+  };
+
+  const handleEliminarAdicional = async (cita: Reserva) => {
+    if (!window.confirm('¿Deseas remover los adicionales registrados en esta cita y volver al valor base?')) {
+      return;
+    }
+    try {
+      const totalAds = sumarAdicionalesCita(cita.notas);
+      const nuevoValorTotal = Math.max(0, Number(cita.valor_total || 0) - totalAds);
+      const nuevasNotas = (cita.notas || '')
+        .replace(/\s*\|\s*✨\s*Adicional:[^|[]*\[ADICIONAL:\d+\]/gi, '')
+        .replace(/\[ADICIONAL:\d+\]/gi, '')
+        .trim();
+
+      const { error } = await supabase
+        .from('reservas')
+        .update({
+          valor_total: nuevoValorTotal,
+          notas: nuevasNotas,
+          actualizado_en: new Date().toISOString(),
+        })
+        .eq('id', cita.id);
+
+      if (error) throw error;
+
+      setReservas((prev) =>
+        prev.map((r) =>
+          r.id === cita.id
+            ? { ...r, valor_total: nuevoValorTotal, notas: nuevasNotas }
+            : r
+        )
+      );
+
+      if (popoverCita && popoverCita.cita.id === cita.id) {
+        setPopoverCita({
+          ...popoverCita,
+          cita: {
+            ...popoverCita.cita,
+            valor_total: nuevoValorTotal,
+            notas: nuevasNotas,
+          },
+        });
+      }
+    } catch (err: any) {
+      console.error('Error al remover adicional:', err);
+      alert('No se pudo quitar el adicional: ' + err.message);
+    }
+  };
 
   const cargarConfigAnticipo = async () => {
     try {
@@ -1670,7 +1772,8 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
     for (const r of citasActivas) {
       const svcsCita = extraerServiciosDeCita(r);
-      const valorCita = obtenerValorReserva(r);
+      const adic = sumarAdicionalesCita(r.notas);
+      const valorCita = Math.max(0, obtenerValorReserva(r) - adic);
       if (svcsCita.length === 1) {
         const item = mapaServicios.get(svcsCita[0].id);
         if (item) {
@@ -1708,9 +1811,17 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       })
       .sort((a, b) => b.cantidad - a.cantidad || b.ingresos - a.ingresos);
 
+    // Métricas exclusivas para la fila única de "Adicionales"
+    const citasConAdicional = citasActivas.filter((r) => sumarAdicionalesCita(r.notas) > 0);
+    const ingresosAdicionales = citasActivas.reduce((sum, r) => sum + sumarAdicionalesCita(r.notas), 0);
+
+    const adicionalesInfo = {
+      cantidad: citasConAdicional.length,
+      ingresos: ingresosAdicionales,
+    };
 
     const totalCitasServicios = porServicio.reduce((sum, s) => sum + s.cantidad, 0);
-    const totalDineroServicios = porServicio.reduce((sum, s) => sum + s.ingresos, 0);
+    const totalDineroServicios = porServicio.reduce((sum, s) => sum + s.ingresos, 0) + adicionalesInfo.ingresos;
 
     return {
       total,
@@ -1722,6 +1833,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       ingresosCompletados,
       porManicurista,
       porServicio,
+      adicionalesInfo,
       totalCitasServicios,
       totalDineroServicios,
     };
@@ -3777,6 +3889,27 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                         </td>
                       </tr>
                     ))}
+
+                    {/* Fila única para Adicionales (Decorados, cristales, diseño extra) */}
+                    <tr className="bg-amber-50/50 hover:bg-amber-100/50 transition font-medium border-t-2 border-dashed border-amber-200">
+                      <td className="py-2.5 px-3 font-bold text-amber-950 flex items-center gap-1.5">
+                        <span className="text-amber-600">✨</span>
+                        <span>Adicionales</span>
+                      </td>
+                      <td className="py-2.5 px-3 text-amber-900 text-[11px]">
+                        <span className="px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-bold">
+                          Complementos
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3 text-[#7D6870] font-mono">--</td>
+                      <td className="py-2.5 px-3 font-mono text-[#7D6870]">Variable</td>
+                      <td className="py-2.5 px-3 font-mono font-bold text-[#8C243B]">
+                        {metricasSpa.adicionalesInfo.cantidad}
+                      </td>
+                      <td className="py-2.5 px-3 font-mono font-bold text-[#2D2529]">
+                        ${metricasSpa.adicionalesInfo.ingresos.toLocaleString('es-CO')}
+                      </td>
+                    </tr>
                   </tbody>
                   <tfoot className="bg-[#FFF5F7] border-t-2 border-[#F2C4D2] font-bold">
                     <tr>
@@ -4127,6 +4260,19 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
         handleCambiarEstado={handleCambiarEstado}
         procesandoAccionAnticipo={procesandoAccionAnticipo}
         onClose={() => setPopoverCita(null)}
+        onAbrirModalAdicional={abrirModalAdicional}
+        onEliminarAdicional={handleEliminarAdicional}
+      />
+
+      {/* Modal para Añadir Servicio Adicional (Decorados, etc.) */}
+      <ModalAgregarAdicional
+        abierto={citaParaAdicional !== null}
+        onClose={() => setCitaParaAdicional(null)}
+        cita={citaParaAdicional}
+        onGuardar={handleGuardarAdicional}
+        guardando={guardandoAdicional}
+        obtenerNombreClienta={obtenerNombreClienta}
+        obtenerServicioCita={obtenerServicioCita}
       />
 
     </div>

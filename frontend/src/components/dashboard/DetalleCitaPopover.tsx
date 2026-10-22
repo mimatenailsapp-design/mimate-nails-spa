@@ -5,7 +5,27 @@ import {
   IconCheck,
   IconX,
   IconLockOpen,
+  IconPlus,
+  IconTrash,
 } from '@tabler/icons-react';
+
+// Función auxiliar para extraer adicionales de las notas de la cita
+export function extraerAdicionalesCita(notas?: string): number[] {
+  if (!notas) return [];
+  const matches = notas.matchAll(/\[ADICIONAL:(\d+)\]/g);
+  const result: number[] = [];
+  for (const m of matches) {
+    const val = parseInt(m[1], 10);
+    if (!isNaN(val) && val > 0) {
+      result.push(val);
+    }
+  }
+  return result;
+}
+
+export function sumarAdicionalesCita(notas?: string): number {
+  return extraerAdicionalesCita(notas).reduce((acc, curr) => acc + curr, 0);
+}
 
 export interface PopoverCitaData {
   cita: {
@@ -58,6 +78,8 @@ export interface DetalleCitaPopoverProps {
   handleCambiarEstado: (id: string, estado: string) => void;
   procesandoAccionAnticipo: string | null;
   onClose: () => void;
+  onAbrirModalAdicional?: (cita: any) => void;
+  onEliminarAdicional?: (cita: any) => void;
 }
 
 export const DetalleCitaPopover: React.FC<DetalleCitaPopoverProps> = ({
@@ -79,6 +101,8 @@ export const DetalleCitaPopover: React.FC<DetalleCitaPopoverProps> = ({
   handleCambiarEstado,
   procesandoAccionAnticipo,
   onClose,
+  onAbrirModalAdicional,
+  onEliminarAdicional,
 }) => {
   if (!popoverCita) return null;
 
@@ -93,6 +117,7 @@ export const DetalleCitaPopover: React.FC<DetalleCitaPopoverProps> = ({
   const telLimpio = String(cita.clientes?.telefono_wa || '').replace(/\D/g, '');
   const canchaCita = canchas.find((c) => c.id === cita.cancha_id);
   const puedeDesbloquear = esAdmin || (perfilActual?.canchaId === cita.cancha_id);
+  const totalAdicionales = sumarAdicionalesCita(cita.notas);
 
   const anchoPopover = 320;
   const altoAprox = 320;
@@ -194,7 +219,7 @@ export const DetalleCitaPopover: React.FC<DetalleCitaPopoverProps> = ({
           </span>
         </div>
 
-        {/* Detalle del Servicio y Valor */}
+        {/* Detalle del Servicio, Adicionales y Valor */}
         {!esBloqueada && (
           <div className="space-y-1.5 text-xs bg-slate-50/70 p-2.5 rounded-xl border border-slate-200/60">
             <div className="flex items-center justify-between">
@@ -203,12 +228,48 @@ export const DetalleCitaPopover: React.FC<DetalleCitaPopoverProps> = ({
                 {servicioNombre}
               </span>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-[#7D6870]">Valor Total:</span>
+
+            {/* Desglose de Adicional (Opción B) */}
+            {totalAdicionales > 0 && (
+              <div className="flex items-center justify-between bg-amber-50/80 px-2 py-1 rounded-lg border border-amber-200/80">
+                <span className="text-amber-900 font-semibold flex items-center gap-1 text-[11px]">
+                  <span>✨ Adicional</span>
+                  {onEliminarAdicional && cita.estado !== 'cancelada' && (
+                    <button
+                      type="button"
+                      onClick={() => onEliminarAdicional(cita)}
+                      className="text-rose-500 hover:text-rose-700 ml-1 p-0.5 rounded hover:bg-rose-100 transition cursor-pointer"
+                      title="Quitar adicional"
+                    >
+                      <IconTrash className="w-3 h-3" />
+                    </button>
+                  )}
+                </span>
+                <span className="font-black font-mono text-amber-900 text-xs">
+                  +${totalAdicionales.toLocaleString('es-CO')}
+                </span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between pt-1 border-t border-slate-200/60">
+              <span className="text-[#7D6870] font-medium">Valor Total:</span>
               <span className="font-black font-mono text-[#8C243B] text-sm">
                 ${Number(cita.valor_total || 25000).toLocaleString('es-CO')}
               </span>
             </div>
+
+            {/* Botón para Añadir Adicional (Habilitado para todos los perfiles) */}
+            {onAbrirModalAdicional && cita.estado !== 'cancelada' && (
+              <button
+                type="button"
+                onClick={() => onAbrirModalAdicional(cita)}
+                className="w-full mt-1 py-1.5 px-2.5 rounded-xl bg-gradient-to-r from-pink-50 to-rose-50 hover:from-pink-100 hover:to-rose-100 text-[#8C243B] border border-[#F2C4D2] text-[11px] font-bold transition flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer active:scale-95"
+              >
+                <IconPlus className="w-3.5 h-3.5 stroke-[2.5]" />
+                <span>Agregar Adicional</span>
+              </button>
+            )}
+
             {cita.clientes?.telefono_wa && (
               <div className="flex items-center justify-between pt-1 border-t border-slate-200/60">
                 <span className="text-[#7D6870]">Teléfono:</span>
