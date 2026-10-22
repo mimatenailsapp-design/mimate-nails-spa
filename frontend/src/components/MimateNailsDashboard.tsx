@@ -1537,17 +1537,19 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   // Métricas financieras calculadas para la Admin según el período seleccionado
   const metricasSpa = useMemo(() => {
     const lista = reservasFiltradasMetricas;
-    const total = lista.length;
-    const confirmadas = lista.filter((r) => r.estado === 'confirmada' || r.estado === 'completada');
-    const completadas = lista.filter((r) => r.estado === 'completada');
     const canceladas = lista.filter((r) => r.estado === 'cancelada');
-    const pendientes = lista.filter((r) => r.estado === 'pendiente_pago' || r.estado === 'confirmada');
+    const activas = lista.filter((r) => r.estado !== 'cancelada');
+
+    const total = activas.length;
+    const confirmadas = activas.filter((r) => r.estado === 'confirmada' || r.estado === 'completada');
+    const completadas = activas.filter((r) => r.estado === 'completada');
+    const pendientes = activas.filter((r) => r.estado === 'pendiente_pago' || r.estado === 'confirmada');
 
     const ingresosTotales = confirmadas.reduce((sum, r) => sum + Number(r.valor_total || 0), 0);
 
-    // Desglose por manicurista en este período
+    // Desglose por manicurista en este período (solo citas activas)
     const porManicurista = canchas.map((c) => {
-      const citasMani = lista.filter((r) => r.cancha_id === c.id);
+      const citasMani = activas.filter((r) => r.cancha_id === c.id);
       const confirmadasMani = citasMani.filter((r) => r.estado === 'confirmada' || r.estado === 'completada');
       const completadasMani = citasMani.filter((r) => r.estado === 'completada');
       const recaudado = confirmadasMani.reduce((sum, r) => sum + Number(r.valor_total || 0), 0);
@@ -1559,12 +1561,21 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       };
     });
 
-    // Desglose por servicio en este período
+    // Desglose por servicio en este período (solo citas activas y evitando colisiones de nombres como 'Pies' vs 'Pies hombre')
     const porServicio = servicios.map((s) => {
-      const citasSvc = lista.filter((r) => (r.notas || '').includes(s.nombre));
+      const citasSvc = activas.filter((r) => {
+        const svcStr = obtenerServicioCita(r);
+        if (svcStr && svcStr !== 'Servicio de Uñas' && svcStr !== 'Turno Bloqueado') {
+          const sNombreLower = s.nombre.trim().toLowerCase();
+          const partes = svcStr.toLowerCase().split(/\s*(?:\+|\,|\/| y | e )\s*/).map((p) => p.trim());
+          return partes.includes(sNombreLower) || svcStr.toLowerCase().trim() === sNombreLower;
+        }
+        return (r.notas || '').toLowerCase().includes(s.nombre.toLowerCase());
+      });
+
       const ingresosSvc = citasSvc
-        .filter((r) => r.estado !== 'cancelada')
         .reduce((sum, r) => sum + Number(r.valor_total || s.precio), 0);
+
       return {
         servicio: s,
         cantidad: citasSvc.length,
@@ -3493,7 +3504,9 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                     : 'Efectividad Mensual'}
                 </span>
                 <p className="text-xl sm:text-2xl font-black font-mono text-[#C74B66]">
-                  {modoMetricas === 'dia' ? metricasSpa.pendientesCount : `${metricasSpa.total - metricasSpa.canceladasCount}`}
+                  {modoMetricas === 'dia'
+                    ? metricasSpa.pendientesCount
+                    : `${(metricasSpa.total + metricasSpa.canceladasCount) > 0 ? Math.round((metricasSpa.total / (metricasSpa.total + metricasSpa.canceladasCount)) * 100) : 100}%`}
                 </p>
                 <p className="text-[10px] text-[#7D6870]">
                   {metricasSpa.canceladasCount > 0
