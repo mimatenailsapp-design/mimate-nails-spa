@@ -1208,42 +1208,50 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
             </p>
           </div>
 
-          <div className="flex items-center justify-center gap-4 sm:gap-7 overflow-x-auto pb-2 pt-1">
+          <div className="flex items-center justify-center gap-3.5 sm:gap-7 overflow-x-auto pb-2 pt-1">
             {empleadas.map((emp) => {
               const foto = emp.foto || FOTOS_EQUIPO_MIMATE[emp.nombre.toLowerCase()];
+              const estaSeleccionada = empleadaId === emp.id;
               return (
                 <div
                   key={emp.id}
                   onClick={() => {
                     setEmpleadaId(emp.id);
                   }}
-                  className="text-center w-24 shrink-0 space-y-2 group cursor-pointer transition-transform hover:-translate-y-1"
+                  className="text-center w-20 sm:w-24 shrink-0 space-y-1.5 group cursor-pointer transition-transform hover:-translate-y-1"
                 >
-                  <div className="relative w-18 h-18 sm:w-20 sm:h-20 mx-auto rounded-full bg-gradient-to-tr from-[#C74B66] via-[#F2C4D2] to-[#FFF5F7] p-0.5 shadow-md group-hover:shadow-lg transition">
-                    <div className="w-full h-full bg-white rounded-full overflow-hidden flex items-center justify-center border-2 border-white">
+                  <div
+                    className={`relative w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-full p-0.5 shadow-md group-hover:shadow-lg transition aspect-square shrink-0 ${
+                      estaSeleccionada
+                        ? 'bg-[#8C243B] ring-2 ring-[#8C243B] ring-offset-2'
+                        : 'bg-gradient-to-tr from-[#C74B66] via-[#F2C4D2] to-[#FFF5F7]'
+                    }`}
+                  >
+                    <div className="w-full h-full bg-white rounded-full overflow-hidden flex items-center justify-center border-2 border-white aspect-square">
                       {foto ? (
                         <img
                           src={foto}
                           alt={emp.nombre}
-                          className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                          className="w-full h-full object-cover object-center aspect-square group-hover:scale-105 transition duration-300"
                         />
                       ) : (
-                        <div className="w-full h-full bg-[#FFF5F7] flex flex-col items-center justify-center text-[#8C243B] font-bold">
+                        <div className="w-full h-full bg-[#FFF5F7] flex flex-col items-center justify-center text-[#8C243B] font-bold aspect-square">
                           <span className="text-xl">💅</span>
                           <span className="text-[10px] text-[#7D6870] font-semibold">{emp.nombre}</span>
                         </div>
                       )}
                     </div>
-                    <span className="absolute bottom-0 right-0 w-5 h-5 rounded-full bg-white border border-[#F2C4D2] shadow-2xs flex items-center justify-center text-[10px]">
+                    <span className="absolute bottom-0 right-0 w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-white border border-[#F2C4D2] shadow-2xs flex items-center justify-center text-[9px] sm:text-[10px]">
                       ✨
                     </span>
                   </div>
                   <div>
-                    <span className="text-xs sm:text-sm font-bold text-[#2D2529] group-hover:text-[#8C243B] block leading-tight transition">
+                    <span
+                      className={`text-xs sm:text-sm font-bold block leading-tight transition ${
+                        estaSeleccionada ? 'text-[#8C243B]' : 'text-[#2D2529] group-hover:text-[#8C243B]'
+                      }`}
+                    >
                       {emp.nombre}
-                    </span>
-                    <span className="text-[10px] font-medium text-[#C74B66] block mt-0.5">
-                      {emp.nombre === 'Lili' ? 'Máster Nails' : 'Especialista'}
                     </span>
                   </div>
                 </div>
