@@ -3911,19 +3911,6 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                       </td>
                     </tr>
                   </tbody>
-                  <tfoot className="bg-[#FFF5F7] border-t-2 border-[#F2C4D2] font-bold">
-                    <tr>
-                      <td colSpan={4} className="py-3 px-3 text-[#2D2529] font-bold uppercase text-[11px] tracking-wider">
-                        Total {modoMetricas === 'dia' ? 'del Día' : modoMetricas === 'semana' ? 'de la Semana' : 'del Mes'}
-                      </td>
-                      <td className="py-3 px-3 font-mono font-black text-sm text-[#8C243B]">
-                        {metricasSpa.totalCitasServicios}
-                      </td>
-                      <td className="py-3 px-3 font-mono font-black text-sm text-[#2D2529]">
-                        ${metricasSpa.totalDineroServicios.toLocaleString('es-CO')}
-                      </td>
-                    </tr>
-                  </tfoot>
                 </table>
               </div>
 
