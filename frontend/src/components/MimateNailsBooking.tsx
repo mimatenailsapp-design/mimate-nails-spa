@@ -250,6 +250,41 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
   const [modalAbierto, setModalAbierto] = useState(false);
   const [paso, setPaso] = useState<1 | 2 | 3>(1);
   const [servicioSeleccionado, setServicioSeleccionado] = useState<Servicio | null>(null);
+  const [serviciosExtras, setServiciosExtras] = useState<Servicio[]>([]);
+  const [selectorExtrasAbierto, setSelectorExtrasAbierto] = useState(false);
+
+  // Lista combinada de todos los servicios incluidos en la cita
+  const todosLosServicios = useMemo(() => {
+    if (!servicioSeleccionado) return [];
+    return [servicioSeleccionado, ...serviciosExtras];
+  }, [servicioSeleccionado, serviciosExtras]);
+
+  // Duración total combinada (minutos)
+  const duracionTotal = useMemo(() => {
+    return todosLosServicios.reduce((acc, s) => acc + (s.duracion || 60), 0);
+  }, [todosLosServicios]);
+
+  // Precio total combinado (COP)
+  const precioTotal = useMemo(() => {
+    return todosLosServicios.reduce((acc, s) => acc + (s.precio || 0), 0);
+  }, [todosLosServicios]);
+
+  // Nombre de servicios combinados (ej. "Manos + Pies")
+  const nombreServiciosCombinados = useMemo(() => {
+    return todosLosServicios.map((s) => s.nombre).join(' + ');
+  }, [todosLosServicios]);
+
+  const toggleServicioExtra = (s: Servicio) => {
+    setServiciosExtras((prev) => {
+      const yaEsta = prev.some((x) => x.id === s.id);
+      if (yaEsta) {
+        return prev.filter((x) => x.id !== s.id);
+      } else {
+        return [...prev, s];
+      }
+    });
+    setHoraSeleccionada(null);
+  };
   const [faqAbierto, setFaqAbierto] = useState<number | null>(null);
 
   // Formulario de reserva
@@ -880,7 +915,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
         const esReag = Boolean(data.esReagendamiento || reagendarId);
         const abonoPrev = Number(data.abonoPrevio ?? citaPreviaInfo?.abonoPrevio ?? 0);
         const montoFijo = Number(data.montoAnticipoFijo ?? spaConfig.montoAnticipoFijo ?? data.porcentajeAnticipo ?? spaConfig.porcentajeAnticipo ?? 20000);
-        const antTotalParaTurno = exigeAnticipoEfectivo ? Math.min(servicioSeleccionado.precio, montoFijo) : 0;
+        const antTotalParaTurno = exigeAnticipoEfectivo ? Math.min(precioTotal, montoFijo) : 0;
         const antFaltanteCalc = esReag ? Math.max(0, antTotalParaTurno - abonoPrev) : antTotalParaTurno;
 
         const antReq = typeof data.anticipoRequerido === 'number' ? data.anticipoRequerido : antFaltanteCalc;
@@ -942,15 +977,15 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
 
         const empAsignada = empleadas.find((e) => e.id === empleadaId) || empleadas[0];
         const dInicio = new Date(`${fecha}T${horaSeleccionada}:00-05:00`);
-        const dFin = new Date(dInicio.getTime() + (Number(servicioSeleccionado.duracion) || 60) * 60 * 1000);
+        const dFin = new Date(dInicio.getTime() + (Number(duracionTotal) || 60) * 60 * 1000);
 
         const esReag = Boolean(reagendarId);
         const abonoPrev = Number(citaPreviaInfo?.abonoPrevio || 0);
         const montoFijoFallback = Number(spaConfig.montoAnticipoFijo || spaConfig.porcentajeAnticipo || 20000);
-        const antTotalFallback = exigeAnticipoEfectivo ? Math.min(servicioSeleccionado.precio, montoFijoFallback) : 0;
+        const antTotalFallback = exigeAnticipoEfectivo ? Math.min(precioTotal, montoFijoFallback) : 0;
         const antReqFallback = esReag ? Math.max(0, antTotalFallback - abonoPrev) : antTotalFallback;
         const esPreFallback = antReqFallback > 0;
-        const salRest = Math.max(0, servicioSeleccionado.precio - abonoPrev - antReqFallback);
+        const salRest = Math.max(0, precioTotal - abonoPrev - antReqFallback);
 
         if (empAsignada && clienteId) {
           await supabase.from('reservas').insert({
@@ -958,11 +993,11 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
             cliente_id: clienteId,
             fecha_inicio: dInicio.toISOString(),
             fecha_fin: dFin.toISOString(),
-            valor_total: servicioSeleccionado.precio,
+            valor_total: precioTotal,
             valor_anticipo_requerido: antReqFallback,
             estado: esPreFallback ? 'pendiente_pago' : 'confirmada',
             expiracion_reserva: esPreFallback ? new Date(Date.now() + 60 * 60 * 1000).toISOString() : null,
-            notas: `💅 Servicio: ${servicioSeleccionado.nombre} | Clienta: ${nombre.trim()} | ${esReag ? (esPreFallback ? '[CITA_REAGENDADA_PENDIENTE_ANTICIPO]' : '[CITA_REAGENDADA_CONFIRMADA]') : 'Reserva Web JL Mímate Nails'}`,
+            notas: `💅 Servicio: ${nombreServiciosCombinados} | Duración: ${duracionTotal} min | Clienta: ${nombre.trim()} | ${esReag ? (esPreFallback ? '[CITA_REAGENDADA_PENDIENTE_ANTICIPO]' : '[CITA_REAGENDADA_CONFIRMADA]') : 'Reserva Web JL Mímate Nails'}`,
           });
 
           if (reagendarId) {
@@ -1431,8 +1466,133 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                         <span className="italic text-[#C74B66] font-serif font-bold">esperamos?</span>
                       </h2>
                       <p className="text-xs text-[#7D6870]">
-                        {formatearDuracion(servicioSeleccionado?.duracion || 60)} · ${servicioSeleccionado?.precio.toLocaleString('es-CO')} COP
+                        Elige tu especialista, servicios adicionales y fecha deseada 💕
                       </p>
+                    </div>
+
+                    {/* SECCIÓN SERVICIOS EXTRA / ADICIONALES */}
+                    <div className="bg-[#FFF5F7] border border-[#F2C4D2] rounded-2xl p-3.5 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-xs font-bold text-[#8C243B] flex items-center gap-1.5">
+                            <span>💅 Servicios en tu cita</span>
+                            <span className="bg-[#FCE8EF] text-[#8C243B] text-[10px] font-extrabold px-1.5 py-0.2 rounded-full border border-[#F2C4D2]">
+                              {todosLosServicios.length}
+                            </span>
+                          </span>
+                          <p className="text-[10px] text-[#7D6870]">
+                            ¿Deseas agregar otro servicio? (ej. Retiro, Pies, etc.)
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setSelectorExtrasAbierto(!selectorExtrasAbierto)}
+                          className="text-xs font-bold text-[#8C243B] hover:text-[#C74B66] bg-white border border-[#F2C4D2] px-2.5 py-1.5 rounded-xl shadow-2xs hover:shadow-xs transition flex items-center gap-1 cursor-pointer"
+                        >
+                          <span>+ Agregar extra</span>
+                          <IconChevronDown
+                            className={`w-3.5 h-3.5 text-[#8C243B] transition-transform duration-200 ${
+                              selectorExtrasAbierto ? 'rotate-180' : ''
+                            }`}
+                          />
+                        </button>
+                      </div>
+
+                      {/* Chips de servicios ya seleccionados */}
+                      <div className="flex flex-wrap gap-1.5">
+                        {/* Principal */}
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white border border-[#F2C4D2] text-[#2D2529] rounded-xl text-xs font-semibold shadow-2xs">
+                          <span>✨ {servicioSeleccionado?.nombre}</span>
+                          <span className="text-[10px] text-[#7D6870] font-normal">
+                            ({formatearDuracion(servicioSeleccionado?.duracion || 60)} · ${servicioSeleccionado?.precio.toLocaleString('es-CO')})
+                          </span>
+                        </span>
+
+                        {/* Extras */}
+                        {serviciosExtras.map((extra) => (
+                          <span
+                            key={extra.id}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#FCE8EF] border border-[#F2C4D2] text-[#8C243B] rounded-xl text-xs font-semibold shadow-2xs"
+                          >
+                            <span>+ {extra.nombre}</span>
+                            <span className="text-[10px] text-[#8C243B]/80 font-normal">
+                              (+{extra.duracion} min · +${extra.precio.toLocaleString('es-CO')})
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => toggleServicioExtra(extra)}
+                              className="ml-0.5 hover:text-red-700 text-sm font-bold cursor-pointer"
+                              title="Eliminar este servicio extra"
+                            >
+                              ✕
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+
+                      {/* Selector desplegable de extras */}
+                      <AnimatePresence>
+                        {selectorExtrasAbierto && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            className="bg-white border border-[#F2C4D2] rounded-xl p-1.5 max-h-48 overflow-y-auto space-y-1 shadow-md"
+                          >
+                            {servicios
+                              .filter((s) => s.id !== servicioSeleccionado?.id)
+                              .map((s) => {
+                                const yaAgregado = serviciosExtras.some((x) => x.id === s.id);
+                                return (
+                                  <div
+                                    key={s.id}
+                                    onClick={() => toggleServicioExtra(s)}
+                                    className={`p-2 rounded-lg flex items-center justify-between text-xs cursor-pointer transition ${
+                                      yaAgregado
+                                        ? 'bg-[#FCE8EF] text-[#8C243B] font-bold'
+                                        : 'hover:bg-[#FFF5F7] text-[#2D2529]'
+                                    }`}
+                                  >
+                                    <div>
+                                      <p className="font-semibold">{s.nombre}</p>
+                                      <p className="text-[10px] text-[#7D6870]">
+                                        {s.categoria} · +{s.duracion} min
+                                      </p>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-mono font-bold text-[#8C243B]">
+                                        +${s.precio.toLocaleString('es-CO')}
+                                      </span>
+                                      <span
+                                        className={`w-5 h-5 rounded-full flex items-center justify-center text-xs ${
+                                          yaAgregado
+                                            ? 'bg-[#8C243B] text-white'
+                                            : 'border border-[#F2C4D2] text-[#7D6870]'
+                                        }`}
+                                      >
+                                        {yaAgregado ? '✓' : '+'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
+                      {/* Barra de Total en Vivo */}
+                      <div className="pt-2 border-t border-[#F2C4D2]/60 flex items-center justify-between text-xs">
+                        <span className="text-[#7D6870] font-medium">Total de tu cita:</span>
+                        <div className="flex items-center gap-3 font-bold">
+                          <span className="text-[#2D2529] flex items-center gap-1 font-mono">
+                            <IconClock className="w-3.5 h-3.5 text-[#C74B66]" />
+                            {formatearDuracion(duracionTotal)}
+                          </span>
+                          <span className="text-[#8C243B] font-mono text-sm">
+                            ${precioTotal.toLocaleString('es-CO')} COP
+                          </span>
+                        </div>
+                      </div>
                     </div>
 
                     {/* Selector opcional de manicurista */}
@@ -1767,8 +1927,25 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                         <span className="italic text-[#C74B66] font-serif font-bold">datos</span>
                       </h2>
                       <p className="text-xs text-[#7D6870]">
-                        {servicioSeleccionado?.nombre} · {fecha} · {horaSeleccionada}
+                        {nombreServiciosCombinados} · {formatearDuracion(duracionTotal)} · {fecha} · {horaSeleccionada}
                       </p>
+                    </div>
+
+                    {/* Resumen de servicios en Step 2 */}
+                    <div className="bg-[#FFF5F7] border border-[#F2C4D2] rounded-2xl p-3 text-xs space-y-1.5">
+                      <span className="text-[11px] font-bold text-[#8C243B] block">Resumen de tu cita:</span>
+                      <div className="space-y-1">
+                        {todosLosServicios.map((s, idx) => (
+                          <div key={s.id} className="flex justify-between items-center text-[11px] text-[#2D2529]">
+                            <span>{idx === 0 ? '💅' : '✨'} {s.nombre} ({formatearDuracion(s.duracion)})</span>
+                            <span className="font-mono font-semibold">${s.precio.toLocaleString('es-CO')}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="border-t border-[#F2C4D2] pt-1.5 flex justify-between items-center font-bold text-xs">
+                        <span className="text-[#2D2529]">Total ({formatearDuracion(duracionTotal)}):</span>
+                        <span className="text-[#8C243B] font-mono">${precioTotal.toLocaleString('es-CO')} COP</span>
+                      </div>
                     </div>
 
                     <div className="space-y-3">
@@ -1816,7 +1993,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                         </div>
 
                         {(() => {
-                          const prec = servicioSeleccionado?.precio || 0;
+                          const prec = precioTotal;
                           const abono = Number(citaPreviaInfo?.abonoPrevio || 0);
                           const montoFijo = Number(spaConfig.montoAnticipoFijo || spaConfig.porcentajeAnticipo || 20000);
                           const anticipoTotalRequerido = exigeAnticipoEfectivo ? Math.min(prec, montoFijo) : 0;
@@ -1942,7 +2119,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                     ) : exigeAnticipoEfectivo ? (
                       <div className="bg-[#FFF0F4] border border-[#F2C4D2] rounded-2xl p-4 space-y-2.5 text-xs">
                         {(() => {
-                          const prec = servicioSeleccionado?.precio || 0;
+                          const prec = precioTotal;
                           const montoFijo = Number(spaConfig.montoAnticipoFijo || spaConfig.porcentajeAnticipo || 20000);
                           const ant = Math.min(prec, montoFijo);
                           const res = Math.max(0, prec - ant);
@@ -2024,7 +2201,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                             <IconLoader2 className="w-4 h-4 animate-spin" />
                             <span>
                               {(() => {
-                                const prec = servicioSeleccionado?.precio || 0;
+                                const prec = precioTotal;
                                 const abono = Number(citaPreviaInfo?.abonoPrevio || 0);
                                 const montoFijo = Number(spaConfig.montoAnticipoFijo || spaConfig.porcentajeAnticipo || 20000);
                                 const antTotal = exigeAnticipoEfectivo ? Math.min(prec, montoFijo) : 0;
@@ -2037,7 +2214,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                         ) : (
                           <span>
                             {(() => {
-                              const prec = servicioSeleccionado?.precio || 0;
+                              const prec = precioTotal;
                               const abono = Number(citaPreviaInfo?.abonoPrevio || 0);
                               const montoFijo = Number(spaConfig.montoAnticipoFijo || spaConfig.porcentajeAnticipo || 20000);
                               const antTotal = exigeAnticipoEfectivo ? Math.min(prec, montoFijo) : 0;

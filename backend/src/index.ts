@@ -1356,7 +1356,7 @@ app.get('/api/spa/slots', async (req: Request, res: Response) => {
   }
 
   try {
-    const duracion = Math.max(15, Math.min(300, parseInt(String(duracion_minutos || 45), 10)));
+    const duracion = Math.max(15, Math.min(360, parseInt(String(duracion_minutos || 45), 10)));
     const fechaObj = new Date(`${cleanDate}T12:00:00-05:00`);
     const diaSemana = fechaObj.getDay(); // 0 = Domingo
 
@@ -1506,7 +1506,7 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
 
   // Sanitización y normalización defensiva contra XSS y desbordamientos
   cliente_nombre = sanitizeInput(cliente_nombre, 80);
-  servicio_nombre = sanitizeInput(servicio_nombre, 100);
+  servicio_nombre = sanitizeInput(servicio_nombre, 250);
   fecha = sanitizeInput(fecha, 10);
   hora = sanitizeInput(hora, 5);
   cliente_telefono = String(cliente_telefono || '').replace(/\D/g, '').slice(0, 15);

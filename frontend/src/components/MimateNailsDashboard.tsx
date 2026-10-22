@@ -433,6 +433,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   const [modalAgendarAbierto, setModalAgendarAbierto] = useState(false);
   const [agendarManicuristaId, setAgendarManicuristaId] = useState('');
   const [agendarServicioId, setAgendarServicioId] = useState<number>(1);
+  const [agendarServiciosExtrasIds, setAgendarServiciosExtrasIds] = useState<number[]>([]);
   const [agendarFecha, setAgendarFecha] = useState(hoyStr);
   const [agendarHora, setAgendarHora] = useState('09:30');
   const [agendarNombre, setAgendarNombre] = useState('');
@@ -689,6 +690,32 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     return servicios.find((s) => s.id === Number(agendarServicioId)) || servicios[0];
   }, [servicios, agendarServicioId]);
 
+  // Servicios extras seleccionados en el modal de agendar admin
+  const serviciosExtrasForm = useMemo(() => {
+    return servicios.filter((s) => agendarServiciosExtrasIds.includes(s.id));
+  }, [servicios, agendarServiciosExtrasIds]);
+
+  // Duración total combinada (principal + extras)
+  const duracionTotalAdmin = useMemo(() => {
+    const durPrincipal = servicioSeleccionadoForm?.duracion || 45;
+    const durExtras = serviciosExtrasForm.reduce((acc, s) => acc + (s.duracion || 0), 0);
+    return durPrincipal + durExtras;
+  }, [servicioSeleccionadoForm, serviciosExtrasForm]);
+
+  // Precio total combinado (principal + extras)
+  const precioTotalAdmin = useMemo(() => {
+    const prePrincipal = servicioSeleccionadoForm?.precio || 16000;
+    const preExtras = serviciosExtrasForm.reduce((acc, s) => acc + (s.precio || 0), 0);
+    return prePrincipal + preExtras;
+  }, [servicioSeleccionadoForm, serviciosExtrasForm]);
+
+  // Nombre de servicios combinados (ej. "Manos + Pies")
+  const nombreServiciosAdmin = useMemo(() => {
+    if (!servicioSeleccionadoForm) return 'Manos';
+    if (serviciosExtrasForm.length === 0) return servicioSeleccionadoForm.nombre;
+    return [servicioSeleccionadoForm.nombre, ...serviciosExtrasForm.map((s) => s.nombre)].join(' + ');
+  }, [servicioSeleccionadoForm, serviciosExtrasForm]);
+
   // Horas base de opciones de bloqueo calculadas dinámicamente según horario configurado en el spa
   const horasOpcionesBloqueoDinamicas = useMemo(() => {
     return calcularHorasOpcionesBloqueo(configAnticipo.horaApertura, configAnticipo.horaCierre, 30);
@@ -705,7 +732,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
     const aperturaStr = configAnticipo.horaApertura || '08:00';
     const cierreStr = configAnticipo.horaCierre || '19:00';
-    const duracionMinutos = servicioSeleccionadoForm?.duracion || 45;
+    const duracionMinutos = duracionTotalAdmin;
     const horaCierreMs = new Date(`${agendarFecha}T${cierreStr}:00-05:00`).getTime();
     const horaAperturaMs = new Date(`${agendarFecha}T${aperturaStr}:00-05:00`).getTime();
     const ahoraMs = Date.now();
@@ -787,7 +814,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     }
 
     return libres;
-  }, [reservas, agendarFecha, agendarManicuristaId, servicioSeleccionadoForm?.duracion, hoyStr, configAnticipo.horaApertura, configAnticipo.horaCierre]);
+  }, [reservas, agendarFecha, agendarManicuristaId, duracionTotalAdmin, hoyStr, configAnticipo.horaApertura, configAnticipo.horaCierre]);
 
   // Si cambia la manicurista, el servicio o la fecha en el modal de agendar, ajustar a una hora disponible
   useEffect(() => {
@@ -800,7 +827,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
         setAgendarHora('');
       }
     }
-  }, [modalAgendarAbierto, agendarFecha, agendarManicuristaId, servicioSeleccionadoForm?.duracion, horasDisponiblesAgendarAdmin]);
+  }, [modalAgendarAbierto, agendarFecha, agendarManicuristaId, duracionTotalAdmin, horasDisponiblesAgendarAdmin]);
 
   // Horas ya ocupadas o bloqueadas para el modal de Bloquear Horario
   const horasYaOcupadasBloqueo = useMemo(() => {
@@ -1212,6 +1239,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     setAgendarManicuristaId(maniId);
     setAgendarFecha(fecha);
     setAgendarHora(horaInicial || '');
+    setAgendarServiciosExtrasIds([]);
     setAgendarNombre('');
     setAgendarTelefono('');
     setErrorAgendar(null);
@@ -1237,16 +1265,15 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     setGuardandoCita(true);
     setErrorAgendar(null);
 
-    const servicioObj = servicios.find((s) => s.id === Number(agendarServicioId)) || servicios[0];
-
+    
     try {
       const res = await fetch('/api/spa/reservar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          servicio_nombre: servicioObj?.nombre || 'Manos',
-          precio: servicioObj?.precio || 16000,
-          duracion_minutos: servicioObj?.duracion || 60,
+          servicio_nombre: nombreServiciosAdmin,
+          precio: precioTotalAdmin,
+          duracion_minutos: duracionTotalAdmin,
           fecha: agendarFecha,
           hora: agendarHora,
           cancha_id: agendarManicuristaId || undefined,
@@ -3596,6 +3623,10 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
         menuServicioAbierto={menuServicioAbierto}
         setMenuServicioAbierto={setMenuServicioAbierto}
         servicioSeleccionadoForm={servicioSeleccionadoForm}
+        agendarServiciosExtrasIds={agendarServiciosExtrasIds}
+        setAgendarServiciosExtrasIds={setAgendarServiciosExtrasIds}
+        duracionTotalAdmin={duracionTotalAdmin}
+        precioTotalAdmin={precioTotalAdmin}
         agendarFecha={agendarFecha}
         setAgendarFecha={setAgendarFecha}
         agendarHora={agendarHora}

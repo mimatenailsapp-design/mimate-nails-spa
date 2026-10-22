@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   IconX,
@@ -38,6 +38,12 @@ export interface AgendarCitaModalProps {
     duracion: number;
     precio: number;
   };
+  // Servicios extras adicionales
+  agendarServiciosExtrasIds: number[];
+  setAgendarServiciosExtrasIds: React.Dispatch<React.SetStateAction<number[]>>;
+  duracionTotalAdmin: number;
+  precioTotalAdmin: number;
+  // Campos de formulario
   agendarFecha: string;
   setAgendarFecha: (f: string) => void;
   agendarHora: string;
@@ -69,6 +75,10 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
   menuServicioAbierto,
   setMenuServicioAbierto,
   servicioSeleccionadoForm,
+  agendarServiciosExtrasIds,
+  setAgendarServiciosExtrasIds,
+  duracionTotalAdmin,
+  precioTotalAdmin,
   agendarFecha,
   setAgendarFecha,
   agendarHora,
@@ -83,6 +93,8 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
   errorAgendar,
   guardandoCita,
 }) => {
+  const [menuExtrasAbierto, setMenuExtrasAbierto] = useState(false);
+
   return (
     <AnimatePresence>
       {abierto && (
@@ -91,7 +103,7 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="bg-white rounded-3xl max-w-md w-full p-6 border border-[#F2C4D2] shadow-2xl space-y-4"
+            className="bg-white rounded-3xl max-w-md w-full p-6 border border-[#F2C4D2] shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto"
           >
             <div className="flex items-center justify-between border-b border-[#FCE8EF] pb-3">
               <div className="flex items-center gap-2">
@@ -128,6 +140,7 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                     setMenuManiAbierto(!menuManiAbierto);
                     setMenuServicioAbierto(false);
                     setMenuHoraAbierto(false);
+                    setMenuExtrasAbierto(false);
                   }}
                   className="w-full px-3.5 py-2.5 bg-[#FFF5F7] border border-[#F2C4D2] hover:border-[#8C243B] rounded-xl font-bold text-[#2D2529] flex items-center justify-between transition cursor-pointer text-left shadow-2xs"
                 >
@@ -182,10 +195,10 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                 </AnimatePresence>
               </div>
 
-              {/* 2. MENÚ DESPLEGABLE ELEGANTE: SERVICIO DE UÑAS */}
+              {/* 2. MENÚ DESPLEGABLE ELEGANTE: SERVICIO DE UÑAS PRINCIPAL */}
               <div className="relative">
                 <label className="font-bold text-[#7D6870] block mb-1">
-                  Servicio de Uñas
+                  Servicio Principal
                 </label>
                 <button
                   type="button"
@@ -193,6 +206,7 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                     setMenuServicioAbierto(!menuServicioAbierto);
                     setMenuManiAbierto(false);
                     setMenuHoraAbierto(false);
+                    setMenuExtrasAbierto(false);
                   }}
                   className="w-full px-3.5 py-2.5 bg-[#FFF5F7] border border-[#F2C4D2] hover:border-[#8C243B] rounded-xl font-bold text-[#2D2529] flex items-center justify-between transition cursor-pointer text-left shadow-2xs"
                 >
@@ -224,6 +238,8 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                             key={s.id}
                             onClick={() => {
                               setAgendarServicioId(s.id);
+                              // Si el servicio estaba como extra, quitarlo de extras
+                              setAgendarServiciosExtrasIds((prev) => prev.filter((id) => id !== s.id));
                               setMenuServicioAbierto(false);
                             }}
                             className={`p-2 rounded-xl flex items-center justify-between cursor-pointer transition ${
@@ -252,6 +268,120 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                 </AnimatePresence>
               </div>
 
+              {/* 2B. SERVICIOS EXTRA / ADICIONALES (OPCIONAL) */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-[#7D6870] flex items-center gap-1.5">
+                    <span>Servicios Extra / Adicionales</span>
+                    <span className="text-[10px] font-normal text-[#C74B66] bg-[#FCE8EF] px-1.5 py-0.2 rounded-full">
+                      Opcional
+                    </span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuExtrasAbierto(!menuExtrasAbierto);
+                      setMenuManiAbierto(false);
+                      setMenuServicioAbierto(false);
+                      setMenuHoraAbierto(false);
+                    }}
+                    className="text-[11px] font-bold text-[#8C243B] hover:text-[#C74B66] flex items-center gap-1 cursor-pointer transition"
+                  >
+                    <span>+ Añadir extra</span>
+                    <IconChevronDown
+                      className={`w-3.5 h-3.5 transition-transform ${
+                        menuExtrasAbierto ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                <AnimatePresence>
+                  {menuExtrasAbierto && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="bg-white border border-[#F2C4D2] rounded-2xl shadow-md p-1.5 max-h-48 overflow-y-auto space-y-1"
+                    >
+                      {servicios
+                        .filter((s) => s.id !== agendarServicioId)
+                        .map((s) => {
+                          const yaAgregado = agendarServiciosExtrasIds.includes(s.id);
+                          return (
+                            <div
+                              key={s.id}
+                              onClick={() => {
+                                setAgendarServiciosExtrasIds((prev) =>
+                                  yaAgregado
+                                    ? prev.filter((id) => id !== s.id)
+                                    : [...prev, s.id]
+                                );
+                              }}
+                              className={`p-2 rounded-xl flex items-center justify-between cursor-pointer transition ${
+                                yaAgregado
+                                  ? 'bg-[#FCE8EF] text-[#8C243B] font-bold'
+                                  : 'hover:bg-[#FFF5F7] text-[#2D2529]'
+                              }`}
+                            >
+                              <div>
+                                <p className="font-semibold text-xs">{s.nombre}</p>
+                                <p className="text-[10px] text-[#7D6870]">
+                                  {s.categoria} · +{s.duracion} min
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono font-bold text-xs text-[#8C243B]">
+                                  +${s.precio.toLocaleString('es-CO')}
+                                </span>
+                                <span
+                                  className={`w-5 h-5 rounded-full flex items-center justify-center text-xs ${
+                                    yaAgregado
+                                      ? 'bg-[#8C243B] text-white'
+                                      : 'border border-[#F2C4D2] text-[#7D6870]'
+                                  }`}
+                                >
+                                  {yaAgregado ? '✓' : '+'}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Lista de extras seleccionados (chips) */}
+                {agendarServiciosExtrasIds.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {servicios
+                      .filter((s) => agendarServiciosExtrasIds.includes(s.id))
+                      .map((extra) => (
+                        <span
+                          key={extra.id}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2] rounded-full text-[11px] font-medium shadow-2xs"
+                        >
+                          <span>✨ {extra.nombre}</span>
+                          <span className="font-mono text-[10px] text-[#8C243B]/80">
+                            (+{extra.duracion}m · +${extra.precio.toLocaleString('es-CO')})
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setAgendarServiciosExtrasIds((prev) =>
+                                prev.filter((id) => id !== extra.id)
+                              )
+                            }
+                            className="hover:text-red-700 ml-0.5 text-xs font-bold cursor-pointer"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                  </div>
+                )}
+              </div>
+
               {/* 3. FECHA Y HORA (CON MENÚ ELEGANTE DE HORA) */}
               <div className="grid grid-cols-2 gap-2">
                 <div>
@@ -273,6 +403,7 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                       setMenuHoraAbierto(!menuHoraAbierto);
                       setMenuManiAbierto(false);
                       setMenuServicioAbierto(false);
+                      setMenuExtrasAbierto(false);
                     }}
                     className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] hover:border-[#8C243B] rounded-xl font-bold text-[#2D2529] flex items-center justify-between transition cursor-pointer text-left shadow-2xs"
                   >
@@ -297,7 +428,7 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                       >
                         {horasDisponiblesAgendarAdmin.length === 0 ? (
                           <div className="p-2.5 text-center text-xs text-[#8C243B] bg-[#FFF5F7] rounded-xl font-medium">
-                            No hay horarios disponibles para esta fecha (todos están ocupados, bloqueados o ya pasaron).
+                            No hay horarios disponibles para esta fecha con la duración total ({duracionTotalAdmin} min).
                           </div>
                         ) : (
                           horasDisponiblesAgendarAdmin.map((h) => {
@@ -357,6 +488,24 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                 <p className="text-[10px] text-[#7D6870] mt-0.5">
                   Se enviará el voucher de confirmación automáticamente a su WhatsApp.
                 </p>
+              </div>
+
+              {/* 5. RESUMEN EN VIVO TOTAL: TIEMPO Y PRECIO COMBINADO */}
+              <div className="bg-[#FFF5F7] border border-[#F2C4D2] rounded-2xl p-3 flex items-center justify-between text-xs shadow-2xs">
+                <div>
+                  <span className="font-bold text-[#2D2529] block">
+                    {1 + agendarServiciosExtrasIds.length} {1 + agendarServiciosExtrasIds.length === 1 ? 'servicio' : 'servicios seleccionados'}
+                  </span>
+                  <span className="text-[10px] text-[#7D6870]">
+                    Horario: {agendarHora || '--:--'} · {duracionTotalAdmin} min
+                  </span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] text-[#7D6870] block font-medium">Total a cobrar:</span>
+                  <span className="font-mono font-extrabold text-sm text-[#8C243B]">
+                    ${precioTotalAdmin.toLocaleString('es-CO')} COP
+                  </span>
+                </div>
               </div>
 
               {errorAgendar && (
