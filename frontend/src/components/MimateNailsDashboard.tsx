@@ -36,6 +36,7 @@ interface Cancha {
   nombre: string;
   deporte?: string;
   activa: boolean;
+  foto?: string | null;
 }
 
 interface Reserva {
@@ -81,38 +82,47 @@ export interface StaffProfile {
   canchaId?: string;
 }
 
+const FOTOS_EQUIPO_ADMIN: Record<string, string> = {
+  'lili': '/equipo/lili.jpg',
+  'jhoana': '/equipo/jhoana.jpg',
+  'manuela': '/equipo/manuela.jpg',
+  'manicurista 1': '/equipo/lili.jpg',
+  'manicurista 2': '/equipo/jhoana.jpg',
+  'manicurista 3': '/equipo/manuela.jpg',
+};
+
 const PERFILES_SPA_CONFIG: Omit<StaffProfile, 'canchaId'>[] = [
   {
     id: 'admin-m1',
-    canchaNombreMatch: 'Manicurista 1',
-    nombre: 'Administradora (Manicurista 1)',
-    alias: 'Jenny (Admin & Manicurista 1)',
+    canchaNombreMatch: 'Lili',
+    nombre: 'Lili (Administradora)',
+    alias: 'Lili (Admin & Especialista)',
     rol: 'admin',
     pin: '1234',
     descripcion: 'Acceso Total: Supervisión de todas las tablas, métricas de reservas y agendamiento exclusivo.',
-    avatar: '👑',
+    avatar: '/equipo/lili.jpg',
     colorBadge: 'bg-[#FCE8EF] text-[#8C243B] border-[#F2C4D2]',
   },
   {
     id: 'staff-m2',
-    canchaNombreMatch: 'Manicurista 2',
-    nombre: 'Manicurista 2',
-    alias: 'Manicurista 2',
+    canchaNombreMatch: 'Jhoana',
+    nombre: 'Jhoana',
+    alias: 'Jhoana (Especialista)',
     rol: 'manicurista',
     pin: '1234',
     descripcion: 'Vista personal de turnos del día y gestión de atención de clientas asignadas.',
-    avatar: '💅',
+    avatar: '/equipo/jhoana.jpg',
     colorBadge: 'bg-[#FFF5F7] text-[#C74B66] border-[#F2C4D2]',
   },
   {
     id: 'staff-m3',
-    canchaNombreMatch: 'Manicurista 3',
-    nombre: 'Manicurista 3',
-    alias: 'Manicurista 3',
+    canchaNombreMatch: 'Manuela',
+    nombre: 'Manuela',
+    alias: 'Manuela (Especialista)',
     rol: 'manicurista',
     pin: '1234',
     descripcion: 'Vista personal de turnos del día y gestión de atención de clientas asignadas.',
-    avatar: '✨',
+    avatar: '/equipo/manuela.jpg',
     colorBadge: 'bg-[#FFF5F7] text-[#C74B66] border-[#F2C4D2]',
   },
   {
@@ -1023,7 +1033,18 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
         const d = await res.json();
         const idReal = d.complejo?.id || complejoId || '3bd1708c-21de-42a8-a529-d7c91fd41ed2';
         setIdComplejoDetectado(idReal);
-        if (d.equipo) setCanchas(d.equipo);
+        if (d.equipo) {
+          const normalizadas = d.equipo.map((c: any) => {
+            let nombre = c.nombre;
+            const nLower = nombre.trim().toLowerCase();
+            if (nLower.includes('manicurista 1') || nLower === '1') nombre = 'Lili';
+            else if (nLower.includes('manicurista 2') || nLower === '2') nombre = 'Jhoana';
+            else if (nLower.includes('manicurista 3') || nLower === '3') nombre = 'Manuela';
+            const foto = c.foto || FOTOS_EQUIPO_ADMIN[nombre.toLowerCase()] || FOTOS_EQUIPO_ADMIN[c.nombre.toLowerCase()] || null;
+            return { ...c, nombre, foto };
+          });
+          setCanchas(normalizadas);
+        }
         if (d.servicios) setServicios(d.servicios);
         if (d.config) {
           const montoFijo = Number(d.config.montoAnticipoFijo ?? d.config.porcentajeAnticipo) || 20000;
@@ -1142,9 +1163,17 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   // Sincronizar perfiles con IDs de las canchas en la BD
   const perfilesConIds: StaffProfile[] = useMemo(() => {
     return PERFILES_SPA_CONFIG.map((p) => {
-      const canchaEncontrada = canchas.find((c) =>
-        c.nombre.toLowerCase().includes(p.canchaNombreMatch.toLowerCase())
-      );
+      const canchaEncontrada = canchas.find((c) => {
+        const cLower = c.nombre.toLowerCase();
+        const pMatch = p.canchaNombreMatch.toLowerCase();
+        return (
+          cLower.includes(pMatch) ||
+          (p.id === 'admin-m1' && (cLower.includes('1') || cLower.includes('lili'))) ||
+          (p.id === 'staff-m2' && (cLower.includes('2') || cLower.includes('jhoana'))) ||
+          (p.id === 'staff-m3' && (cLower.includes('3') || cLower.includes('manuela'))) ||
+          (p.id === 'staff-m4' && (cLower.includes('4') || cLower.includes('manicurista 4')))
+        );
+      });
       return {
         ...p,
         canchaId: canchaEncontrada?.id,
@@ -3295,8 +3324,12 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                     {/* Encabezado de la Manicurista */}
                     <div className="p-3.5 bg-gradient-to-r from-[#FFF5F7] to-[#FCE8EF] border-b border-[#F2C4D2] flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-white border border-[#F2C4D2] flex items-center justify-center font-bold text-xs text-[#8C243B]">
-                          {esColumnaAdmin ? '👑' : `M${idx + 1}`}
+                        <div className="w-9 h-9 rounded-full bg-white border-2 border-[#F2C4D2] overflow-hidden flex items-center justify-center font-bold text-xs text-[#8C243B] shrink-0 shadow-2xs">
+                          {cancha.foto || FOTOS_EQUIPO_ADMIN[cancha.nombre.toLowerCase()] ? (
+                            <img src={cancha.foto || FOTOS_EQUIPO_ADMIN[cancha.nombre.toLowerCase()]} alt={cancha.nombre} className="w-full h-full object-cover" />
+                          ) : (
+                            <span>{esColumnaAdmin ? '👑' : `M${idx + 1}`}</span>
+                          )}
                         </div>
                         <div>
                           <h3 className="font-bold text-xs text-[#2D2529] font-serif">

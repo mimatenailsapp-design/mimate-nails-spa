@@ -101,6 +101,31 @@ export interface Cancha {
   deporte: string;
   precio_estandar: number;
   precio_pico: number;
+  foto?: string | null;
+}
+
+export const MAPA_MANICURISTAS: Record<string, { nombre: string; foto: string | null }> = {
+  '21233500-c4cf-4694-9532-1378eccf3709': { nombre: 'Lili', foto: '/equipo/lili.jpg' },
+  '34f841b4-3aac-4770-83e4-e716426f7496': { nombre: 'Jhoana', foto: '/equipo/jhoana.jpg' },
+  'c14f696e-e3fa-4e24-afd9-96727ec488e6': { nombre: 'Manuela', foto: '/equipo/manuela.jpg' },
+  'e9d41347-1e33-499c-a044-480999497a84': { nombre: 'Manicurista 4', foto: null },
+  'Manicurista 1': { nombre: 'Lili', foto: '/equipo/lili.jpg' },
+  'Manicurista 2': { nombre: 'Jhoana', foto: '/equipo/jhoana.jpg' },
+  'Manicurista 3': { nombre: 'Manuela', foto: '/equipo/manuela.jpg' },
+  'Manicurista 4': { nombre: 'Manicurista 4', foto: null },
+  'Lili': { nombre: 'Lili', foto: '/equipo/lili.jpg' },
+  'Jhoana': { nombre: 'Jhoana', foto: '/equipo/jhoana.jpg' },
+  'Manuela': { nombre: 'Manuela', foto: '/equipo/manuela.jpg' },
+};
+
+export function enriquecerCancha<T extends { id?: string; nombre?: string }>(cancha: T): T & { foto?: string | null } {
+  if (!cancha) return cancha;
+  const match = (cancha.id && MAPA_MANICURISTAS[cancha.id]) ||
+                (cancha.nombre && MAPA_MANICURISTAS[cancha.nombre]);
+  if (match) {
+    return { ...cancha, nombre: match.nombre, foto: match.foto };
+  }
+  return cancha;
 }
 
 export interface HorarioDisponible {
@@ -237,7 +262,7 @@ export class BookingService {
     }
     const { data, error } = await query;
     if (error) throw error;
-    return data || [];
+    return (data || []).map(enriquecerCancha);
   }
 
   /**

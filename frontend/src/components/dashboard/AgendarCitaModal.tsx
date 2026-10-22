@@ -145,9 +145,19 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                   className="w-full px-3.5 py-2.5 bg-[#FFF5F7] border border-[#F2C4D2] hover:border-[#8C243B] rounded-xl font-bold text-[#2D2529] flex items-center justify-between transition cursor-pointer text-left shadow-2xs"
                 >
                   <span className="flex items-center gap-2">
-                    <span className="w-5 h-5 rounded-full bg-[#FCE8EF] text-[#8C243B] flex items-center justify-center text-[10px]">
-                      💅
-                    </span>
+                    {(() => {
+                      const foto = manicuristaSeleccionadaForm && (
+                        (manicuristaSeleccionadaForm as any).foto ||
+                        (manicuristaSeleccionadaForm.nombre.toLowerCase().includes('lili') ? '/equipo/lili.jpg' :
+                         manicuristaSeleccionadaForm.nombre.toLowerCase().includes('jhoana') ? '/equipo/jhoana.jpg' :
+                         manicuristaSeleccionadaForm.nombre.toLowerCase().includes('manuela') ? '/equipo/manuela.jpg' : null)
+                      );
+                      return foto ? (
+                        <img src={foto} alt={manicuristaSeleccionadaForm?.nombre} className="w-6 h-6 rounded-full object-cover border border-[#F2C4D2]" />
+                      ) : (
+                        <span className="w-5 h-5 rounded-full bg-[#FCE8EF] text-[#8C243B] flex items-center justify-center text-[10px]">💅</span>
+                      );
+                    })()}
                     <span>{manicuristaSeleccionadaForm?.nombre || 'Seleccionar Manicurista'}</span>
                   </span>
                   <IconChevronDown
@@ -180,11 +190,19 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                                 : 'hover:bg-[#FFF5F7] text-[#2D2529]'
                             }`}
                           >
-                            <div className="flex items-center gap-2">
-                              <span className="w-5 h-5 rounded-full bg-white border border-[#F2C4D2] flex items-center justify-center text-[10px]">
-                                {i === 0 ? '👑' : `M${i + 1}`}
-                              </span>
-                              <span>{c.nombre}</span>
+                            <div className="flex items-center gap-2.5">
+                              {(() => {
+                                const foto = (c as any).foto ||
+                                  (c.nombre.toLowerCase().includes('lili') ? '/equipo/lili.jpg' :
+                                   c.nombre.toLowerCase().includes('jhoana') ? '/equipo/jhoana.jpg' :
+                                   c.nombre.toLowerCase().includes('manuela') ? '/equipo/manuela.jpg' : null);
+                                return foto ? (
+                                  <img src={foto} alt={c.nombre} className="w-6 h-6 rounded-full object-cover border border-[#F2C4D2] shrink-0" />
+                                ) : (
+                                  <span className="w-6 h-6 rounded-full bg-[#FCE8EF] text-[#8C243B] text-[10px] flex items-center justify-center font-bold shrink-0">{i === 0 ? '👑' : `M${i + 1}`}</span>
+                                );
+                              })()}
+                              <span className="text-xs font-semibold">{c.nombre}</span>
                             </div>
                             {estaSel && <IconCheck className="w-4 h-4 text-[#8C243B]" />}
                           </div>

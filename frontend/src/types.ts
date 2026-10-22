@@ -5,6 +5,7 @@ export interface Cancha {
   precio_estandar: number;
   precio_pico: number;
   activa: boolean;
+  foto?: string | null;
 }
 
 export interface Reserva {

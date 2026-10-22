@@ -30,6 +30,27 @@ interface Servicio {
 interface Empleada {
   id: string;
   nombre: string;
+  foto?: string | null;
+}
+
+const FOTOS_EQUIPO_MIMATE: Record<string, string> = {
+  'lili': '/equipo/lili.jpg',
+  'jhoana': '/equipo/jhoana.jpg',
+  'manuela': '/equipo/manuela.jpg',
+  'manicurista 1': '/equipo/lili.jpg',
+  'manicurista 2': '/equipo/jhoana.jpg',
+  'manicurista 3': '/equipo/manuela.jpg',
+};
+
+function normalizarNombreYFotoEmpleada(emp: { id: string; nombre: string; foto?: string | null }): Empleada {
+  let nombre = emp.nombre;
+  const nLower = nombre.trim().toLowerCase();
+  if (nLower.includes('manicurista 1') || nLower === '1') nombre = 'Lili';
+  else if (nLower.includes('manicurista 2') || nLower === '2') nombre = 'Jhoana';
+  else if (nLower.includes('manicurista 3') || nLower === '3') nombre = 'Manuela';
+
+  const foto = emp.foto || FOTOS_EQUIPO_MIMATE[nombre.toLowerCase()] || FOTOS_EQUIPO_MIMATE[emp.nombre.toLowerCase()] || null;
+  return { id: emp.id, nombre, foto };
 }
 
 const SERVICIOS_DEFAULT: Servicio[] = [
@@ -578,7 +599,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
             setServicios(parsed.servicios);
           }
           if (parsed.equipo && parsed.equipo.length > 0) {
-            setEmpleadas(parsed.equipo);
+            setEmpleadas(parsed.equipo.map(normalizarNombreYFotoEmpleada));
           }
           if (parsed.config) {
             setSpaConfig((prev) => ({ ...prev, ...parsed.config }));
@@ -595,7 +616,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
           setServicios(d.servicios);
         }
         if (d.equipo && d.equipo.length > 0) {
-          setEmpleadas(d.equipo);
+          setEmpleadas(d.equipo.map(normalizarNombreYFotoEmpleada));
         }
         if (d.config) {
           setSpaConfig((prev) => ({ ...prev, ...d.config }));
@@ -1175,26 +1196,59 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
           </div>
         </div>
 
-        {/* SECCIÓN NUESTRO EQUIPO (4 EMPLEADAS) */}
-        <section className="space-y-3">
-          <h2 className="text-lg font-bold text-[#2D2529] flex items-center justify-center gap-1.5">
-            <span>Nuestro</span>
-            <span className="italic text-[#C74B66] font-serif font-bold">equipo</span>
-          </h2>
+        {/* SECCIÓN NUESTRO EQUIPO (LILI, JHOANA, MANUELA, MANICURISTA 4) */}
+        <section className="space-y-4">
+          <div className="text-center space-y-1">
+            <h2 className="text-xl sm:text-2xl font-bold text-[#2D2529] flex items-center justify-center gap-2 font-serif">
+              <span>Nuestro</span>
+              <span className="italic text-[#C74B66] font-serif font-bold">equipo de especialistas</span>
+            </h2>
+            <p className="text-xs text-[#7D6870]">
+              Profesionales dedicadas listas para consentirte y transformar tus uñas 💕
+            </p>
+          </div>
 
-          <div className="flex items-center justify-center gap-4 sm:gap-6 overflow-x-auto pb-2">
-            {empleadas.map((emp, i) => (
-              <div key={emp.id} className="text-center w-20 shrink-0 space-y-1.5">
-                <div className="w-14 h-14 mx-auto rounded-full bg-gradient-to-tr from-[#C74B66] to-[#F2C4D2] p-0.5 shadow-xs">
-                  <div className="w-full h-full bg-white rounded-full flex items-center justify-center font-bold text-xs text-[#8C243B]">
-                    {`M${i + 1}`}
+          <div className="flex items-center justify-center gap-4 sm:gap-7 overflow-x-auto pb-2 pt-1">
+            {empleadas.map((emp) => {
+              const foto = emp.foto || FOTOS_EQUIPO_MIMATE[emp.nombre.toLowerCase()];
+              return (
+                <div
+                  key={emp.id}
+                  onClick={() => {
+                    setEmpleadaId(emp.id);
+                  }}
+                  className="text-center w-24 shrink-0 space-y-2 group cursor-pointer transition-transform hover:-translate-y-1"
+                >
+                  <div className="relative w-18 h-18 sm:w-20 sm:h-20 mx-auto rounded-full bg-gradient-to-tr from-[#C74B66] via-[#F2C4D2] to-[#FFF5F7] p-0.5 shadow-md group-hover:shadow-lg transition">
+                    <div className="w-full h-full bg-white rounded-full overflow-hidden flex items-center justify-center border-2 border-white">
+                      {foto ? (
+                        <img
+                          src={foto}
+                          alt={emp.nombre}
+                          className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-[#FFF5F7] flex flex-col items-center justify-center text-[#8C243B] font-bold">
+                          <span className="text-xl">💅</span>
+                          <span className="text-[10px] text-[#7D6870] font-semibold">{emp.nombre}</span>
+                        </div>
+                      )}
+                    </div>
+                    <span className="absolute bottom-0 right-0 w-5 h-5 rounded-full bg-white border border-[#F2C4D2] shadow-2xs flex items-center justify-center text-[10px]">
+                      ✨
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-xs sm:text-sm font-bold text-[#2D2529] group-hover:text-[#8C243B] block leading-tight transition">
+                      {emp.nombre}
+                    </span>
+                    <span className="text-[10px] font-medium text-[#C74B66] block mt-0.5">
+                      {emp.nombre === 'Lili' ? 'Máster Nails' : 'Especialista'}
+                    </span>
                   </div>
                 </div>
-                <span className="text-xs font-semibold text-[#5C4851] block leading-tight">
-                  {emp.nombre}
-                </span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
 
@@ -1621,8 +1675,22 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                         onClick={() => setMenuEspecialistaAbierto(!menuEspecialistaAbierto)}
                         className="w-full bg-white border border-[#F2C4D2] rounded-xl px-3.5 py-2.5 text-xs font-semibold text-[#2D2529] flex items-center justify-between hover:border-[#C74B66] focus:outline-none focus:ring-2 focus:ring-[#C74B66]/20 transition shadow-xs cursor-pointer text-left"
                       >
-                        <span className="truncate">
-                          {empleadas.find((e) => e.id === empleadaId)?.nombre || 'Cualquiera disponible (Recomendado)'}
+                        <span className="truncate flex items-center gap-2">
+                          {(() => {
+                            const empSel = empleadas.find((e) => e.id === empleadaId);
+                            if (!empSel) return <span>Cualquiera disponible (Recomendado)</span>;
+                            const foto = empSel.foto || FOTOS_EQUIPO_MIMATE[empSel.nombre.toLowerCase()];
+                            return (
+                              <>
+                                {foto ? (
+                                  <img src={foto} alt={empSel.nombre} className="w-5 h-5 rounded-full object-cover border border-[#F2C4D2] shrink-0" />
+                                ) : (
+                                  <span>💅</span>
+                                )}
+                                <span>{empSel.nombre}</span>
+                              </>
+                            );
+                          })()}
                         </span>
                         <IconChevronDown
                           className={`w-4 h-4 text-[#C74B66] shrink-0 transition-transform duration-200 ${
@@ -1656,6 +1724,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                             </div>
                             {empleadas.map((emp) => {
                               const sel = empleadaId === emp.id;
+                              const foto = emp.foto || FOTOS_EQUIPO_MIMATE[emp.nombre.toLowerCase()];
                               return (
                                 <div
                                   key={emp.id}
@@ -1669,7 +1738,14 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                                       : 'hover:bg-[#FFF5F7] text-[#2D2529]'
                                   }`}
                                 >
-                                  <span>{emp.nombre}</span>
+                                  <div className="flex items-center gap-2.5">
+                                    {foto ? (
+                                      <img src={foto} alt={emp.nombre} className="w-6 h-6 rounded-full object-cover border border-[#F2C4D2] shrink-0" />
+                                    ) : (
+                                      <span className="w-6 h-6 rounded-full bg-[#FFF5F7] text-[#8C243B] text-xs flex items-center justify-center shrink-0">💅</span>
+                                    )}
+                                    <span>{emp.nombre}</span>
+                                  </div>
                                   {sel && <IconCheck className="w-4 h-4 text-[#8C243B]" />}
                                 </div>
                               );

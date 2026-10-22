@@ -8,7 +8,7 @@ import dotenv from 'dotenv';
 import { supabase } from './config/supabase.js';
 import { WhatsAppFlow, BotResponse } from './bot/whatsappFlow.js';
 import { ReminderService } from './services/reminderService.js';
-import { BookingService, getMontoAnticipoFijo, requiereAnticipoParaFecha, esFechaDiciembre } from './services/bookingService.js';
+import { BookingService, getMontoAnticipoFijo, requiereAnticipoParaFecha, esFechaDiciembre, enriquecerCancha } from './services/bookingService.js';
 import { AIReceptionistService } from './services/aiReceptionistService.js';
 import { BotExclusionsService } from './services/botExclusionsService.js';
 import { BaileysService } from './services/baileysService.js';
@@ -1333,9 +1333,10 @@ app.get('/api/spa/info', async (req: Request, res: Response) => {
       horaCierre: complejo.hora_cierre ? complejo.hora_cierre.slice(0, 5) : '19:00',
     };
 
+    const equipoEnriquecido = (canchas || []).map(enriquecerCancha);
     const bootstrapData = {
       complejo,
-      equipo: canchas || [],
+      equipo: equipoEnriquecido,
       config,
       servicios: SERVICIOS_MIMATE_NAILS,
       categorias: ['Todos', 'Tradicional', 'Rubber', 'Semipermanente', 'Acrílico esculpido']
@@ -1392,7 +1393,7 @@ app.get('/api/spa/slots', async (req: Request, res: Response) => {
       .eq('complejo_id', complejo.id)
       .eq('activa', true);
 
-    const listaEmpleadas = empleadas || [];
+    const listaEmpleadas = (empleadas || []).map(enriquecerCancha);
     if (listaEmpleadas.length === 0) return res.json({ date, slots: [] });
 
     const aperturaStr = complejo.hora_apertura ? complejo.hora_apertura.slice(0, 5) : '08:00';
@@ -1556,7 +1557,7 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
       .eq('complejo_id', complejo.id)
       .eq('activa', true);
 
-    const listaEmpleadas = empleadas || [];
+    const listaEmpleadas = (empleadas || []).map(enriquecerCancha);
     if (listaEmpleadas.length === 0) {
       return res.status(400).json({ error: 'No hay personal registrado en el spa' });
     }
@@ -1590,7 +1591,7 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
           error: 'La manicurista seleccionada ya tiene una cita agendada en este horario. Por favor elige otra hora o especialista.',
         });
       }
-      empleadaAsignada = listaEmpleadas.find(e => e.id === cancha_id);
+      empleadaAsignada = enriquecerCancha(listaEmpleadas.find(e => e.id === cancha_id));
       if (!empleadaAsignada) {
         return res.status(404).json({ error: 'Especialista no encontrada' });
       }
@@ -1602,7 +1603,7 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
           error: 'Lo sentimos, todos los turnos para este horario ya fueron reservados. Por favor selecciona otro horario.',
         });
       }
-      empleadaAsignada = disponibles[0];
+      empleadaAsignada = enriquecerCancha(disponibles[0]);
     }
 
     // Normalizar teléfono celular (formato Colombia: 573...)
