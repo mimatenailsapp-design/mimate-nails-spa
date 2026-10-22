@@ -1566,64 +1566,148 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
   // Métricas financieras calculadas para la Admin según el período seleccionado
   const metricasSpa = useMemo(() => {
+    const normalizarTexto = (txt: string) =>
+      txt
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim()
+        .toLowerCase();
+
+    // Servicios ordenados por longitud descendente para evitar falsos positivos por subcadenas (ej. "Manos y pies" antes que "Manos")
+    const serviciosPorLongitud = [...servicios].sort((a, b) => b.nombre.length - a.nombre.length);
+
+    // Extrae la lista exacta de servicios asociados a una cita (soporta servicio único o múltiples separados por '+')
+    const extraerServiciosDeCita = (r: Reserva): Servicio[] => {
+      if (servicios.length === 0) return [];
+      const notas = r.notas || '';
+      const matchSvc = notas.match(/Servicio:\s*([^|[\n]+)/i);
+
+      if (matchSvc && matchSvc[1]) {
+        const partes = matchSvc[1]
+          .split('+')
+          .map((p) => normalizarTexto(p))
+          .filter(Boolean);
+        const encontrados: Servicio[] = [];
+        for (const parte of partes) {
+          let svc = servicios.find((s) => normalizarTexto(s.nombre) === parte);
+          if (!svc) {
+            svc = serviciosPorLongitud.find((s) => parte.includes(normalizarTexto(s.nombre)));
+          }
+          if (svc && !encontrados.some((e) => e.id === svc!.id)) {
+            encontrados.push(svc);
+          }
+        }
+        if (encontrados.length > 0) return encontrados;
+      }
+
+      const notasNorm = normalizarTexto(notas);
+      if (notasNorm) {
+        const svcPorNota = serviciosPorLongitud.find((s) =>
+          notasNorm.includes(normalizarTexto(s.nombre))
+        );
+        if (svcPorNota) return [svcPorNota];
+      }
+
+      const monto = Number(r.valor_total || 0);
+      if (monto > 0) {
+        const svcPorPrecio = servicios.find((s) => s.precio === monto);
+        if (svcPorPrecio) return [svcPorPrecio];
+        const svcMasCercano = [...servicios].sort((a, b) => Math.abs(a.precio - monto) - Math.abs(b.precio - monto))[0];
+        if (svcMasCercano) return [svcMasCercano];
+      }
+
+      return servicios[0] ? [servicios[0]] : [];
+    };
+
+    const obtenerValorReserva = (r: Reserva): number => {
+      const monto = Number(r.valor_total || 0);
+      if (monto > 0) return monto;
+      const svcs = extraerServiciosDeCita(r);
+      return svcs.reduce((sum, s) => sum + Number(s.precio || 0), 0);
+    };
+
     const lista = reservasFiltradasMetricas;
     const canceladas = lista.filter((r) => r.estado === 'cancelada');
-    const activas = lista.filter((r) => r.estado !== 'cancelada');
+    // Solo las citas activas (no canceladas) cuentan como agendadas y generan ingresos
+    const citasActivas = lista.filter((r) => r.estado !== 'cancelada');
+    const total = citasActivas.length;
 
-    const total = activas.length;
-    const confirmadas = activas.filter((r) => r.estado === 'confirmada' || r.estado === 'completada');
-    const completadas = activas.filter((r) => r.estado === 'completada');
-    const pendientes = activas.filter((r) => r.estado === 'pendiente_pago' || r.estado === 'confirmada');
+    const confirmadas = citasActivas.filter(
+      (r) => r.estado === 'confirmada' || r.estado === 'completada'
+    );
+    const completadas = citasActivas.filter((r) => r.estado === 'completada');
+    const pendientes = citasActivas.filter((r) => r.estado !== 'completada');
 
-    const ingresosTotales = confirmadas.reduce((sum, r) => sum + Number(r.valor_total || 0), 0);
+    const ingresosTotales = citasActivas.reduce((sum, r) => sum + obtenerValorReserva(r), 0);
+    const ingresosCompletados = completadas.reduce((sum, r) => sum + obtenerValorReserva(r), 0);
 
-    // Desglose por manicurista en este período (solo citas activas)
+    // Desglose por manicurista en este período (basado en citas activas no canceladas)
     const porManicurista = canchas.map((c) => {
-      const citasMani = activas.filter((r) => r.cancha_id === c.id);
-      const confirmadasMani = citasMani.filter((r) => r.estado === 'confirmada' || r.estado === 'completada');
+      const citasMani = citasActivas.filter((r) => r.cancha_id === c.id);
       const completadasMani = citasMani.filter((r) => r.estado === 'completada');
-      const recaudado = confirmadasMani.reduce((sum, r) => sum + Number(r.valor_total || 0), 0);
+      const pendientesMani = citasMani.filter((r) => r.estado !== 'completada');
+      const recaudadoEstimado = citasMani.reduce((sum, r) => sum + obtenerValorReserva(r), 0);
+      const recaudadoRealizado = completadasMani.reduce(
+        (sum, r) => sum + obtenerValorReserva(r),
+        0
+      );
       return {
         cancha: c,
         total: citasMani.length,
         completadas: completadasMani.length,
-        ingresos: recaudado,
+        pendientes: pendientesMani.length,
+        ingresos: recaudadoEstimado,
+        ingresosCompletados: recaudadoRealizado,
       };
     });
 
-    // Desglose por servicio en este período con soporte para multisservicios ('Servicio A + Servicio B')
-    const normalizar = (t: string) =>
-      t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
 
-    const porServicio = servicios.map((s) => {
-      const sNombreNorm = normalizar(s.nombre);
+    // Desglose exacto por servicio en este período (sin duplicar por nombres parecidos)
+    const mapaServicios = new Map<number, { cantidad: number; ingresos: number }>();
+    for (const s of servicios) {
+      mapaServicios.set(s.id, { cantidad: 0, ingresos: 0 });
+    }
 
-      const citasSvc = activas.filter((r) => {
-        const svcStr = obtenerServicioCita(r);
-        if (svcStr && svcStr !== 'Servicio de Uñas' && svcStr !== 'Turno Bloqueado') {
-          const partes = svcStr.split(/\s*(?:\+|\,|\/| y | e )\s*/).map((p) => normalizar(p));
-          return partes.includes(sNombreNorm) || normalizar(svcStr) === sNombreNorm;
+    for (const r of citasActivas) {
+      const svcsCita = extraerServiciosDeCita(r);
+      const valorCita = obtenerValorReserva(r);
+      if (svcsCita.length === 1) {
+        const item = mapaServicios.get(svcsCita[0].id);
+        if (item) {
+          item.cantidad += 1;
+          item.ingresos += valorCita;
         }
-        const notasNorm = normalizar(r.notas || '');
-        return notasNorm.includes(sNombreNorm);
-      });
+      } else if (svcsCita.length > 1) {
+        const sumaCatalogo = svcsCita.reduce((acc, s) => acc + Number(s.precio || 0), 0);
+        let acumulado = 0;
+        svcsCita.forEach((svc, idx) => {
+          const item = mapaServicios.get(svc.id);
+          if (item) {
+            item.cantidad += 1;
+            const aporte =
+              idx === svcsCita.length - 1
+                ? Math.max(0, valorCita - acumulado)
+                : sumaCatalogo > 0
+                ? Math.round((svc.precio / sumaCatalogo) * valorCita)
+                : Math.round(valorCita / svcsCita.length);
+            acumulado += aporte;
+            item.ingresos += aporte;
+          }
+        });
+      }
+    }
 
-      // Si es parte de una cita con múltiples servicios, aporta el precio unitario del servicio
-      const ingresosSvc = citasSvc.reduce((sum, r) => {
-        const svcStr = obtenerServicioCita(r);
-        const esMultiples = svcStr.includes('+');
-        if (esMultiples) {
-          return sum + Number(s.precio || 0);
-        }
-        return sum + Number(r.valor_total || s.precio || 0);
-      }, 0);
+    const porServicio = servicios
+      .map((s) => {
+        const stats = mapaServicios.get(s.id) || { cantidad: 0, ingresos: 0 };
+        return {
+          servicio: s,
+          cantidad: stats.cantidad,
+          ingresos: stats.ingresos,
+        };
+      })
+      .sort((a, b) => b.cantidad - a.cantidad || b.ingresos - a.ingresos);
 
-      return {
-        servicio: s,
-        cantidad: citasSvc.length,
-        ingresos: ingresosSvc,
-      };
-    }).sort((a, b) => b.cantidad - a.cantidad);
 
     const totalCitasServicios = porServicio.reduce((sum, s) => sum + s.cantidad, 0);
     const totalDineroServicios = porServicio.reduce((sum, s) => sum + s.ingresos, 0);
@@ -1635,6 +1719,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       canceladasCount: canceladas.length,
       pendientesCount: pendientes.length,
       ingresosTotales,
+      ingresosCompletados,
       porManicurista,
       porServicio,
       totalCitasServicios,
@@ -3351,7 +3436,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                     }`}
                   >
                     <IconCalendarEvent className="w-3.5 h-3.5" />
-                    <span>Métricas por Día</span>
+                    <span>Día</span>
                   </button>
                   <button
                     onClick={() => setModoMetricas('semana')}
@@ -3362,7 +3447,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                     }`}
                   >
                     <IconCalendarWeek className="w-3.5 h-3.5" />
-                    <span>Métricas por Semana</span>
+                    <span>Semana</span>
                   </button>
                   <button
                     onClick={() => setModoMetricas('mes')}
@@ -3373,7 +3458,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                     }`}
                   >
                     <IconCalendarMonth className="w-3.5 h-3.5" />
-                    <span>Métricas por Mes</span>
+                    <span>Mes</span>
                   </button>
                 </div>
 
@@ -3499,7 +3584,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                   ${metricasSpa.ingresosTotales.toLocaleString('es-CO')}
                 </p>
                 <p className="text-[10px] text-[#7D6870]">
-                  {metricasSpa.confirmadasCount} citas confirmadas y atendidas
+                  Completado: ${metricasSpa.ingresosCompletados.toLocaleString('es-CO')} ({metricasSpa.completadasCount}/{metricasSpa.total} citas)
                 </p>
               </div>
 
@@ -3539,20 +3624,14 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
               <div className="bg-white rounded-2xl p-4 border border-[#F2C4D2] shadow-xs space-y-1">
                 <span className="text-[11px] font-bold text-[#7D6870] uppercase">
-                  {modoMetricas === 'dia'
-                    ? 'Citas Pendientes / Turnos'
-                    : modoMetricas === 'semana'
-                    ? 'Efectividad Semanal'
-                    : 'Efectividad Mensual'}
+                  Citas por Atender
                 </span>
                 <p className="text-xl sm:text-2xl font-black font-mono text-[#C74B66]">
-                  {modoMetricas === 'dia'
-                    ? metricasSpa.pendientesCount
-                    : `${(metricasSpa.total + metricasSpa.canceladasCount) > 0 ? Math.round((metricasSpa.total / (metricasSpa.total + metricasSpa.canceladasCount)) * 100) : 100}%`}
+                  {metricasSpa.pendientesCount}
                 </p>
                 <p className="text-[10px] text-[#7D6870]">
                   {metricasSpa.canceladasCount > 0
-                    ? `${metricasSpa.canceladasCount} cancelada(s)`
+                    ? `${metricasSpa.canceladasCount} cancelada(s) en el período`
                     : '0 cancelaciones registradas'}
                 </p>
               </div>
@@ -3575,16 +3654,19 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                       <th className="py-2.5 px-3">Especialista</th>
                       <th className="py-2.5 px-3">Citas en el Período</th>
                       <th className="py-2.5 px-3">Completadas</th>
+                      <th className="py-2.5 px-3">Recaudo Realizado</th>
                       <th className="py-2.5 px-3">Recaudo Estimado</th>
-                      <th className="py-2.5 px-3">% Recaudo</th>
+                      <th className="py-2.5 px-3" title="Porcentaje de citas completadas de esta especialista y su participación sobre el recaudo total del Spa">% Avance / Aporte</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#FCE8EF]">
                     {metricasSpa.porManicurista.map((m, i) => {
-                      const porcentaje =
+                      const pctParticipacion =
                         metricasSpa.ingresosTotales > 0
                           ? Math.round((m.ingresos / metricasSpa.ingresosTotales) * 100)
                           : 0;
+                      const pctAvance =
+                        m.total > 0 ? Math.round((m.completadas / m.total) * 100) : 0;
                       return (
                         <tr key={m.cancha.id} className="hover:bg-[#FFF5F7]/50 transition">
                           <td className="py-3 px-3 font-bold text-[#2D2529] flex items-center gap-2">
@@ -3593,20 +3675,67 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                             </span>
                             <span>{m.cancha.nombre}</span>
                           </td>
-                          <td className="py-3 px-3 font-mono font-semibold">{m.total}</td>
-                          <td className="py-3 px-3 font-mono text-emerald-600 font-bold">{m.completadas}</td>
+                          <td className="py-3 px-3 font-mono font-semibold">
+                            <span>{m.total}</span>
+                            {m.pendientes > 0 && (
+                              <span className="ml-1.5 text-[10px] font-sans text-[#7D6870]">
+                                ({m.pendientes} por atender)
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3 px-3 font-mono text-emerald-600 font-bold">
+                            {m.completadas} / {m.total}
+                          </td>
+                          <td className="py-3 px-3 font-mono font-bold text-emerald-700">
+                            ${m.ingresosCompletados.toLocaleString('es-CO')}
+                          </td>
                           <td className="py-3 px-3 font-mono font-bold text-[#8C243B]">
                             ${m.ingresos.toLocaleString('es-CO')}
                           </td>
                           <td className="py-3 px-3">
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white text-[#8C243B] border border-[#F2C4D2]">
-                              {porcentaje}%
-                            </span>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span
+                                className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                title="Porcentaje de las citas de esta manicurista que ya fueron completadas"
+                              >
+                                {pctAvance}% completado
+                              </span>
+                              <span
+                                className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white text-[#8C243B] border border-[#F2C4D2]"
+                                title="Participación de esta manicurista en el recaudo estimado total del Spa"
+                              >
+                                {pctParticipacion}% del total
+                              </span>
+                            </div>
                           </td>
                         </tr>
                       );
                     })}
                   </tbody>
+                  <tfoot className="bg-[#FFF5F7] border-t-2 border-[#F2C4D2] font-bold">
+                    <tr>
+                      <td className="py-3 px-3 text-[#2D2529] font-bold uppercase text-[11px] tracking-wider">
+                        Total Equipo ({modoMetricas === 'dia' ? 'Día' : modoMetricas === 'semana' ? 'Semana' : 'Mes'})
+                      </td>
+                      <td className="py-3 px-3 font-mono font-black text-sm text-[#2D2529]">
+                        {metricasSpa.total}
+                      </td>
+                      <td className="py-3 px-3 font-mono font-black text-sm text-emerald-600">
+                        {metricasSpa.completadasCount} / {metricasSpa.total}
+                      </td>
+                      <td className="py-3 px-3 font-mono font-black text-sm text-emerald-700">
+                        ${metricasSpa.ingresosCompletados.toLocaleString('es-CO')}
+                      </td>
+                      <td className="py-3 px-3 font-mono font-black text-sm text-[#8C243B]">
+                        ${metricasSpa.ingresosTotales.toLocaleString('es-CO')}
+                      </td>
+                      <td className="py-3 px-3">
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#8C243B] text-white">
+                          {metricasSpa.ingresosTotales > 0 ? '100% del total' : '0%'}
+                        </span>
+                      </td>
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             </div>
