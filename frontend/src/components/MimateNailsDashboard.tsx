@@ -78,6 +78,7 @@ export interface StaffProfile {
   pin: string;
   descripcion: string;
   avatar: string;
+  foto?: string;
   colorBadge: string;
   canchaId?: string;
 }
@@ -100,19 +101,21 @@ const PERFILES_SPA_CONFIG: Omit<StaffProfile, 'canchaId'>[] = [
     rol: 'admin',
     pin: '1234',
     descripcion: 'Acceso Total: Supervisión de todas las tablas, métricas de reservas y agendamiento exclusivo.',
-    avatar: '/equipo/lili.jpg',
+    avatar: '👑',
+    foto: '/equipo/lili.jpg',
     colorBadge: 'bg-[#FCE8EF] text-[#8C243B] border-[#F2C4D2]',
   },
   {
-    id: 'staff-m2',
+    id: 'admin-m2',
     canchaNombreMatch: 'Jhoana',
-    nombre: 'Jhoana',
-    alias: 'Jhoana (Especialista)',
-    rol: 'manicurista',
+    nombre: 'Jhoana (Administradora)',
+    alias: 'Jhoana (Admin & Especialista)',
+    rol: 'admin',
     pin: '1234',
-    descripcion: 'Vista personal de turnos del día y gestión de atención de clientas asignadas.',
-    avatar: '/equipo/jhoana.jpg',
-    colorBadge: 'bg-[#FFF5F7] text-[#C74B66] border-[#F2C4D2]',
+    descripcion: 'Acceso Total: Supervisión de todas las tablas, métricas de reservas y agendamiento exclusivo.',
+    avatar: '👑',
+    foto: '/equipo/jhoana.jpg',
+    colorBadge: 'bg-[#FCE8EF] text-[#8C243B] border-[#F2C4D2]',
   },
   {
     id: 'staff-m3',
@@ -122,7 +125,8 @@ const PERFILES_SPA_CONFIG: Omit<StaffProfile, 'canchaId'>[] = [
     rol: 'manicurista',
     pin: '1234',
     descripcion: 'Vista personal de turnos del día y gestión de atención de clientas asignadas.',
-    avatar: '/equipo/manuela.jpg',
+    avatar: '💅',
+    foto: '/equipo/manuela.jpg',
     colorBadge: 'bg-[#FFF5F7] text-[#C74B66] border-[#F2C4D2]',
   },
   {
@@ -1169,7 +1173,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
         return (
           cLower.includes(pMatch) ||
           (p.id === 'admin-m1' && (cLower.includes('1') || cLower.includes('lili'))) ||
-          (p.id === 'staff-m2' && (cLower.includes('2') || cLower.includes('jhoana'))) ||
+          ((p.id === 'staff-m2' || p.id === 'admin-m2') && (cLower.includes('2') || cLower.includes('jhoana'))) ||
           (p.id === 'staff-m3' && (cLower.includes('3') || cLower.includes('manuela'))) ||
           (p.id === 'staff-m4' && (cLower.includes('4') || cLower.includes('manicurista 4')))
         );
@@ -1181,13 +1185,27 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     });
   }, [canchas]);
 
-  // Si el perfil guardado en localStorage no tiene canchaId, rellenarlo
+  // Si el perfil guardado en localStorage no tiene canchaId o cambió de rol, sincronizarlo
   useEffect(() => {
     if (perfilActual) {
-      const match = perfilesConIds.find((p) => p.id === perfilActual.id);
-      if (match && match.canchaId && match.canchaId !== perfilActual.canchaId) {
-        setPerfilActual(match);
-        localStorage.setItem('mimate_staff_profile', JSON.stringify(match));
+      const match = perfilesConIds.find(
+        (p) =>
+          p.id === perfilActual.id ||
+          (perfilActual.id === 'staff-m2' && p.id === 'admin-m2') ||
+          p.canchaNombreMatch.toLowerCase() === perfilActual.canchaNombreMatch?.toLowerCase() ||
+          p.nombre.toLowerCase().includes(perfilActual.nombre.toLowerCase().split(' ')[0])
+      );
+      if (match) {
+        if (
+          match.rol !== perfilActual.rol ||
+          match.nombre !== perfilActual.nombre ||
+          match.foto !== perfilActual.foto ||
+          (match.canchaId && match.canchaId !== perfilActual.canchaId)
+        ) {
+          const actualizado = { ...perfilActual, ...match };
+          setPerfilActual(actualizado);
+          localStorage.setItem('mimate_staff_profile', JSON.stringify(actualizado));
+        }
       }
     }
   }, [perfilesConIds]);
@@ -1922,8 +1940,12 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                 >
                   <div className="space-y-2.5">
                     <div className="flex items-center justify-between">
-                      <div className="w-10 h-10 rounded-xl bg-[#FCE8EF] border border-[#F2C4D2] flex items-center justify-center text-xl">
-                        {p.avatar}
+                      <div className="w-11 h-11 rounded-xl bg-[#FCE8EF] border border-[#F2C4D2] overflow-hidden flex items-center justify-center text-xl shrink-0 shadow-2xs">
+                        {p.foto ? (
+                          <img src={p.foto} alt={p.nombre} className="w-full h-full object-cover" />
+                        ) : (
+                          <span>{p.avatar}</span>
+                        )}
                       </div>
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${p.colorBadge}`}>
                         {esPAdmin ? 'Administradora' : 'Manicurista'}
@@ -1973,7 +1995,13 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="text-2xl">{modalPinPerfil.avatar}</span>
+                    <div className="w-10 h-10 rounded-full border-2 border-[#F2C4D2] overflow-hidden flex items-center justify-center text-xl shrink-0 shadow-2xs">
+                      {modalPinPerfil.foto ? (
+                        <img src={modalPinPerfil.foto} alt={modalPinPerfil.nombre} className="w-full h-full object-cover" />
+                      ) : (
+                        <span>{modalPinPerfil.avatar}</span>
+                      )}
+                    </div>
                     <div>
                       <h3 className="font-bold text-sm text-[#2D2529] font-serif">
                         {modalPinPerfil.nombre}
@@ -2821,8 +2849,13 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                     <h1 className="font-bold text-sm sm:text-base text-[#2D2529] font-serif leading-none truncate">
                       JL Mímate Nails
                     </h1>
-                    <span className={`text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full border shrink-0 ${perfilActual.colorBadge}`}>
-                      {perfilActual.avatar} {esAdmin ? 'Admin' : perfilActual.nombre}
+                    <span className={`text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full border shrink-0 flex items-center gap-1.5 ${perfilActual.colorBadge}`}>
+                      {perfilActual.foto ? (
+                        <img src={perfilActual.foto} alt="" className="w-3.5 h-3.5 rounded-full object-cover border border-[#F2C4D2]" />
+                      ) : (
+                        <span>{perfilActual.avatar}</span>
+                      )}
+                      <span>{esAdmin ? `${perfilActual.nombre.replace(/\s*\(Administradora\)/i, '')} (Admin)` : perfilActual.nombre}</span>
                     </span>
                   </div>
                   <p className="text-[10px] sm:text-[11px] text-[#7D6870] mt-0.5 hidden sm:block">
@@ -3314,7 +3347,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {canchas.map((cancha, idx) => {
                 const citasCancha = reservasDelDia.filter((r) => r.cancha_id === cancha.id && r.estado !== 'cancelada');
-                const esColumnaAdmin = idx === 0;
+                const esColumnaAdmin = cancha.nombre.toLowerCase().includes('lili') || cancha.nombre.toLowerCase().includes('jhoana');
 
                 return (
                   <div
@@ -3336,7 +3369,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                             {cancha.nombre}
                           </h3>
                           <span className="text-[10px] text-[#7D6870]">
-                            {esColumnaAdmin ? 'Admin & Manicurista' : 'Especialista'}
+                            {esColumnaAdmin ? 'Admin & Especialista' : 'Especialista'}
                           </span>
                         </div>
                       </div>
