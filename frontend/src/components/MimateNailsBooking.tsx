@@ -673,7 +673,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
 
   const slotsCacheRef = useRef<Map<string, { slots: string[]; aviso: string | null; ts: number }>>(new Map());
 
-  const cargarSlots = async (f = fecha, emp = empleadaId, dur = servicioSeleccionado?.duracion || 45) => {
+  const cargarSlots = async (f = fecha, emp = empleadaId, dur = duracionTotal || servicioSeleccionado?.duracion || 45) => {
     if (!f) return;
 
     const duracion = Math.max(15, dur);
@@ -846,15 +846,17 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
     }
   };
 
-  // Cargar slots cuando cambia la fecha, la empleada o el servicio en el modal
+  // Cargar slots cuando cambia la fecha, la empleada o la duración combinada total en el modal
   useEffect(() => {
     if (!modalAbierto || !fecha) return;
     setHoraSeleccionada(null);
-    cargarSlots(fecha, empleadaId, servicioSeleccionado?.duracion);
-  }, [modalAbierto, fecha, empleadaId, servicioSeleccionado?.id, servicioSeleccionado?.duracion]);
+    cargarSlots(fecha, empleadaId, duracionTotal);
+  }, [modalAbierto, fecha, empleadaId, duracionTotal]);
 
   const abrirModal = (s: Servicio) => {
     setServicioSeleccionado(s);
+    setServiciosExtras([]);
+    setSelectorExtrasAbierto(false);
     setPaso(1);
     setHoraSeleccionada(null);
     setAvisoSlots(null);
@@ -864,6 +866,8 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
 
   const cerrarModal = () => {
     setModalAbierto(false);
+    setServiciosExtras([]);
+    setSelectorExtrasAbierto(false);
     setPaso(1);
     setHoraSeleccionada(null);
     setReservaConfirmada(null);
@@ -890,9 +894,9 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          servicio_nombre: servicioSeleccionado.nombre,
-          precio: servicioSeleccionado.precio,
-          duracion_minutos: servicioSeleccionado.duracion,
+          servicio_nombre: nombreServiciosCombinados,
+          precio: precioTotal,
+          duracion_minutos: duracionTotal,
           fecha,
           hora: horaSeleccionada,
           cancha_id: empleadaId || undefined,
@@ -922,15 +926,15 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
         const esPre = Boolean(data.esPreReserva ?? (antReq > 0));
         const salRest = typeof data.saldoRestante === 'number'
           ? data.saldoRestante
-          : Math.max(0, servicioSeleccionado.precio - abonoPrev - antReq);
+          : Math.max(0, precioTotal - abonoPrev - antReq);
 
         setReservaConfirmada({
           codigo: data.codigoReserva || data.reserva?.id,
           empleada: data.empleada || 'Manicurista asignada',
-          servicio: servicioSeleccionado.nombre,
+          servicio: nombreServiciosCombinados,
           fecha,
           hora: horaSeleccionada,
-          precio: servicioSeleccionado.precio,
+          precio: precioTotal,
           telefono: telefono.trim(),
           esPreReserva: esPre,
           esReagendamiento: esReag,
@@ -944,10 +948,10 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
           titular: data.titularCuenta || spaConfig.titularCuenta,
         });
         setPaso(3);
-        cargarSlots(fecha, empleadaId);
+        cargarSlots(fecha, empleadaId, duracionTotal);
       } else {
         alert(data.error || 'Ocurrió un error al agendar tu cita.');
-        cargarSlots(fecha, empleadaId);
+        cargarSlots(fecha, empleadaId, duracionTotal);
       }
     } catch {
       // Fallback directo en Supabase si la API backend está temporalmente inactiva
@@ -1008,10 +1012,10 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
         setReservaConfirmada({
           codigo: 'WEB-' + Math.floor(1000 + Math.random() * 9000),
           empleada: empAsignada?.nombre || 'Manicurista asignada',
-          servicio: servicioSeleccionado.nombre,
+          servicio: nombreServiciosCombinados,
           fecha,
           hora: horaSeleccionada,
-          precio: servicioSeleccionado.precio,
+          precio: precioTotal,
           telefono: telefono.trim(),
           esPreReserva: esPreFallback,
           esReagendamiento: esReag,
