@@ -66,9 +66,8 @@ export class BaileysService {
         return; // Evitar saturación de consultas hacia WhatsApp
       }
       this.ultimoSyncLids = ahora;
-      const wl = this.getWhitelist();
-      // Extraer números celulares reales de 10 dígitos (Colombia: 3XXXXXXXXX o 573XXXXXXXXX)
-      const phones = wl
+      // Extraer números registrados en el mapa oficial de LIDs
+      const phones = Array.from(this.lidToPhoneMap.values())
         .map((n) => n.replace(/\D/g, ''))
         .filter((n) => {
           const ten = n.length >= 10 ? n.slice(-10) : '';
@@ -87,11 +86,8 @@ export class BaileysService {
             if (r.lid && r.jid) {
               const lidId = String(r.lid).split('@')[0].replace(/\D/g, '');
               const phoneId = String(r.jid).split('@')[0].replace(/\D/g, '');
-              // Seguridad estricta: Solo registrar el LID si el número telefónico devuelto por WhatsApp pertenece a la lista blanca
-              if (this.estaEnListaBlanca(phoneId)) {
-                this.lidToPhoneMap.set(lidId, phoneId);
-                console.log(`[Baileys] 🔗 LID legítimo verificado con WhatsApp server: ${lidId} -> ${phoneId}`);
-              }
+              this.lidToPhoneMap.set(lidId, phoneId);
+              console.log(`[Baileys] 🔗 LID verificado con WhatsApp server: ${lidId} -> ${phoneId}`);
             }
           }
         }
@@ -113,65 +109,17 @@ export class BaileysService {
 
   /**
    * Obtiene la lista blanca de números autorizados.
-   * ÚNICAMENTE autorizados: 3134862536 y 3022779797 (además del propio bot 3223739845).
+   * Lista blanca desactivada: retorna vacío ya que el bot opera en MODO ABIERTO universal.
    */
   public static getWhitelist(): string[] {
-    const raw = process.env.BAILEYS_WHITELIST_NUMBERS || '';
-    if (raw === '*' || raw.toLowerCase() === 'all' || process.env.BAILEYS_ALLOW_ALL === 'true') {
-      return [];
-    }
-    const envNumbers = raw
-      .split(',')
-      .map((num) => num.replace(/\D/g, '').trim())
-      .filter((num) => num.length > 0);
-
-    // Números de prueba autorizados y el propio bot
-    const defaultNumbers = [
-      '573134862536',
-      '3134862536',
-      '573022779797',
-      '3022779797',
-      '573223739845',
-      '3223739845',
-    ];
-
-    const allowed = new Set<string>(defaultNumbers);
-    for (const num of envNumbers) {
-      allowed.add(num);
-      if (num.startsWith('57') && num.length > 10) {
-        allowed.add(num.slice(2));
-      } else if (num.length === 10) {
-        allowed.add(`57${num}`);
-      }
-    }
-    return Array.from(allowed);
+    return [];
   }
 
   /**
-   * Verifica si un remitente está en la lista blanca de seguridad.
+   * MODO ABIERTO: el bot responde a cualquier número entrante (salvo los que estén restringidos).
    */
-  public static estaEnListaBlanca(telefonoLimpio: string): boolean {
-    const limpio = telefonoLimpio.replace(/\D/g, '');
-    if (!limpio) return false;
-
-    // Si es un LID de WhatsApp mapeado a un número de teléfono conocido
-    if (this.lidToPhoneMap.has(limpio)) {
-      const telReal = this.lidToPhoneMap.get(limpio)!;
-      return this.estaEnListaBlanca(telReal);
-    }
-
-    const whitelist = this.getWhitelist();
-    // Si no hay lista blanca configurada en .env ni números default, atiende normalmente
-    if (whitelist.length === 0) return true;
-
-    const ultimos10 = limpio.length >= 10 ? limpio.slice(-10) : limpio;
-
-    // Verificación ESTRICTA de seguridad: Solo coincidencia exacta de número o de los 10 dígitos celulares
-    return whitelist.some((autorizado) => {
-      const authClean = autorizado.replace(/\D/g, '');
-      const auth10 = authClean.length >= 10 ? authClean.slice(-10) : authClean;
-      return limpio === authClean || (ultimos10.length === 10 && ultimos10 === auth10);
-    });
+  public static estaEnListaBlanca(_telefonoLimpio: string): boolean {
+    return true;
   }
 
   /**
@@ -577,14 +525,7 @@ export class BaileysService {
     this.addDebugEvent('MENSAJE_ENTRANTE', { rawJid, normalizedJid, telefonoLimpio, fromMe: m.key.fromMe });
     console.log(`[Baileys] 📨 Mensaje entrante de: ${rawJid} -> Normalizado: ${normalizedJid} (Teléfono: ${telefonoLimpio})`);
 
-    // 4. BLINDAJE: Verificación estricta de Lista Blanca
-    if (!this.estaEnListaBlanca(telefonoLimpio)) {
-      this.addDebugEvent('BLOQUEADO_LISTA_BLANCA', { telefonoLimpio, rawJid });
-      console.log(`[Baileys] 🛑 Número/LID ${telefonoLimpio} NO está en la lista blanca. Ignorado por blindaje.`);
-      return;
-    }
-
-    // Verificar si el número está en la lista de exclusión (atención humana / bot silenciado)
+    // 4. MODO ABIERTO: Verificar si el número está en la lista de exclusión (atención humana / bot silenciado)
     const esExcluido = await BotExclusionsService.esNumeroExcluido(telefonoLimpio);
     if (esExcluido) {
       this.addDebugEvent('IGNORADO_ATENCION_HUMANA', { telefonoLimpio });
@@ -851,8 +792,8 @@ export class BaileysService {
     if (clean.length === 10 && clean.startsWith('3')) {
       clean = `57${clean}`;
     }
-    if (!this.estaEnListaBlanca(clean)) {
-      console.log(`[Baileys] Envío directo a ${clean} bloqueado por Lista Blanca.`);
+    if (await BotExclusionsService.esNumeroExcluido(clean)) {
+      console.log(`[Baileys] Envío directo a ${clean} cancelado (número en lista de exclusión/atención humana).`);
       return false;
     }
     const remoteJid = `${clean}@s.whatsapp.net`;

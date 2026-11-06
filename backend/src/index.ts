@@ -453,8 +453,8 @@ async function enviarMensajeWhatsApp(
     console.log(`✅ [WHATSAPP BAILEYS ENVIADO a ${cleanTo}]`);
     addDebugLog('SEND_SUCCESS', { to: cleanTo, provider: 'baileys' });
   } else {
-    console.warn(`⚠️ [WHATSAPP BAILEYS NO ENVIADO a ${cleanTo}]: No conectado o número no autorizado por lista blanca`);
-    addDebugLog('SEND_ERROR', { to: cleanTo, provider: 'baileys', motivo: 'No conectado o bloqueado por lista blanca' });
+    console.warn(`⚠️ [WHATSAPP BAILEYS NO ENVIADO a ${cleanTo}]: No conectado o número en lista de exclusión`);
+    addDebugLog('SEND_ERROR', { to: cleanTo, provider: 'baileys', motivo: 'No conectado o silenciado por exclusión' });
   }
   return enviado;
 }
