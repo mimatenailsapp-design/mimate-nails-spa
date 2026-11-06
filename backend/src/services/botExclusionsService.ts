@@ -66,9 +66,10 @@ export class BotExclusionsService {
       await this.getExclusiones();
     }
     const limpio = this.normalizarNumero(telefono);
+    if (!limpio || limpio.length < 7) return false;
     const solo10 = limpio.startsWith('57') && limpio.length === 12 ? limpio.slice(2) : limpio;
 
-    return this.excludedSet.has(limpio) || this.excludedSet.has(solo10);
+    return this.excludedSet.has(limpio) || (solo10.length === 10 && this.excludedSet.has(solo10));
   }
 
   /**
@@ -153,10 +154,13 @@ export class BotExclusionsService {
   private static actualizarCacheSet(lista: BotExclusion[]) {
     this.excludedSet.clear();
     for (const item of lista) {
+      if (!item || !item.telefono) continue;
       const n = this.normalizarNumero(item.telefono);
-      this.excludedSet.add(n);
-      if (n.startsWith('57') && n.length === 12) {
-        this.excludedSet.add(n.slice(2));
+      if (n && n.length >= 7) {
+        this.excludedSet.add(n);
+        if (n.startsWith('57') && n.length === 12) {
+          this.excludedSet.add(n.slice(2));
+        }
       }
     }
   }
