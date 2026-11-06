@@ -37,21 +37,16 @@ export class BaileysService {
 
   // Mapeo oficial verificado directamente por los servidores de WhatsApp (onWhatsApp) y dispositivos autorizados
   public static lidToPhoneMap: Map<string, string> = new Map([
-    // Contacto 3134862536 (LIDs oficiales registrados: server y dispositivo móvil)
+    // Contacto 3134862536 (LID oficial verificado por WhatsApp server)
     ['272627444801659', '573134862536'],
-    ['279641092800638', '573134862536'],
 
-    // Contacto 3022779797 (LIDs oficiales registrados: server y WhatsApp Web)
+    // Contacto 3022779797 (LID oficial verificado por WhatsApp server)
     ['263677336907937', '573022779797'],
-    ['134634406961213', '573022779797'],
 
-    // Contacto 3108108166 (Lili - Clienta y Admin oficial autorizada)
+    // Contacto 3108108166 (Clienta autorizada oficial)
     ['207953860776112', '573108108166'],
-    ['240905336418420', '573108108166'],
-    ['24327567204353', '573108108166'],
-    ['156534478762129', '573108108166'],
 
-    // Contacto 3217176154 (Jhoana - Clienta y Admin oficial autorizada)
+    // Contacto 3217176154 (Clienta autorizada oficial)
     ['163436390572209', '573217176154'],
 
     // Bot Mímate Nails Spa (Teléfono propio 3223739845)
@@ -379,33 +374,6 @@ export class BaileysService {
           }
         }
 
-        // 1.1 Aprendizaje automático y dinámico de contactos y LIDs de WhatsApp
-        if (events['contacts.upsert']) {
-          for (const c of (events['contacts.upsert'] as any[])) {
-            if (c.lid && (c.id || c.jid)) {
-              const lidClean = String(c.lid).split('@')[0].replace(/\D/g, '');
-              const phoneClean = String(c.id || c.jid).split('@')[0].replace(/\D/g, '');
-              if (phoneClean.length >= 10 && this.estaEnListaBlanca(phoneClean)) {
-                this.lidToPhoneMap.set(lidClean, phoneClean);
-                console.log(`[Baileys] 📇 Contacto sincronizado: LID ${lidClean} -> ${phoneClean}`);
-              }
-            }
-          }
-        }
-
-        if (events['contacts.update']) {
-          for (const c of (events['contacts.update'] as any[])) {
-            if (c.lid && (c.id || c.jid)) {
-              const lidClean = String(c.lid).split('@')[0].replace(/\D/g, '');
-              const phoneClean = String(c.id || c.jid).split('@')[0].replace(/\D/g, '');
-              if (phoneClean.length >= 10 && this.estaEnListaBlanca(phoneClean)) {
-                this.lidToPhoneMap.set(lidClean, phoneClean);
-                console.log(`[Baileys] 📇 Contacto actualizado: LID ${lidClean} -> ${phoneClean}`);
-              }
-            }
-          }
-        }
-
         // 2. Control de estado de conexión
         if (events['connection.update']) {
           const update = events['connection.update'];
@@ -563,23 +531,14 @@ export class BaileysService {
       this.procesadosCache.clear();
     }
 
-    // Si viene de un LID pero trae participant o senderPn con número telefónico, mapearlo
+    // Si viene de un LID pero trae participant con número telefónico, verificar primero lista blanca
     const participantJid = m.key?.participant ? jidNormalizedUser(m.key.participant) : '';
-    const rawSenderPn = ((m.key as any)?.senderPn || (m.key as any)?.participantPn || '');
-    if (isLidUser(normalizedJid)) {
+    if (isLidUser(normalizedJid) && participantJid && !isLidUser(participantJid)) {
       const lidRaw = normalizedJid.split('@')[0].replace(/\D/g, '');
-      if (participantJid && !isLidUser(participantJid)) {
-        const telReal = participantJid.split('@')[0].replace(/\D/g, '');
-        if (telReal.length >= 10 && this.estaEnListaBlanca(telReal)) {
-          this.lidToPhoneMap.set(lidRaw, telReal);
-          console.log(`[Baileys] 🔗 LID ${lidRaw} mapeado legítimamente para número autorizado: ${telReal}`);
-        }
-      } else if (rawSenderPn) {
-        const telReal = rawSenderPn.split('@')[0].replace(/\D/g, '');
-        if (telReal.length >= 10 && this.estaEnListaBlanca(telReal)) {
-          this.lidToPhoneMap.set(lidRaw, telReal);
-          console.log(`[Baileys] 🔗 LID ${lidRaw} mapeado por senderPn para número autorizado: ${telReal}`);
-        }
+      const telReal = participantJid.split('@')[0].replace(/\D/g, '');
+      if (telReal.length >= 10 && this.estaEnListaBlanca(telReal)) {
+        this.lidToPhoneMap.set(lidRaw, telReal);
+        console.log(`[Baileys] 🔗 LID ${lidRaw} mapeado legítimamente para número autorizado: ${telReal}`);
       }
     }
 
@@ -588,7 +547,7 @@ export class BaileysService {
     const esLid = isLidUser(normalizedJid);
 
     if (esLid && !this.lidToPhoneMap.has(telefonoLimpio)) {
-      await this.sincronizarLids(true);
+      await this.sincronizarLids();
     }
 
     if (this.lidToPhoneMap.has(telefonoLimpio)) {
