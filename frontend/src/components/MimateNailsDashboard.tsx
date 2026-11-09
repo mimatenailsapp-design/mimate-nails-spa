@@ -24,6 +24,7 @@ import {
   IconSettings,
 } from '@tabler/icons-react';
 import { supabase } from '../config/supabase';
+import { verifyPinHash, STAFF_DEFAULT_PIN_HASH, ADMIN_MASTER_PIN_HASH } from '../utils/security';
 import { BloquearHorarioModal } from './dashboard/BloquearHorarioModal';
 import { ConfigAnticipoModal } from './dashboard/ConfigAnticipoModal';
 import { AgendarCitaModal } from './dashboard/AgendarCitaModal';
@@ -75,7 +76,7 @@ export interface StaffProfile {
   nombre: string;
   alias: string;
   rol: 'admin' | 'manicurista';
-  pin: string;
+  pinHash: string;
   descripcion: string;
   avatar: string;
   foto?: string;
@@ -99,7 +100,7 @@ const PERFILES_SPA_CONFIG: Omit<StaffProfile, 'canchaId'>[] = [
     nombre: 'Lili (Administradora)',
     alias: 'Lili (Admin & Especialista)',
     rol: 'admin',
-    pin: '1234',
+    pinHash: STAFF_DEFAULT_PIN_HASH,
     descripcion: 'Acceso Total: Supervisión de todas las tablas, métricas de reservas y agendamiento exclusivo.',
     avatar: '👑',
     foto: '/equipo/lili.jpg',
@@ -111,7 +112,7 @@ const PERFILES_SPA_CONFIG: Omit<StaffProfile, 'canchaId'>[] = [
     nombre: 'Jhoana (Administradora)',
     alias: 'Jhoana (Admin & Especialista)',
     rol: 'admin',
-    pin: '1234',
+    pinHash: STAFF_DEFAULT_PIN_HASH,
     descripcion: 'Acceso Total: Supervisión de todas las tablas, métricas de reservas y agendamiento exclusivo.',
     avatar: '👑',
     foto: '/equipo/jhoana.jpg',
@@ -123,7 +124,7 @@ const PERFILES_SPA_CONFIG: Omit<StaffProfile, 'canchaId'>[] = [
     nombre: 'Manuela',
     alias: 'Manuela (Especialista)',
     rol: 'manicurista',
-    pin: '1234',
+    pinHash: STAFF_DEFAULT_PIN_HASH,
     descripcion: 'Vista personal de turnos del día y gestión de atención de clientas asignadas.',
     avatar: '💅',
     foto: '/equipo/manuela.jpg',
@@ -135,7 +136,7 @@ const PERFILES_SPA_CONFIG: Omit<StaffProfile, 'canchaId'>[] = [
     nombre: 'Manicurista 4',
     alias: 'Manicurista 4',
     rol: 'manicurista',
-    pin: '1234',
+    pinHash: STAFF_DEFAULT_PIN_HASH,
     descripcion: 'Vista personal de turnos del día y gestión de atención de clientas asignadas.',
     avatar: '🌸',
     colorBadge: 'bg-[#FFF5F7] text-[#C74B66] border-[#F2C4D2]',
@@ -391,7 +392,15 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   const [perfilActual, setPerfilActual] = useState<StaffProfile | null>(() => {
     try {
       const g = localStorage.getItem('mimate_staff_profile');
-      return g ? JSON.parse(g) : null;
+      if (!g) return null;
+      const parsed = JSON.parse(g);
+      // Sanitizar para eliminar cualquier clave de PIN plano heredada o pinHash
+      if (parsed && ('pin' in parsed || 'pinHash' in parsed)) {
+        delete parsed.pin;
+        delete parsed.pinHash;
+        localStorage.setItem('mimate_staff_profile', JSON.stringify(parsed));
+      }
+      return parsed;
     } catch {
       return null;
     }
@@ -470,10 +479,16 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     return `${y}-${m}`;
   });
 
-  // Modal Login PIN
+  // Modal Login PIN (Siempre inicializado vacío, nunca pre-llenado)
   const [modalPinPerfil, setModalPinPerfil] = useState<StaffProfile | null>(null);
-  const [pinIngresado, setPinIngresado] = useState('1234');
+  const [pinIngresado, setPinIngresado] = useState('');
   const [errorPin, setErrorPin] = useState<string | null>(null);
+
+  // Asegurar que bajo ninguna circunstancia persista o se auto-llene la clave al abrir/cambiar de perfil
+  useEffect(() => {
+    setPinIngresado('');
+    setErrorPin(null);
+  }, [modalPinPerfil]);
 
   // Modal Agendar Cita (Solo Admin)
   const [modalAgendarAbierto, setModalAgendarAbierto] = useState(false);
@@ -1204,7 +1219,8 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
         ) {
           const actualizado = { ...perfilActual, ...match };
           setPerfilActual(actualizado);
-          localStorage.setItem('mimate_staff_profile', JSON.stringify(actualizado));
+          const { pinHash: _hash, ...actualizadoSinHash } = actualizado;
+          localStorage.setItem('mimate_staff_profile', JSON.stringify(actualizadoSinHash));
         }
       }
     }
@@ -1342,28 +1358,44 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     return nombre.charAt(0).toUpperCase() + nombre.slice(1);
   }, [mesSeleccionado]);
 
-  // Manejo de Login con PIN
+  // Manejo de Login con PIN seguro (Sin auto-llenado y verificación por Hash criptográfico)
   const handleIniciarSesion = (perfil: StaffProfile) => {
     setModalPinPerfil(perfil);
-    setPinIngresado(perfil.pin || '1234');
+    setPinIngresado('');
     setErrorPin(null);
   };
 
-  const handleConfirmarPin = (e: React.FormEvent) => {
+  const handleConfirmarPin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!modalPinPerfil) return;
 
-    if (pinIngresado === modalPinPerfil.pin || pinIngresado === '1234' || pinIngresado === 'admin123') {
+    const pinLimpio = pinIngresado.trim();
+    if (!pinLimpio) {
+      setErrorPin('Por favor ingresa tu PIN de acceso.');
+      return;
+    }
+
+    const esValido =
+      (await verifyPinHash(pinLimpio, modalPinPerfil.pinHash)) ||
+      (await verifyPinHash(pinLimpio, ADMIN_MASTER_PIN_HASH));
+
+    if (esValido) {
       setPerfilActual(modalPinPerfil);
-      localStorage.setItem('mimate_staff_profile', JSON.stringify(modalPinPerfil));
+      const { pinHash: _hash, ...perfilSinHash } = modalPinPerfil;
+      localStorage.setItem('mimate_staff_profile', JSON.stringify(perfilSinHash));
       setModalPinPerfil(null);
+      setPinIngresado('');
+      setErrorPin(null);
     } else {
-      setErrorPin('PIN incorrecto. El PIN predeterminado es 1234.');
+      setErrorPin('PIN incorrecto. Por favor verifica e intenta nuevamente.');
+      setPinIngresado('');
     }
   };
 
   const handleCerrarSesion = () => {
     setPerfilActual(null);
+    setPinIngresado('');
+    setErrorPin(null);
     localStorage.removeItem('mimate_staff_profile');
   };
 
@@ -1964,7 +1996,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
                   <div className="pt-3 border-t border-[#FCE8EF] mt-3 flex items-center justify-between text-xs">
                     <span className="text-[11px] font-semibold text-[#8C243B]">Ingresar perfil →</span>
-                    <span className="text-[10px] text-[#7D6870] opacity-75">PIN: {p.pin}</span>
+                    <span className="text-[10px] text-[#7D6870] opacity-75">PIN protegido</span>
                   </div>
                 </motion.div>
               );
@@ -2010,25 +2042,43 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                     </div>
                   </div>
                   <button
-                    onClick={() => setModalPinPerfil(null)}
+                    onClick={() => {
+                      setModalPinPerfil(null);
+                      setPinIngresado('');
+                      setErrorPin(null);
+                    }}
                     className="p-1 rounded-full text-[#7D6870] hover:text-[#2D2529] cursor-pointer"
                   >
                     <IconX className="w-4 h-4" />
                   </button>
                 </div>
 
-                <form onSubmit={handleConfirmarPin} className="space-y-3">
+                <form onSubmit={handleConfirmarPin} autoComplete="off" noValidate className="space-y-3">
                   <div>
-                    <label className="text-[11px] font-bold text-[#7D6870] block mb-1">
-                      PIN de Acceso (Predeterminado: 1234)
+                    <label htmlFor={`mimate_spa_auth_pin_${modalPinPerfil.id}`} className="text-[11px] font-bold text-[#7D6870] block mb-1">
+                      PIN de Acceso
                     </label>
                     <div className="relative">
                       <IconLock className="w-4 h-4 text-[#C74B66] absolute left-3 top-1/2 -translate-y-1/2" />
                       <input
-                        type="password"
+                        id={`mimate_spa_auth_pin_${modalPinPerfil.id}`}
+                        name={`mimate_spa_auth_pin_${modalPinPerfil.id}`}
+                        type="text"
+                        style={{
+                          WebkitTextSecurity: 'disc',
+                          textSecurity: 'disc',
+                        } as React.CSSProperties}
+                        autoComplete="off"
+                        autoCorrect="off"
+                        autoCapitalize="off"
+                        spellCheck={false}
+                        data-lpignore="true"
+                        data-1p-ignore="true"
+                        data-bwignore="true"
+                        data-form-type="other"
                         value={pinIngresado}
                         onChange={(e) => setPinIngresado(e.target.value)}
-                        placeholder="1234"
+                        placeholder="••••"
                         className="w-full pl-9 pr-3 py-2.5 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl text-sm font-mono tracking-widest text-center text-[#2D2529] focus:outline-none focus:border-[#8C243B]"
                         autoFocus
                       />
@@ -2044,7 +2094,11 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                   <div className="flex gap-2 pt-1">
                     <button
                       type="button"
-                      onClick={() => setModalPinPerfil(null)}
+                      onClick={() => {
+                        setModalPinPerfil(null);
+                        setPinIngresado('');
+                        setErrorPin(null);
+                      }}
                       className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-[#7D6870] text-xs font-semibold rounded-xl transition cursor-pointer"
                     >
                       Cancelar

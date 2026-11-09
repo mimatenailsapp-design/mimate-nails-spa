@@ -56,4 +56,4 @@ Esta guía explica paso a paso cómo desplegar en producción el sistema de cita
 3. Haz clic en **Deploy**.
 4. ¡Listo! Tu web quedará activa en:
    - `https://tu-proyecto.vercel.app/` -> Reservas de clientas.
-   - `https://tu-proyecto.vercel.app/admin` -> Panel de turnos de las manicuristas (PIN `1234`).
+   - `https://tu-proyecto.vercel.app/admin` -> Panel de turnos de las manicuristas (Acceso protegido con PIN).

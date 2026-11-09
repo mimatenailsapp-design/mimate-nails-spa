@@ -31,8 +31,13 @@ app.use(
     contentSecurityPolicy: false, // Permite assets web y vistas QR sin bloquear scripts
     crossOriginResourcePolicy: { policy: 'cross-origin' },
     crossOriginEmbedderPolicy: false,
+    hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
+    frameguard: { action: 'sameorigin' },
+    noSniff: true,
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
   })
 );
+
 
 // CORS seguro y optimizado
 app.use(
@@ -52,6 +57,32 @@ app.use(compression());
 // Límites de tamaño de payload para mitigar ataques DoS / Memory Exhaustion
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+
+// Función defensiva recursiva contra Prototype Pollution
+function sanitizeObject(obj: any, depth = 0): void {
+  if (!obj || typeof obj !== 'object' || depth > 10) return;
+  for (const key of Object.keys(obj)) {
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+      delete obj[key];
+    } else if (typeof obj[key] === 'object' && obj[key] !== null) {
+      sanitizeObject(obj[key], depth + 1);
+    }
+  }
+}
+
+// Filtro de seguridad defensivo contra Prototype Pollution aplicado tras el parseo del body
+app.use((req: Request, _res: Response, next) => {
+  if (req.body && typeof req.body === 'object') {
+    sanitizeObject(req.body);
+  }
+  if (req.query && typeof req.query === 'object') {
+    sanitizeObject(req.query);
+  }
+  if (req.params && typeof req.params === 'object') {
+    sanitizeObject(req.params);
+  }
+  next();
+});
 
 // ------------------------------------------------------------------------------
 // RATE LIMITERS (Protección contra DDoS, Fuerza Bruta y Saturación de Endpoints)
@@ -82,6 +113,15 @@ const testLimiter = rateLimit({
   message: { error: 'Límite de simulaciones alcanzado. Intenta de nuevo más tarde.' },
 });
 
+// Limiter defensivo contra fuerza bruta en autenticación y verificación de PIN
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 15,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiados intentos de verificación de seguridad. Por favor espera 15 minutos.' },
+});
+
 // Aplicar limiter general a todas las rutas de la API
 app.use('/api/', generalLimiter);
 
@@ -108,6 +148,44 @@ export function esFormatoHoraValido(h: string): boolean {
 export function esUUIDValido(id: string): boolean {
   return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(id);
 }
+
+/**
+ * Helper para emitir cookies seguras con directivas modernas (HttpOnly, SameSite=Lax, Secure)
+ */
+export function setSecureCookie(
+  res: Response,
+  nombre: string,
+  valor: string,
+  dias = 30
+): void {
+  const isProd = process.env.NODE_ENV === 'production';
+  res.cookie(nombre, valor, {
+    maxAge: dias * 24 * 60 * 60 * 1000,
+    path: '/',
+    sameSite: 'lax',
+    httpOnly: true,
+    secure: isProd,
+  });
+}
+
+// Endpoint de verificación segura de PIN por hash (con protección de fuerza bruta via rate limit)
+app.post('/api/auth/verify-pin', authLimiter, (req: Request, res: Response) => {
+  try {
+    const { pinHash } = req.body;
+    if (!pinHash || typeof pinHash !== 'string') {
+      return res.status(400).json({ valido: false, error: 'Hash no proporcionado o inválido' });
+    }
+    // Hashes seguros (coinciden con frontend/src/utils/security.ts)
+    const HASHES_VALIDOS = new Set([
+      'fb03a4b64b8bcb37d2967b46951043048eed9c56629857495bba7d295520f186',
+      '7dc28d72e8f9bfaf28453b71d5a662b5f5baacdc373a6a1796f4acaa57b0138e',
+    ]);
+    const esValido = HASHES_VALIDOS.has(pinHash.trim().toLowerCase());
+    return res.json({ valido: esValido });
+  } catch {
+    return res.status(500).json({ error: 'Error interno en validación de seguridad.' });
+  }
+});
 
 // ==============================================================================
 // 1. HEALTH CHECK & ESTADO DE CONEXIÓN
@@ -1978,6 +2056,16 @@ app.all('/api/cron/recordatorios', async (req: Request, res: Response) => {
     res.json({ status: 'ok', keep_alive: true, timestamp: new Date().toISOString(), ...resultado });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Middleware defensivo de captura de errores HTTP (evita fuga de stack traces en producción)
+app.use((err: any, req: Request, res: Response, _next: any) => {
+  console.error('⚠️ Error capturado por el middleware de seguridad:', err?.message || err);
+  if (!res.headersSent) {
+    const statusCode = typeof err.status === 'number' ? err.status : (typeof err.statusCode === 'number' ? err.statusCode : 500);
+    const mensaje = statusCode < 500 ? (err.message || 'Petición inválida') : 'Ha ocurrido un error interno controlado en el servidor.';
+    res.status(statusCode).json({ error: mensaje });
   }
 });
 

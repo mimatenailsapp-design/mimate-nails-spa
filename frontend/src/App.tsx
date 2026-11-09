@@ -1,4 +1,5 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
+import { CookieConsentBanner } from './components/common/CookieConsentBanner';
 
 // Carga perezosa (Code-Splitting): Las clientas solo descargan la web de reservas, ahorrando ~600KB de código del Dashboard
 const MimateNailsBooking = lazy(() =>
@@ -51,22 +52,24 @@ export function App() {
     setVista('reservas');
   };
 
-  if (vista === 'admin') {
-    return (
-      <Suspense fallback={<PantallaCarga mensaje="Cargando Panel de Administración..." />}>
-        <MimateNailsDashboard
-          onIrAWebReservas={irAReservas}
-          complejoId="3bd1708c-21de-42a8-a529-d7c91fd41ed2"
-        />
-      </Suspense>
-    );
-  }
-
   return (
-    <Suspense fallback={<PantallaCarga mensaje="Preparando tu experiencia de belleza..." />}>
-      <MimateNailsBooking onIrAlAdmin={irAlAdmin} />
-    </Suspense>
+    <>
+      {vista === 'admin' ? (
+        <Suspense fallback={<PantallaCarga mensaje="Cargando Panel de Administración..." />}>
+          <MimateNailsDashboard
+            onIrAWebReservas={irAReservas}
+            complejoId="3bd1708c-21de-42a8-a529-d7c91fd41ed2"
+          />
+        </Suspense>
+      ) : (
+        <Suspense fallback={<PantallaCarga mensaje="Preparando tu experiencia de belleza..." />}>
+          <MimateNailsBooking onIrAlAdmin={irAlAdmin} />
+        </Suspense>
+      )}
+      <CookieConsentBanner />
+    </>
   );
 }
 
 export default App;
+

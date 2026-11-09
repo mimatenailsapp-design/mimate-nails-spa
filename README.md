@@ -8,7 +8,7 @@ Sistema web de reservas de citas y gestión de turnos para el salón y spa de u�
 
 - **`frontend/`**: Aplicación web desarrollada con React, Vite y Tailwind CSS.
   - `/` o `/reservar`: Página web pública de reservas para clientas.
-  - `/admin` o `/mimate-admin`: Dashboard de gestión de turnos y agenda para las manicuristas (PIN por defecto: `1234`).
+  - `/admin` o `/mimate-admin`: Dashboard de gestión de turnos y agenda para las manicuristas (Acceso protegido con PIN hasheado).
 - **`backend/`**: Servidor API con Express, TypeScript y Node.js.
   - Bot de WhatsApp nativo con Baileys (sin intermediarios de Meta).
   - Escáner visual de código QR en `/qr`.
