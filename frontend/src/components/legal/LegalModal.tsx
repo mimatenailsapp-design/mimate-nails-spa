@@ -161,38 +161,37 @@ export const LegalModal: React.FC<LegalModalProps> = ({
 
                 <div className="space-y-3">
                   <div>
-                    <h4 className="font-bold text-[#8C243B]">1. Responsable del Tratamiento</h4>
+                    <h4 className="font-bold text-[#8C243B]">1. Responsables del Tratamiento y Operación Tecnológica</h4>
                     <p className="text-[#55434A]">
-                      <strong>JL Mímate Nails Spa</strong>, establecimiento comercial ubicado en Pereira, Risaralda (Sector Cuba, Calle 66 bis #26-57). Correo de atención:{' '}
-                      <a href="mailto:Mimatenailsapp@gmail.com" className="text-[#8C243B] font-semibold underline">
-                        Mimatenailsapp@gmail.com
-                      </a>.
+                      Conforme a la Ley 1581 de 2012 y el Decreto 1377 de 2013, el tratamiento y custodia de los datos personales suministrados en esta plataforma se realiza bajo el esquema de <strong>Co-Responsabilidad</strong>:
                     </p>
+                    <ul className="list-disc pl-5 mt-1.5 space-y-1.5 text-xs text-[#55434A]">
+                      <li>
+                        <strong>Devmake (Developers Maven Kernel) (Responsable Tecnológico y Custodio de la Base de Datos):</strong> Empresa creadora, administradora y operadora del software, encargada de la infraestructura en la nube, seguridad cibernética (Ley 1273 de 2009) y atención de solicitudes de Habeas Data. Sitio web:{' '}
+                        <a
+                          href="https://devmake.vercel.app/"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[#8C243B] font-semibold underline inline-flex items-center gap-0.5"
+                        >
+                          devmake.vercel.app <IconExternalLink className="w-3 h-3 inline" />
+                        </a>{' '}
+                        · Correo oficial:{' '}
+                        <a href="mailto:devmavenk3@gmail.com" className="text-[#8C243B] font-semibold underline">
+                          devmavenk3@gmail.com
+                        </a>.
+                      </li>
+                      <li>
+                        <strong>JL Mímate Nails Spa (Responsable Comercial y Operativo en Sede):</strong> Establecimiento comercial ubicado en Pereira, Risaralda (Sector Cuba, Calle 66 bis #26-57), beneficiario de la plataforma para la prestación presencial del servicio de uñas. Correo:{' '}
+                        <a href="mailto:Mimatenailsapp@gmail.com" className="text-[#8C243B] font-semibold underline">
+                          Mimatenailsapp@gmail.com
+                        </a>.
+                      </li>
+                    </ul>
                   </div>
 
                   <div>
-                    <h4 className="font-bold text-[#8C243B]">2. Encargado del Tratamiento y Soporte Tecnológico</h4>
-                    <p className="text-[#55434A]">
-                      La infraestructura tecnológica, software, base de datos y custodia técnica son operadas y gestionadas por{' '}
-                      <strong>Devmake (Developers Maven Kernel)</strong> (
-                      <a
-                        href="https://devmake.vercel.app/"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[#8C243B] font-semibold underline inline-flex items-center gap-0.5"
-                      >
-                        devmake.vercel.app <IconExternalLink className="w-3 h-3 inline" />
-                      </a>
-                      ) · Correo oficial de gestión de datos y soporte:{' '}
-                      <a href="mailto:devmavenk3@gmail.com" className="text-[#8C243B] font-semibold underline">
-                        devmavenk3@gmail.com
-                      </a>
-                      , implementando protocolos de seguridad y custodia de la información conforme a la Ley 1273 de 2009.
-                    </p>
-                  </div>
-
-                  <div>
-                    <h4 className="font-bold text-[#8C243B]">3. Finalidad de la Recolección de Datos</h4>
+                    <h4 className="font-bold text-[#8C243B]">2. Finalidad de la Recolección de Datos</h4>
                     <p className="text-[#55434A]">Los datos de contacto (nombre y teléfono celular) suministrados en el agendamiento son utilizados exclusivamente para:</p>
                     <ul className="list-disc pl-5 mt-1 space-y-1 text-xs text-[#55434A]">
                       <li>Agendar, gestionar y confirmar tu cita de manicura, pedicura o sistemas acrílicos.</li>
@@ -206,7 +205,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                   </div>
 
                   <div>
-                    <h4 className="font-bold text-[#8C243B]">4. Derechos del Titular (Derechos ARCO)</h4>
+                    <h4 className="font-bold text-[#8C243B]">3. Derechos del Titular (Derechos ARCO)</h4>
                     <p className="text-[#55434A]">
                       Como titular de tus datos personales tienes derecho a:
                     </p>
@@ -218,7 +217,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                   </div>
 
                   <div>
-                    <h4 className="font-bold text-[#8C243B]">5. Canales para Ejercer tus Derechos (Habeas Data)</h4>
+                    <h4 className="font-bold text-[#8C243B]">4. Canales para Ejercer tus Derechos (Habeas Data)</h4>
                     <p className="text-[#55434A]">
                       Puedes solicitar la supresión, actualización o rectificación de tus datos personales enviando un correo al canal oficial de gestión técnica operado por Devmake:{' '}
                       <a href="mailto:devmavenk3@gmail.com" className="text-[#8C243B] font-semibold underline">
