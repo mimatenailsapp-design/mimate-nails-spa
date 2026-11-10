@@ -74,10 +74,10 @@ export const LegalModal: React.FC<LegalModalProps> = ({
           exit={{ opacity: 0, scale: 0.95, y: 15 }}
           transition={{ duration: 0.2 }}
           onClick={(e) => e.stopPropagation()}
-          className="bg-[#FDF8F9] border border-[#F2C4D2] w-full max-w-2xl rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[88vh] relative z-10 my-auto"
+          className="bg-[#FDF8F9] border border-[#F2C4D2] w-full max-w-2xl rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] sm:max-h-[88vh] relative z-10 my-auto"
         >
           {/* Header del Modal */}
-          <div className="p-4 sm:p-5 border-b border-[#F2C4D2] bg-white flex items-center justify-between gap-3 shrink-0">
+          <div className="p-3.5 sm:p-5 border-b border-[#F2C4D2] bg-white flex items-center justify-between gap-3 shrink-0">
             <div>
               <span className="text-[10px] font-extrabold tracking-widest uppercase text-[#C74B66] block">
                 Marco Legal y Normativo · Colombia
@@ -96,51 +96,70 @@ export const LegalModal: React.FC<LegalModalProps> = ({
             </button>
           </div>
 
-          {/* Selector de pestañas */}
-          <div className="flex border-b border-[#F2C4D2] bg-[#FCE8EF]/40 overflow-x-auto no-scrollbar shrink-0 text-xs font-semibold">
+          {/* Selector de pestañas responsive (Grid 2x2 en móvil / 4 columnas en desktop) */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-2 sm:p-2.5 bg-[#FFF0F4]/80 border-b border-[#F2C4D2] shrink-0">
             <button
+              type="button"
               onClick={() => setTabActiva('datos')}
-              className={`flex items-center gap-1.5 px-4 py-3 whitespace-nowrap border-b-2 transition-all cursor-pointer ${
+              className={`flex items-center gap-2 p-2 sm:p-2.5 rounded-xl transition-all cursor-pointer text-left border ${
                 tabActiva === 'datos'
-                  ? 'border-[#8C243B] text-[#8C243B] bg-white font-bold'
-                  : 'border-transparent text-[#7D6870] hover:text-[#2D2529]'
+                  ? 'bg-white border-[#8C243B] text-[#8C243B] shadow-xs ring-1 ring-[#8C243B]/20 font-bold'
+                  : 'bg-white/40 border-transparent text-[#7D6870] hover:bg-white/80 hover:text-[#2D2529]'
               }`}
             >
-              <IconShieldLock className="w-4 h-4 text-[#C74B66]" />
-              <span>Datos Personales (Ley 1581)</span>
+              <IconShieldLock className={`w-4 h-4 shrink-0 ${tabActiva === 'datos' ? 'text-[#8C243B]' : 'text-[#C74B66]'}`} />
+              <div className="min-w-0 flex-1">
+                <span className="block text-xs leading-tight font-semibold truncate">Datos Personales</span>
+                <span className="block text-[10px] leading-tight text-[#9C828C] truncate font-normal">Ley 1581</span>
+              </div>
             </button>
+
             <button
+              type="button"
               onClick={() => setTabActiva('terminos')}
-              className={`flex items-center gap-1.5 px-4 py-3 whitespace-nowrap border-b-2 transition-all cursor-pointer ${
+              className={`flex items-center gap-2 p-2 sm:p-2.5 rounded-xl transition-all cursor-pointer text-left border ${
                 tabActiva === 'terminos'
-                  ? 'border-[#8C243B] text-[#8C243B] bg-white font-bold'
-                  : 'border-transparent text-[#7D6870] hover:text-[#2D2529]'
+                  ? 'bg-white border-[#8C243B] text-[#8C243B] shadow-xs ring-1 ring-[#8C243B]/20 font-bold'
+                  : 'bg-white/40 border-transparent text-[#7D6870] hover:bg-white/80 hover:text-[#2D2529]'
               }`}
             >
-              <IconScale className="w-4 h-4 text-[#C74B66]" />
-              <span>Términos y Cancelaciones (Ley 1480)</span>
+              <IconScale className={`w-4 h-4 shrink-0 ${tabActiva === 'terminos' ? 'text-[#8C243B]' : 'text-[#C74B66]'}`} />
+              <div className="min-w-0 flex-1">
+                <span className="block text-xs leading-tight font-semibold truncate">Términos y Citas</span>
+                <span className="block text-[10px] leading-tight text-[#9C828C] truncate font-normal">Ley 1480</span>
+              </div>
             </button>
+
             <button
+              type="button"
               onClick={() => setTabActiva('aviso')}
-              className={`flex items-center gap-1.5 px-4 py-3 whitespace-nowrap border-b-2 transition-all cursor-pointer ${
+              className={`flex items-center gap-2 p-2 sm:p-2.5 rounded-xl transition-all cursor-pointer text-left border ${
                 tabActiva === 'aviso'
-                  ? 'border-[#8C243B] text-[#8C243B] bg-white font-bold'
-                  : 'border-transparent text-[#7D6870] hover:text-[#2D2529]'
+                  ? 'bg-white border-[#8C243B] text-[#8C243B] shadow-xs ring-1 ring-[#8C243B]/20 font-bold'
+                  : 'bg-white/40 border-transparent text-[#7D6870] hover:bg-white/80 hover:text-[#2D2529]'
               }`}
             >
-              <IconBuildingStore className="w-4 h-4 text-[#C74B66]" />
-              <span>Aviso Legal & PQR</span>
+              <IconBuildingStore className={`w-4 h-4 shrink-0 ${tabActiva === 'aviso' ? 'text-[#8C243B]' : 'text-[#C74B66]'}`} />
+              <div className="min-w-0 flex-1">
+                <span className="block text-xs leading-tight font-semibold truncate">Aviso Legal & PQR</span>
+                <span className="block text-[10px] leading-tight text-[#9C828C] truncate font-normal">Mímate · Devmake</span>
+              </div>
             </button>
+
             <button
+              type="button"
               onClick={() => setTabActiva('seguridad')}
-              className={`flex items-center gap-1.5 px-4 py-3 whitespace-nowrap border-b-2 transition-all cursor-pointer ${
+              className={`flex items-center gap-2 p-2 sm:p-2.5 rounded-xl transition-all cursor-pointer text-left border ${
                 tabActiva === 'seguridad'
-                  ? 'border-[#8C243B] text-[#8C243B] bg-white font-bold'
-                  : 'border-transparent text-[#7D6870] hover:text-[#2D2529]'
+                  ? 'bg-white border-[#8C243B] text-[#8C243B] shadow-xs ring-1 ring-[#8C243B]/20 font-bold'
+                  : 'bg-white/40 border-transparent text-[#7D6870] hover:bg-white/80 hover:text-[#2D2529]'
               }`}
             >
-              <IconServer className="w-4 h-4 text-[#C74B66]" />
-              <span>Seguridad (Ley 1273 / Devmake)</span>
+              <IconServer className={`w-4 h-4 shrink-0 ${tabActiva === 'seguridad' ? 'text-[#8C243B]' : 'text-[#C74B66]'}`} />
+              <div className="min-w-0 flex-1">
+                <span className="block text-xs leading-tight font-semibold truncate">Seguridad Web</span>
+                <span className="block text-[10px] leading-tight text-[#9C828C] truncate font-normal">Ley 1273</span>
+              </div>
             </button>
           </div>
 
@@ -257,18 +276,18 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                   <div>
                     <h4 className="font-bold text-[#8C243B]">2. Pre-reserva y Abono de Cupo</h4>
                     <p className="text-[#55434A]">
-                      Para asegurar tu turno y garantizar la disponibilidad de la manicurista elegida, el sistema puede solicitar un abono fijo de pre-reserva ($20.000 o $25.000 COP según temporada). Este valor es <strong>100% abonable al costo total de tu servicio</strong>. El saldo restante se cancela el día de la cita directamente en el spa mediante Nequi, Daviplata o efectivo.
+                      Para asegurar tu turno y garantizar la disponibilidad de la manicurista elegida, el sistema puede solicitar un abono previo de reserva según el servicio y la temporada. Dicho valor es informado al momento del agendamiento y es <strong>100% abonable al costo total de tu servicio</strong>. El saldo restante se cancela el día de la cita directamente en el spa mediante Nequi, Daviplata o efectivo.
                     </p>
                   </div>
 
                   <div>
                     <h4 className="font-bold text-[#8C243B]">3. Políticas de Cancelación y Reprogramación</h4>
-                    <ul className="list-disc pl-5 mt-1 space-y-1 text-xs text-[#55434A]">
+                    <ul className="list-disc pl-5 mt-1 space-y-1.5 text-xs text-[#55434A]">
                       <li>
-                        <strong>Reprogramación sin costo:</strong> Puedes cambiar la fecha u hora de tu cita con un mínimo de <strong>2 horas de anticipación</strong>. Tu abono se transfiere íntegramente a tu nuevo turno sin penalidad.
+                        <strong>Reprogramación sin costo:</strong> Puedes cambiar la fecha u hora de tu cita con un mínimo de <strong>1 día de anticipación (24 horas)</strong> comunicándote directamente a través de WhatsApp. Tu abono se transfiere íntegramente a tu nuevo turno sin penalidad ni costo adicional.
                       </li>
                       <li>
-                        <strong>Cancelaciones tardías o inasistencias:</strong> Las cancelaciones realizadas con menos de 2 horas de antelación o la inasistencia sin aviso imposibilitan reasignar el turno a otra clienta, por lo que el abono se destina a cubrir los costos operativos y el tiempo reservado de la manicurista.
+                        <strong>Cancelaciones tardías o inasistencias:</strong> Las cancelaciones o modificaciones realizadas con menos de 1 día de antelación (menos de 24 horas) o la inasistencia sin aviso previo imposibilitan reasignar el turno a otra clienta, por lo que el valor del abono se destina a cubrir los costos operativos y el tiempo reservado de la manicurista.
                       </li>
                       <li>
                         <strong>Tolerancia de llegada:</strong> Contamos con un margen de tolerancia máximo de <strong>10 minutos</strong>. Pasado este tiempo, para no perjudicar las citas de las siguientes clientas, el servicio podrá ser reprogramado o ajustado.
@@ -450,13 +469,13 @@ export const LegalModal: React.FC<LegalModalProps> = ({
           </div>
 
           {/* Footer del Modal */}
-          <div className="p-3.5 sm:p-4 border-t border-[#F2C4D2] bg-white flex items-center justify-between gap-2 shrink-0">
-            <span className="text-[11px] text-[#7D6870]">
-              Última actualización: Noviembre 2026
+          <div className="p-3.5 sm:p-4 border-t border-[#F2C4D2] bg-white flex flex-col-reverse sm:flex-row items-center justify-between gap-2.5 shrink-0">
+            <span className="text-[11px] text-[#7D6870] text-center sm:text-left">
+              Última actualización: Noviembre 2026 · Pereira, Colombia
             </span>
             <button
               onClick={onClose}
-              className="px-5 py-2 rounded-xl bg-[#8C243B] hover:bg-[#731D30] text-white font-bold text-xs transition cursor-pointer shadow-xs"
+              className="w-full sm:w-auto px-6 py-2.5 sm:py-2 rounded-xl bg-[#8C243B] hover:bg-[#731D30] text-white font-bold text-xs transition cursor-pointer shadow-xs text-center"
             >
               Entendido y Cerrar
             </button>
