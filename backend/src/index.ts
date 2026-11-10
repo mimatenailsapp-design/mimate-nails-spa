@@ -1804,6 +1804,10 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
       notas = `💅 Servicio: ${servicio_nombre || 'Uñas'} | Clienta: ${cliente_nombre.trim()} | Reserva Web JL Mímate Nails | Pago en el spa (Sin cobro anticipado)`;
     }
 
+    if (req.body.acepta_politicas) {
+      notas += ' | [Datos Ley 1581 Aceptados]';
+    }
+
     const { data: reserva, error: errRes } = await supabase
       .from('reservas')
       .insert({

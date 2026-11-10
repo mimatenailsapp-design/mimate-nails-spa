@@ -17,6 +17,7 @@ import {
   IconChevronRight,
 } from '@tabler/icons-react';
 import { supabase } from '../config/supabase';
+import { LegalModal, LegalTab } from './legal/LegalModal';
 
 interface Servicio {
   id: number;
@@ -516,6 +517,8 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
   const [telefono, setTelefono] = useState('');
   const [nombre, setNombre] = useState('');
   const [enviandoReserva, setEnviandoReserva] = useState(false);
+  const [aceptaPoliticas, setAceptaPoliticas] = useState(false);
+  const [modalLegalTab, setModalLegalTab] = useState<LegalTab | null>(null);
   // Configuración de anticipos, cuentas bancarias y horario de atención
   const [spaConfig, setSpaConfig] = useState<{
     exigeAnticipo: boolean;
@@ -906,7 +909,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
   }, [spaConfig.exigeAnticipo, esCitaDiciembre]);
 
   const handleConfirmarReserva = async () => {
-    if (!servicioSeleccionado || !fecha || !horaSeleccionada || !telefono.trim() || !nombre.trim()) return;
+    if (!servicioSeleccionado || !fecha || !horaSeleccionada || !telefono.trim() || !nombre.trim() || !aceptaPoliticas) return;
 
     setEnviandoReserva(true);
 
@@ -924,6 +927,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
           cliente_nombre: nombre.trim(),
           cliente_telefono: telefono.trim(),
           reagendar_reserva_id: reagendarId || undefined,
+          acepta_politicas: true,
         }),
       });
 
@@ -1471,10 +1475,46 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
       </main>
 
       {/* FOOTER */}
-      <footer className="text-center py-8 text-xs text-[#7D6870] border-t border-[#F2C4D2]/60 space-y-2.5">
+      <footer className="text-center py-8 px-4 text-xs text-[#7D6870] border-t border-[#F2C4D2]/60 space-y-3 bg-white/40">
         <p className="font-semibold text-[#8C243B] text-sm tracking-wide">
-          JL Mímate Nails✦
+          JL Mímate Nails Spa ✦
         </p>
+
+        {/* Enlaces Legales Discretos */}
+        <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-[#7D6870]">
+          <button
+            type="button"
+            onClick={() => setModalLegalTab('datos')}
+            className="hover:text-[#8C243B] hover:underline cursor-pointer transition-colors"
+          >
+            Tratamiento de Datos (Ley 1581)
+          </button>
+          <span>·</span>
+          <button
+            type="button"
+            onClick={() => setModalLegalTab('terminos')}
+            className="hover:text-[#8C243B] hover:underline cursor-pointer transition-colors"
+          >
+            Términos y Cancelaciones (Ley 1480)
+          </button>
+          <span>·</span>
+          <button
+            type="button"
+            onClick={() => setModalLegalTab('aviso')}
+            className="hover:text-[#8C243B] hover:underline cursor-pointer transition-colors"
+          >
+            Aviso Legal & PQR
+          </button>
+          <span>·</span>
+          <button
+            type="button"
+            onClick={() => setModalLegalTab('seguridad')}
+            className="hover:text-[#8C243B] hover:underline cursor-pointer transition-colors"
+          >
+            Seguridad (Ley 1273)
+          </button>
+        </div>
+
         <div className="flex items-center justify-center">
           <a
             href="https://www.instagram.com/mimate.nais/"
@@ -1488,9 +1528,23 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
             <span className="text-[10px] text-[#7D6870] group-hover:text-[#C74B66] transition-colors">↗</span>
           </a>
         </div>
+
         <p className="text-[11px] opacity-80">
-          {horarioTexto}
+          Calle 66 bis #26-57, Sector Cuba · Pereira, Risaralda · Colombia · {horarioTexto}
         </p>
+
+        {/* Reconocimiento Devmake */}
+        <div className="pt-2 border-t border-[#F2C4D2]/40 text-[11px] text-[#7D6870] flex items-center justify-center gap-1">
+          <span>Desarrollado y gestionado por</span>
+          <a
+            href="https://devmake.vercel.app/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-bold text-[#8C243B] hover:text-[#C74B66] underline transition-colors"
+          >
+            Devmake (Developers Maven Kernel)
+          </a>
+        </div>
       </footer>
 
       {/* MODAL BOTTOM SHEET DE RESERVA (IDÉNTICO A LASHES PEREIRA) */}
@@ -2282,8 +2336,57 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                       </div>
                     )}
 
+                    {/* Indicación de Precios Claros (Ley 1480 de 2011) */}
+                    <div className="flex items-center justify-between text-[11px] text-[#7D6870] px-1 pt-0.5">
+                      <span>Tarifas en pesos colombianos (COP)</span>
+                      <span className="font-semibold text-[#8C243B]">Precio final · Exento de IVA</span>
+                    </div>
+
+                    {/* Checkbox de Autorización de Datos y Términos (Ley 1581 / Dcto 1377 / Ley 1480) */}
+                    <label className="flex items-start gap-2.5 p-3 rounded-xl bg-white border border-[#F2C4D2] cursor-pointer hover:border-[#8C243B] transition-colors text-xs text-[#7D6870] shadow-2xs">
+                      <input
+                        type="checkbox"
+                        checked={aceptaPoliticas}
+                        onChange={(e) => setAceptaPoliticas(e.target.checked)}
+                        className="mt-0.5 rounded border-[#F2C4D2] text-[#8C243B] focus:ring-[#8C243B] w-4 h-4 cursor-pointer accent-[#8C243B]"
+                      />
+                      <span className="leading-snug select-none">
+                        Autorizo el{' '}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setModalLegalTab('datos');
+                          }}
+                          className="font-bold text-[#8C243B] hover:text-[#C74B66] underline inline cursor-pointer"
+                        >
+                          Tratamiento de mis Datos Personales
+                        </button>{' '}
+                        (Ley 1581 de 2012) y acepto los{' '}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setModalLegalTab('terminos');
+                          }}
+                          className="font-bold text-[#8C243B] hover:text-[#C74B66] underline inline cursor-pointer"
+                        >
+                          Términos y Cancelaciones
+                        </button>{' '}
+                        de JL Mímate Nails Spa.
+                      </span>
+                    </label>
+
+                    {!aceptaPoliticas && telefono.trim() && nombre.trim() && (
+                      <p className="text-[11px] text-[#C74B66] text-center font-medium animate-in fade-in duration-150">
+                        Por favor autoriza el tratamiento de datos para confirmar tu cita.
+                      </p>
+                    )}
+
                     {/* Botones volver y confirmar */}
-                    <div className="flex items-center gap-2 pt-2">
+                    <div className="flex items-center gap-2 pt-1">
                       <button
                         onClick={() => setPaso(1)}
                         className="p-3 bg-white border border-[#F2C4D2] text-[#7D6870] hover:text-[#2D2529] rounded-xl transition cursor-pointer"
@@ -2292,7 +2395,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                         <IconArrowLeft className="w-4 h-4" />
                       </button>
                       <button
-                        disabled={enviandoReserva || !telefono.trim() || !nombre.trim()}
+                        disabled={enviandoReserva || !telefono.trim() || !nombre.trim() || !aceptaPoliticas}
                         onClick={handleConfirmarReserva}
                         className="flex-1 py-3 bg-[#8C243B] hover:bg-[#731D30] disabled:opacity-40 text-white font-bold text-xs rounded-xl transition shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
                       >
@@ -2579,6 +2682,13 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
           </div>
         )}
       </AnimatePresence>
+
+      {/* MODAL LEGAL Y NORMATIVO COLOMBIANO */}
+      <LegalModal
+        abierto={modalLegalTab !== null}
+        tabInicial={modalLegalTab || 'datos'}
+        onClose={() => setModalLegalTab(null)}
+      />
     </div>
   );
 };
