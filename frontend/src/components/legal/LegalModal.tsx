@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   IconX,
@@ -45,17 +46,35 @@ export const LegalModal: React.FC<LegalModalProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [abierto, onClose]);
 
-  if (!abierto) return null;
+  // Bloquear scroll de la página de fondo mientras el modal esté abierto
+  useEffect(() => {
+    if (!abierto) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [abierto]);
 
-  return (
+  if (!abierto || typeof document === 'undefined') return null;
+
+  return createPortal(
     <AnimatePresence>
-      <div className="fixed inset-0 z-60 flex items-center justify-center p-3 sm:p-4 bg-black/50 backdrop-blur-xs">
+      <div
+        className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs overflow-y-auto"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            onClose();
+          }
+        }}
+      >
         <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 15 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 15 }}
           transition={{ duration: 0.2 }}
-          className="bg-[#FDF8F9] border border-[#F2C4D2] w-full max-w-2xl rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[88vh]"
+          onClick={(e) => e.stopPropagation()}
+          className="bg-[#FDF8F9] border border-[#F2C4D2] w-full max-w-2xl rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[88vh] relative z-10 my-auto"
         >
           {/* Header del Modal */}
           <div className="p-4 sm:p-5 border-b border-[#F2C4D2] bg-white flex items-center justify-between gap-3 shrink-0">
@@ -445,6 +464,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({
           </div>
         </motion.div>
       </div>
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 };
