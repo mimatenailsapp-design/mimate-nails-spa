@@ -154,7 +154,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                   <div>
                     <h4 className="font-bold text-[#8C243B]">2. Encargado del Tratamiento y Soporte Tecnológico</h4>
                     <p className="text-[#55434A]">
-                      La infraestructura tecnológica, software y base de datos son operadas por{' '}
+                      La infraestructura tecnológica, software, base de datos y custodia técnica son operadas y gestionadas por{' '}
                       <strong>Devmake (Developers Maven Kernel)</strong> (
                       <a
                         href="https://devmake.vercel.app/"
@@ -164,7 +164,11 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                       >
                         devmake.vercel.app <IconExternalLink className="w-3 h-3 inline" />
                       </a>
-                      ) en calidad de encargado tecnológico, implementando protocolos de seguridad y custodia de la información conforme a la Ley 1273 de 2009.
+                      ) · Correo oficial de gestión de datos y soporte:{' '}
+                      <a href="mailto:devmavenk3@gmail.com" className="text-[#8C243B] font-semibold underline">
+                        devmavenk3@gmail.com
+                      </a>
+                      , implementando protocolos de seguridad y custodia de la información conforme a la Ley 1273 de 2009.
                     </p>
                   </div>
 
@@ -195,13 +199,16 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                   </div>
 
                   <div>
-                    <h4 className="font-bold text-[#8C243B]">5. Canales para Ejercer tus Derechos</h4>
+                    <h4 className="font-bold text-[#8C243B]">5. Canales para Ejercer tus Derechos (Habeas Data)</h4>
                     <p className="text-[#55434A]">
-                      Puedes solicitar la supresión o rectificación de tus datos enviando un correo a{' '}
+                      Puedes solicitar la supresión, actualización o rectificación de tus datos personales enviando un correo al canal oficial de gestión técnica operado por Devmake:{' '}
+                      <a href="mailto:devmavenk3@gmail.com" className="text-[#8C243B] font-semibold underline">
+                        devmavenk3@gmail.com
+                      </a>{' '}
+                      o con copia a la administración del spa en{' '}
                       <a href="mailto:Mimatenailsapp@gmail.com" className="text-[#8C243B] font-semibold underline">
                         Mimatenailsapp@gmail.com
-                      </a>{' '}
-                      o a través de nuestro WhatsApp oficial. Tu solicitud será atendida en un plazo máximo de quince (15) días hábiles conforme al Art. 15 de la Ley 1581 de 2012.
+                      </a>. Tu solicitud será procesada y respondida en un plazo máximo de quince (15) días hábiles conforme al Art. 15 de la Ley 1581 de 2012.
                     </p>
                   </div>
                 </div>
@@ -315,17 +322,38 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                   <div>
                     <h4 className="font-bold text-[#8C243B]">3. Desarrollo y Gestión Tecnológica</h4>
                     <p className="text-[#55434A]">
-                      El aplicativo web y sistema automatizado de reservas ha sido desarrollado y es gestionado tecnológicamente por{' '}
-                      <strong>Devmake (Developers Maven Kernel)</strong>:{' '}
-                      <a
-                        href="https://devmake.vercel.app/"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[#8C243B] font-semibold underline inline-flex items-center gap-0.5"
-                      >
-                        https://devmake.vercel.app/ <IconExternalLink className="w-3 h-3 inline" />
-                      </a>.
+                      El aplicativo web y el sistema automatizado de reservas han sido desarrollados y son operados tecnológicamente por{' '}
+                      <strong>Devmake (Developers Maven Kernel)</strong>:
                     </p>
+                    <div className="bg-white p-3 rounded-xl border border-[#F2C4D2] space-y-1 text-xs text-[#55434A] mt-1.5">
+                      <p className="flex items-center gap-2">
+                        <IconServer className="w-4 h-4 text-[#C74B66] shrink-0" />
+                        <span><strong>Empresa desarrolladora:</strong> Devmake (Developers Maven Kernel)</span>
+                      </p>
+                      <p className="flex items-center gap-2">
+                        <IconExternalLink className="w-4 h-4 text-[#C74B66] shrink-0" />
+                        <span>
+                          <strong>Sitio web:</strong>{' '}
+                          <a
+                            href="https://devmake.vercel.app/"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[#8C243B] font-semibold underline"
+                          >
+                            https://devmake.vercel.app/
+                          </a>
+                        </span>
+                      </p>
+                      <p className="flex items-center gap-2">
+                        <IconMail className="w-4 h-4 text-[#C74B66] shrink-0" />
+                        <span>
+                          <strong>Contacto técnico & soporte:</strong>{' '}
+                          <a href="mailto:devmavenk3@gmail.com" className="text-[#8C243B] font-semibold underline">
+                            devmavenk3@gmail.com
+                          </a>
+                        </span>
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -392,7 +420,10 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                   <div>
                     <h4 className="font-bold text-[#8C243B]">2. Responsabilidad y Custodia Tecnológica</h4>
                     <p className="text-[#55434A]">
-                      En estricto cumplimiento de la Ley 1273 de 2009, Devmake y JL Mímate Nails Spa aplican políticas de mínimo privilegio y auditoría de eventos para prevenir cualquier acceso no autorizado, intercepción o alteración ilícita de datos.
+                      En estricto cumplimiento de la Ley 1273 de 2009, Devmake y JL Mímate Nails Spa aplican políticas de mínimo privilegio y auditoría de eventos para prevenir cualquier acceso no autorizado, intercepción o alteración ilícita de datos. Para reportes de seguridad informática o soporte técnico del sistema, el canal oficial de Devmake es:{' '}
+                      <a href="mailto:devmavenk3@gmail.com" className="text-[#8C243B] font-semibold underline">
+                        devmavenk3@gmail.com
+                      </a>.
                     </p>
                   </div>
                 </div>
