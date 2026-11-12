@@ -28,7 +28,7 @@ import { verifyPinHash, STAFF_DEFAULT_PIN_HASH, ADMIN_MASTER_PIN_HASH } from '..
 import { BloquearHorarioModal } from './dashboard/BloquearHorarioModal';
 import { ConfigAnticipoModal } from './dashboard/ConfigAnticipoModal';
 import { AgendarCitaModal } from './dashboard/AgendarCitaModal';
-import { SelectorFechaMimate } from './dashboard/SelectorFechaMimate';
+import { SelectorFechaMimate, SelectorMesMimate } from './dashboard/SelectorFechaMimate';
 import { ExclusionesBotModal } from './dashboard/ExclusionesBotModal';
 import { DetalleCitaPopover, sumarAdicionalesCita } from './dashboard/DetalleCitaPopover';
 import { ModalAgregarAdicional } from './dashboard/ModalAgregarAdicional';
@@ -3803,11 +3803,11 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                     >
                       <IconChevronRight className="w-3.5 h-3.5 stroke-[2.5]" />
                     </button>
-                    <input
-                      type="month"
+                    <SelectorMesMimate
                       value={mesSeleccionado}
-                      onChange={(e) => setMesSeleccionado(e.target.value)}
-                      className="px-2 py-1 bg-white border border-[#F2C4D2] rounded-xl text-xs font-bold text-[#2D2529] outline-none cursor-pointer hover:border-[#8C243B] transition"
+                      hoyStr={hoyStr}
+                      onChange={(nuevoMes) => setMesSeleccionado(nuevoMes)}
+                      title="Seleccionar mes de métricas"
                     />
                   </div>
                 )}

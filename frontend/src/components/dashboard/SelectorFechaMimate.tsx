@@ -460,3 +460,204 @@ export const SelectorFechaMimate: React.FC<SelectorFechaMimateProps> = ({
     </div>
   );
 };
+
+export interface SelectorMesMimateProps {
+  value: string; // 'YYYY-MM'
+  onChange: (nuevoMes: string) => void;
+  hoyStr?: string; // 'YYYY-MM-DD'
+  title?: string;
+}
+
+const NOMBRES_MESES = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+];
+
+const NOMBRES_MESES_CORTOS = [
+  'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
+  'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic',
+];
+
+export const SelectorMesMimate: React.FC<SelectorMesMimateProps> = ({
+  value,
+  onChange,
+  hoyStr: hoyStrProp,
+  title,
+}) => {
+  const hoyStr = useMemo(() => {
+    if (hoyStrProp) return hoyStrProp;
+    return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+  }, [hoyStrProp]);
+
+  const [hoyYear, hoyMonth] = useMemo(() => {
+    const [y, m] = hoyStr.split('-').map(Number);
+    return [y, m - 1];
+  }, [hoyStr]);
+
+  const mesActualIso = `${hoyYear}-${String(hoyMonth + 1).padStart(2, '0')}`;
+
+  const [abierto, setAbierto] = useState(false);
+  const contenedorRef = useRef<HTMLDivElement>(null);
+
+  const [añoVisualizado, setAñoVisualizado] = useState(() => {
+    const [y] = (value || mesActualIso).split('-').map(Number);
+    return isNaN(y) ? hoyYear : y;
+  });
+
+  useEffect(() => {
+    if (!abierto) return;
+    const handleClickAfuera = (event: MouseEvent | TouchEvent) => {
+      if (
+        contenedorRef.current &&
+        !contenedorRef.current.contains(event.target as Node)
+      ) {
+        setAbierto(false);
+      }
+    };
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setAbierto(false);
+    };
+    document.addEventListener('mousedown', handleClickAfuera);
+    document.addEventListener('touchstart', handleClickAfuera);
+    window.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleClickAfuera);
+      document.removeEventListener('touchstart', handleClickAfuera);
+      window.removeEventListener('keydown', handleEscape);
+    };
+  }, [abierto]);
+
+  const toggleAbierto = () => {
+    setAbierto((prev) => {
+      const next = !prev;
+      if (next && value) {
+        const [y] = value.split('-').map(Number);
+        if (!isNaN(y)) setAñoVisualizado(y);
+      }
+      return next;
+    });
+  };
+
+  const formatearMesBoton = (ym: string) => {
+    const [y, m] = (ym || mesActualIso).split('-').map(Number);
+    if (isNaN(y) || isNaN(m) || m < 1 || m > 12) return ym;
+    return `${NOMBRES_MESES[m - 1]} de ${y}`;
+  };
+
+  const irAEsteMes = () => {
+    setAñoVisualizado(hoyYear);
+    onChange(mesActualIso);
+    setAbierto(false);
+  };
+
+  return (
+    <div className="relative" ref={contenedorRef}>
+      <button
+        type="button"
+        onClick={toggleAbierto}
+        title={title || 'Seleccionar mes en el calendario'}
+        className={`px-2.5 py-1 bg-white border rounded-xl text-xs font-bold text-[#2D2529] flex items-center gap-1.5 cursor-pointer transition shadow-2xs ${
+          abierto
+            ? 'border-[#8C243B] ring-2 ring-[#C74B66]/20 text-[#8C243B]'
+            : 'border-[#F2C4D2] hover:border-[#8C243B]'
+        }`}
+      >
+        <span>{formatearMesBoton(value)}</span>
+        <IconCalendar className="w-3.5 h-3.5 text-[#8C243B] shrink-0" />
+      </button>
+
+      <AnimatePresence>
+        {abierto && (
+          <motion.div
+            initial={{ opacity: 0, y: -6, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -6, scale: 0.98 }}
+            transition={{ duration: 0.15 }}
+            className="absolute top-full right-0 mt-2 bg-white/98 backdrop-blur-md border border-[#F2C4D2] rounded-2xl shadow-2xl z-50 p-4 space-y-3 w-[290px]"
+          >
+            {/* Cabecera del Año y Controles */}
+            <div className="flex items-center justify-between pb-2 border-b border-[#FCE8EF]">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-[#FFF0F4] text-[#8C243B] flex items-center justify-center">
+                  <IconCalendar className="w-4 h-4 text-[#C74B66]" />
+                </div>
+                <span className="font-serif font-bold text-sm text-[#2D2529]">
+                  Año {añoVisualizado}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setAñoVisualizado((y) => y - 1)}
+                  className="p-1.5 rounded-lg hover:bg-[#FCE8EF] text-[#8C243B] transition cursor-pointer active:scale-95"
+                  title="Año anterior"
+                >
+                  <IconChevronLeft className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={irAEsteMes}
+                  className="px-2 py-1 text-[10px] font-bold text-[#8C243B] bg-[#FFF0F4] hover:bg-[#8C243B] hover:text-white rounded-md transition cursor-pointer"
+                  title="Ir al mes actual"
+                >
+                  Este mes
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAñoVisualizado((y) => y + 1)}
+                  className="p-1.5 rounded-lg hover:bg-[#FCE8EF] text-[#8C243B] transition cursor-pointer active:scale-95"
+                  title="Siguiente año"
+                >
+                  <IconChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Cuadrícula de los 12 Meses (3x4) */}
+            <div className="grid grid-cols-3 gap-1.5">
+              {NOMBRES_MESES_CORTOS.map((mesCorto, idx) => {
+                const mesIso = `${añoVisualizado}-${String(idx + 1).padStart(2, '0')}`;
+                const esSeleccionado = mesIso === value;
+                const esEsteMes = mesIso === mesActualIso;
+
+                return (
+                  <button
+                    key={mesIso}
+                    type="button"
+                    onClick={() => {
+                      onChange(mesIso);
+                      setAbierto(false);
+                    }}
+                    className={`h-10 rounded-xl flex flex-col items-center justify-center text-xs transition cursor-pointer ${
+                      esSeleccionado
+                        ? 'bg-gradient-to-tr from-[#8C243B] to-[#C74B66] text-white font-extrabold shadow-sm scale-105'
+                        : esEsteMes
+                        ? 'border border-[#C74B66] text-[#8C243B] bg-[#FFF5F7] font-bold'
+                        : 'text-[#2D2529] hover:bg-[#FFF0F4] hover:text-[#8C243B] font-semibold border border-transparent hover:border-[#F2C4D2]'
+                    }`}
+                    title={`${NOMBRES_MESES[idx]} de ${añoVisualizado}`}
+                  >
+                    <span className="leading-none">{mesCorto}.</span>
+                    {esEsteMes && !esSeleccionado && (
+                      <span className="w-1 h-1 rounded-full bg-[#C74B66] mt-1" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Pie de leyenda */}
+            <div className="pt-2 border-t border-[#FCE8EF] flex items-center justify-between text-[11px] text-[#7D6870]">
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-[#C74B66]" />
+                <span>Balance mensual</span>
+              </div>
+              <span className="text-[10px] text-slate-400 italic">Mímate Nails 💕</span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
