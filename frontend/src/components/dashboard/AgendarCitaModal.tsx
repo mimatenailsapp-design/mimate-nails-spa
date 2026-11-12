@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { SelectorFechaMimate } from './SelectorFechaMimate';
 import {
   IconX,
   IconClock,
@@ -415,15 +416,25 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                 </AnimatePresence>
               </div>
 
-              {/* 3. FECHA Y HORA (CON MENÚ ELEGANTE DE HORA) */}
-              <div className="grid grid-cols-2 gap-2">
+              {/* 3. FECHA Y HORA (CON CALENDARIO Y MENÚ ELEGANTE MÍMATE NAILS) */}
+              <div className="space-y-3">
                 <div>
-                  <label className="font-bold text-[#7D6870] block mb-1">Fecha</label>
-                  <input
-                    type="date"
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="font-bold text-[#7D6870] block">Fecha</label>
+                    <span className="text-[10px] text-[#C74B66] font-medium">
+                      Toca para cambiar de día
+                    </span>
+                  </div>
+                  <SelectorFechaMimate
                     value={agendarFecha}
-                    onChange={(e) => setAgendarFecha(e.target.value)}
-                    className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl font-bold text-[#2D2529] outline-none cursor-pointer"
+                    onChange={(nuevaFecha) => setAgendarFecha(nuevaFecha)}
+                    mostrarPildorasRapidas={true}
+                    onOpen={() => {
+                      setMenuManiAbierto(false);
+                      setMenuServicioAbierto(false);
+                      setMenuHoraAbierto(false);
+                      setMenuExtrasAbierto(false);
+                    }}
                   />
                 </div>
 
@@ -438,14 +449,14 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                       setMenuServicioAbierto(false);
                       setMenuExtrasAbierto(false);
                     }}
-                    className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] hover:border-[#8C243B] rounded-xl font-bold text-[#2D2529] flex items-center justify-between transition cursor-pointer text-left shadow-2xs"
+                    className="w-full px-3.5 py-2.5 bg-[#FFF5F7] border border-[#F2C4D2] hover:border-[#8C243B] rounded-xl font-bold text-[#2D2529] flex items-center justify-between transition cursor-pointer text-left shadow-2xs"
                   >
-                    <span className="flex items-center gap-1 font-mono text-[#8C243B]">
-                      <IconClock className="w-3.5 h-3.5 text-[#C74B66]" />
-                      {agendarHora || 'Seleccionar turno'}
+                    <span className="flex items-center gap-1.5 font-mono text-[#8C243B]">
+                      <IconClock className="w-4 h-4 text-[#C74B66]" />
+                      {agendarHora || 'Seleccionar turno disponible'}
                     </span>
                     <IconChevronDown
-                      className={`w-3.5 h-3.5 text-[#8C243B] transition-transform ${
+                      className={`w-4 h-4 text-[#8C243B] transition-transform ${
                         menuHoraAbierto ? 'rotate-180' : ''
                       }`}
                     />
@@ -461,7 +472,9 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                       >
                         {horasDisponiblesAgendarAdmin.length === 0 ? (
                           <div className="p-2.5 text-center text-xs text-[#8C243B] bg-[#FFF5F7] rounded-xl font-medium">
-                            No hay horarios disponibles para esta fecha con la duración total ({duracionTotalAdmin} min).
+                            {agendarFecha && new Date(`${agendarFecha}T12:00:00-05:00`).getDay() === 0
+                              ? 'Los domingos estamos cerrados. Por favor elige un día de Lunes a Sábado 💕'
+                              : `No hay horarios disponibles para esta fecha con la duración total (${duracionTotalAdmin} min).`}
                           </div>
                         ) : (
                           horasDisponiblesAgendarAdmin.map((h) => {

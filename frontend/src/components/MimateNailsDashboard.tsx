@@ -28,6 +28,7 @@ import { verifyPinHash, STAFF_DEFAULT_PIN_HASH, ADMIN_MASTER_PIN_HASH } from '..
 import { BloquearHorarioModal } from './dashboard/BloquearHorarioModal';
 import { ConfigAnticipoModal } from './dashboard/ConfigAnticipoModal';
 import { AgendarCitaModal } from './dashboard/AgendarCitaModal';
+import { SelectorFechaMimate } from './dashboard/SelectorFechaMimate';
 import { ExclusionesBotModal } from './dashboard/ExclusionesBotModal';
 import { DetalleCitaPopover, sumarAdicionalesCita } from './dashboard/DetalleCitaPopover';
 import { ModalAgregarAdicional } from './dashboard/ModalAgregarAdicional';
@@ -891,6 +892,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   // Horas libres para el modal de Agendar Cita con cálculo dinámico por duración y fin de citas previas
   const horasDisponiblesAgendarAdmin = useMemo(() => {
     if (!agendarFecha || !agendarManicuristaId) return [];
+    if (new Date(`${agendarFecha}T12:00:00-05:00`).getDay() === 0) return [];
 
     const aperturaStr = configAnticipo.horaApertura || '08:00';
     const cierreStr = configAnticipo.horaCierre || '19:00';
@@ -3257,11 +3259,14 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                   </button>
 
                   <div className="relative pl-0.5">
-                    <input
-                      type="date"
+                    <SelectorFechaMimate
+                      variante="compacto"
+                      alignDropdown="right"
+                      permitirFechasPasadas={true}
+                      hoyStr={hoyStr}
                       value={fechaSeleccionada}
-                      onChange={(e) => setFechaSeleccionada(e.target.value)}
-                      className="px-2 py-1 bg-white border border-[#F2C4D2] rounded-lg text-xs font-bold text-[#2D2529] outline-none cursor-pointer hover:border-[#8C243B] transition shadow-2xs"
+                      onChange={(nuevaFecha) => setFechaSeleccionada(nuevaFecha)}
+                      title="Seleccionar fecha en el calendario"
                     />
                   </div>
                 </div>
@@ -3305,11 +3310,13 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                   </button>
 
                   <div className="relative pl-0.5">
-                    <input
-                      type="date"
+                    <SelectorFechaMimate
+                      variante="compacto"
+                      alignDropdown="right"
+                      permitirFechasPasadas={true}
+                      hoyStr={hoyStr}
                       value={fechaSeleccionada}
-                      onChange={(e) => setFechaSeleccionada(e.target.value)}
-                      className="px-2 py-1 bg-white border border-[#F2C4D2] rounded-lg text-xs font-bold text-[#2D2529] outline-none cursor-pointer hover:border-[#8C243B] transition shadow-2xs"
+                      onChange={(nuevaFecha) => setFechaSeleccionada(nuevaFecha)}
                       title="Selecciona cualquier fecha para ver su semana"
                     />
                   </div>
@@ -3726,11 +3733,14 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                     >
                       <IconChevronRight className="w-3.5 h-3.5 stroke-[2.5]" />
                     </button>
-                    <input
-                      type="date"
+                    <SelectorFechaMimate
+                      variante="compacto"
+                      alignDropdown="right"
+                      permitirFechasPasadas={true}
+                      hoyStr={hoyStr}
                       value={fechaSeleccionada}
-                      onChange={(e) => setFechaSeleccionada(e.target.value)}
-                      className="px-2 py-1 bg-white border border-[#F2C4D2] rounded-xl text-xs font-bold text-[#2D2529] outline-none cursor-pointer hover:border-[#8C243B] transition"
+                      onChange={(nuevaFecha) => setFechaSeleccionada(nuevaFecha)}
+                      title="Seleccionar fecha de métricas"
                     />
                   </div>
                 )}
@@ -3761,11 +3771,13 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                     >
                       <IconChevronRight className="w-3.5 h-3.5 stroke-[2.5]" />
                     </button>
-                    <input
-                      type="date"
+                    <SelectorFechaMimate
+                      variante="compacto"
+                      alignDropdown="right"
+                      permitirFechasPasadas={true}
+                      hoyStr={hoyStr}
                       value={fechaSeleccionada}
-                      onChange={(e) => setFechaSeleccionada(e.target.value)}
-                      className="px-2 py-1 bg-white border border-[#F2C4D2] rounded-xl text-xs font-bold text-[#2D2529] outline-none cursor-pointer hover:border-[#8C243B] transition"
+                      onChange={(nuevaFecha) => setFechaSeleccionada(nuevaFecha)}
                       title="Seleccionar fecha de la semana"
                     />
                   </div>

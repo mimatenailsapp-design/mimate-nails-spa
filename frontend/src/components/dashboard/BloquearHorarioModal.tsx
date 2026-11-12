@@ -1,5 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { SelectorFechaMimate } from './SelectorFechaMimate';
 import {
   IconLock,
   IconX,
@@ -201,15 +202,20 @@ export const BloquearHorarioModal: React.FC<BloquearHorarioModalProps> = ({
                 </div>
               )}
 
-              {/* 2. FECHA DEL BLOQUEO */}
+              {/* 2. FECHA DEL BLOQUEO (CON CALENDARIO MÍMATE NAILS) */}
               <div>
-                <label className="font-bold text-[#7D6870] block mb-1">Fecha</label>
-                <input
-                  type="date"
-                  min={hoyStr}
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-bold text-[#7D6870] block">Fecha</label>
+                  <span className="text-[10px] text-[#C74B66] font-medium">
+                    Toca para cambiar de día
+                  </span>
+                </div>
+                <SelectorFechaMimate
                   value={bloquearFecha}
-                  onChange={(e) => {
-                    const nuevaFecha = e.target.value;
+                  hoyStr={hoyStr}
+                  mostrarPildorasRapidas={true}
+                  onOpen={() => setMenuBloquearManiAbierto(false)}
+                  onChange={(nuevaFecha) => {
                     if (nuevaFecha < hoyStr) return;
                     setBloquearFecha(nuevaFecha);
                     setBloquearHorasSeleccionadas((prev) => {
@@ -223,8 +229,6 @@ export const BloquearHorarioModal: React.FC<BloquearHorarioModalProps> = ({
                       });
                     });
                   }}
-                  className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl font-bold text-[#2D2529] outline-none cursor-pointer hover:border-[#8C243B]"
-                  required
                 />
               </div>
 
