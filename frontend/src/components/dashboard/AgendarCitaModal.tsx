@@ -176,7 +176,7 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                       exit={{ opacity: 0, y: -4 }}
                       className="absolute left-0 right-0 top-full mt-1 z-30 bg-white border border-[#F2C4D2] rounded-2xl shadow-xl p-1.5 space-y-1"
                     >
-                      {canchas.map((c, i) => {
+                      {canchas.map((c) => {
                         const estaSel = c.id === agendarManicuristaId;
                         return (
                           <div
@@ -200,7 +200,7 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                                 return foto ? (
                                   <img src={foto} alt={c.nombre} className="w-6 h-6 rounded-full object-cover border border-[#F2C4D2] shrink-0" />
                                 ) : (
-                                  <span className="w-6 h-6 rounded-full bg-[#FCE8EF] text-[#8C243B] text-[10px] flex items-center justify-center font-bold shrink-0">{i === 0 ? '👑' : `M${i + 1}`}</span>
+                                  <span className="w-6 h-6 rounded-full bg-[#FCE8EF] text-[#8C243B] text-[10px] flex items-center justify-center font-bold shrink-0">💅</span>
                                 );
                               })()}
                               <span className="text-xs font-semibold">{c.nombre}</span>

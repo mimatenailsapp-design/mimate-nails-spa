@@ -158,7 +158,7 @@ export const BloquearHorarioModal: React.FC<BloquearHorarioModalProps> = ({
                           )}
                         </div>
 
-                        {canchas.map((c, i) => {
+                        {canchas.map((c) => {
                           const estaSel = c.id === bloquearManicuristaId;
                           return (
                             <div
@@ -174,9 +174,7 @@ export const BloquearHorarioModal: React.FC<BloquearHorarioModalProps> = ({
                               }`}
                             >
                               <div className="flex items-center gap-2">
-                                <span className="w-5 h-5 rounded-full bg-white border border-[#F2C4D2] flex items-center justify-center text-[10px]">
-                                  {i === 0 ? '👑' : `M${i + 1}`}
-                                </span>
+                                <span className="w-5 h-5 rounded-full bg-white border border-[#F2C4D2] flex items-center justify-center text-[10px]">💅</span>
                                 <span>{c.nombre}</span>
                               </div>
                               {estaSel && <IconCheck className="w-4 h-4 text-[#8C243B]" />}

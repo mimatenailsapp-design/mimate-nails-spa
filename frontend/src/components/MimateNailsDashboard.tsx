@@ -103,7 +103,7 @@ const PERFILES_SPA_CONFIG: Omit<StaffProfile, 'canchaId'>[] = [
     rol: 'admin',
     pinHash: STAFF_DEFAULT_PIN_HASH,
     descripcion: 'Acceso Total: Supervisión de todas las tablas, métricas de reservas y agendamiento exclusivo.',
-    avatar: '👑',
+    avatar: '💅',
     foto: '/equipo/lili.jpg',
     colorBadge: 'bg-[#FCE8EF] text-[#8C243B] border-[#F2C4D2]',
   },
@@ -115,7 +115,7 @@ const PERFILES_SPA_CONFIG: Omit<StaffProfile, 'canchaId'>[] = [
     rol: 'admin',
     pinHash: STAFF_DEFAULT_PIN_HASH,
     descripcion: 'Acceso Total: Supervisión de todas las tablas, métricas de reservas y agendamiento exclusivo.',
-    avatar: '👑',
+    avatar: '💅',
     foto: '/equipo/jhoana.jpg',
     colorBadge: 'bg-[#FCE8EF] text-[#8C243B] border-[#F2C4D2]',
   },
@@ -3358,7 +3358,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                 </span>
               </button>
 
-              {canchas.map((cancha, i) => {
+              {canchas.map((cancha) => {
                 const totalCitas =
                   vistaAgenda === 'dia'
                     ? reservasDelDia.filter((r) => r.cancha_id === cancha.id && r.estado !== 'cancelada').length
@@ -3374,7 +3374,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                         : 'bg-white text-[#7D6870] hover:text-[#2D2529] border border-[#F2C4D2]'
                     }`}
                   >
-                    <span>{i === 0 ? '👑' : '💅'} {cancha.nombre}</span>
+                    <span>💅 {cancha.nombre}</span>
                     <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-white/20 border border-current">
                       {totalCitas}
                     </span>
@@ -3406,7 +3406,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
             ) : (
               /* TABLAS EN 4 COLUMNAS (1 POR CADA MANICURISTA) */
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {canchas.map((cancha, idx) => {
+              {canchas.map((cancha) => {
                 const citasCancha = reservasDelDia.filter((r) => r.cancha_id === cancha.id && r.estado !== 'cancelada');
                 const esColumnaAdmin = cancha.nombre.toLowerCase().includes('lili') || cancha.nombre.toLowerCase().includes('jhoana');
 
@@ -3422,7 +3422,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                           {cancha.foto || FOTOS_EQUIPO_ADMIN[cancha.nombre.toLowerCase()] ? (
                             <img src={cancha.foto || FOTOS_EQUIPO_ADMIN[cancha.nombre.toLowerCase()]} alt={cancha.nombre} className="w-full h-full object-cover" />
                           ) : (
-                            <span>{esColumnaAdmin ? '👑' : `M${idx + 1}`}</span>
+                            <span>💅</span>
                           )}
                         </div>
                         <div>
@@ -3904,7 +3904,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#FCE8EF]">
-                    {metricasSpa.porManicurista.map((m, i) => {
+                    {metricasSpa.porManicurista.map((m) => {
                       const pctParticipacion =
                         metricasSpa.ingresosTotales > 0
                           ? Math.round((m.ingresos / metricasSpa.ingresosTotales) * 100)
@@ -3915,7 +3915,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                         <tr key={m.cancha.id} className="hover:bg-[#FFF5F7]/50 transition">
                           <td className="py-3 px-3 font-bold text-[#2D2529] flex items-center gap-2">
                             <span className="w-6 h-6 rounded-full bg-[#FCE8EF] text-[#8C243B] flex items-center justify-center text-[10px]">
-                              {i === 0 ? '👑' : `M${i + 1}`}
+                              💅
                             </span>
                             <span>{m.cancha.nombre}</span>
                           </td>
