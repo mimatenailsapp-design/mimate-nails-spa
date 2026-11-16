@@ -24,3 +24,8 @@ Thumbs.db
 baileys_auth_info/
 *baileys_auth*
 backend/data/
+
+# Backups locales
+database/backups/
+database/citas_a_cargar.csv
+database/cargar_citas_produccion.py

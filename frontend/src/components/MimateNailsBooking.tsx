@@ -366,13 +366,48 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
     return [y, m - 1];
   }, [hoyStr]);
 
+  // Restricción para clientes: Solo pueden ver/agendar el mes en transcurso y el siguiente
+  const [maxYear, maxMonth] = useMemo(() => {
+    let m = hoyMonth + 1;
+    let y = hoyYear;
+    if (m > 11) {
+      m = 0;
+      y += 1;
+    }
+    return [y, m];
+  }, [hoyYear, hoyMonth]);
+
+  const maxFechaIso = useMemo(() => {
+    // Último día del mes siguiente
+    const ultimoDia = new Date(maxYear, maxMonth + 1, 0).getDate();
+    const mStr = String(maxMonth + 1).padStart(2, '0');
+    const dStr = String(ultimoDia).padStart(2, '0');
+    return `${maxYear}-${mStr}-${dStr}`;
+  }, [maxYear, maxMonth]);
+
+  // Si la fecha seleccionada se sale del rango permitido, reajustarla automáticamente a hoy
+  useEffect(() => {
+    if (fecha && (fecha < hoyStr || fecha > maxFechaIso)) {
+      setFecha(hoyStr);
+    }
+  }, [fecha, hoyStr, maxFechaIso]);
+
   const puedeIrMesAnterior = useMemo(() => {
     if (añoVisualizado > hoyYear) return true;
     if (añoVisualizado === hoyYear) return mesVisualizado > hoyMonth;
     return false;
   }, [añoVisualizado, mesVisualizado, hoyYear, hoyMonth]);
 
+  const puedeIrMesSiguiente = useMemo(() => {
+    if (añoVisualizado < maxYear) return true;
+    if (añoVisualizado === maxYear) return mesVisualizado < maxMonth;
+    return false;
+  }, [añoVisualizado, mesVisualizado, maxYear, maxMonth]);
+
   const cambiarMes = (delta: number) => {
+    if (delta > 0 && !puedeIrMesSiguiente) return;
+    if (delta < 0 && !puedeIrMesAnterior) return;
+
     let nuevoMes = mesVisualizado + delta;
     let nuevoAño = añoVisualizado;
     if (nuevoMes < 0) {
@@ -1899,8 +1934,13 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                                 <button
                                   type="button"
                                   onClick={() => cambiarMes(1)}
-                                  className="p-1.5 rounded-lg hover:bg-[#FCE8EF] text-[#8C243B] transition cursor-pointer active:scale-95"
-                                  title="Siguiente mes"
+                                  disabled={!puedeIrMesSiguiente}
+                                  className={`p-1.5 rounded-lg transition ${
+                                    puedeIrMesSiguiente
+                                      ? 'hover:bg-[#FCE8EF] text-[#8C243B] cursor-pointer active:scale-95'
+                                      : 'text-gray-300 cursor-not-allowed opacity-35'
+                                  }`}
+                                  title={puedeIrMesSiguiente ? 'Siguiente mes' : 'Solo puedes reservar para el mes actual y el siguiente'}
                                 >
                                   <IconChevronRight className="w-4 h-4" />
                                 </button>
@@ -1934,6 +1974,8 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                                 }
 
                                 const esPasado = d.iso < hoyStr;
+                                const esFuturoBloqueado = d.iso > maxFechaIso;
+                                const deshabilitado = esPasado || esFuturoBloqueado;
                                 const esSeleccionado = d.iso === fecha;
                                 const esHoy = d.iso === hoyStr;
                                 const esDomingo = d.dayOfWeek === 0;
@@ -1942,16 +1984,18 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                                   <button
                                     key={d.iso}
                                     type="button"
-                                    disabled={esPasado}
+                                    disabled={deshabilitado}
                                     onClick={() => {
                                       setFecha(d.iso);
                                       setCalendarioAbierto(false);
                                     }}
-                                    className={`relative h-9 w-full rounded-xl flex flex-col items-center justify-center text-xs transition cursor-pointer ${
+                                    className={`relative h-9 w-full rounded-xl flex flex-col items-center justify-center text-xs transition ${
+                                      deshabilitado ? 'cursor-not-allowed' : 'cursor-pointer'
+                                    } ${
                                       esSeleccionado
                                         ? 'bg-gradient-to-tr from-[#8C243B] to-[#C74B66] text-white font-extrabold shadow-sm scale-105 z-10'
-                                        : esPasado
-                                        ? 'text-gray-300 cursor-not-allowed opacity-35'
+                                        : deshabilitado
+                                        ? 'text-gray-300 opacity-30 select-none'
                                         : esDomingo
                                         ? 'text-slate-400 hover:bg-slate-50 border border-dashed border-slate-200'
                                         : 'text-[#2D2529] hover:bg-[#FFF0F4] hover:text-[#8C243B] font-semibold'
@@ -1960,10 +2004,18 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                                         ? 'border border-[#C74B66] text-[#8C243B] bg-[#FFF5F7] font-bold'
                                         : ''
                                     }`}
-                                    title={esDomingo ? 'Domingo (Cerrado)' : d.iso}
+                                    title={
+                                      esPasado
+                                        ? 'Fecha pasada'
+                                        : esFuturoBloqueado
+                                        ? 'Solo disponible para el mes en curso y el siguiente'
+                                        : esDomingo
+                                        ? 'Domingo (Cerrado)'
+                                        : d.iso
+                                    }
                                   >
                                     <span className="leading-none">{d.diaNum}</span>
-                                    {esDomingo && !esSeleccionado && (
+                                    {esDomingo && !esSeleccionado && !deshabilitado && (
                                       <span className="text-[7px] leading-none text-slate-400 mt-0.5">cerrado</span>
                                     )}
                                     {esHoy && !esSeleccionado && !esDomingo && (
@@ -1980,7 +2032,9 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                                 <span className="w-2 h-2 rounded-full bg-[#C74B66]" />
                                 <span>Lun–Sáb disponible</span>
                               </div>
-                              <span className="text-[10px] text-slate-400 italic">Domingos cerrado 💕</span>
+                              <span className="text-[10px] text-[#8C243B] bg-[#FFF0F4] px-2 py-0.5 rounded-full font-medium">
+                                Agenda abierta: Mes actual y siguiente 💕
+                              </span>
                             </div>
                           </motion.div>
                         )}
