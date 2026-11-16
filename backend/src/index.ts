@@ -1411,7 +1411,12 @@ app.get('/api/spa/info', async (req: Request, res: Response) => {
       horaCierre: complejo.hora_cierre ? complejo.hora_cierre.slice(0, 5) : '19:00',
     };
 
-    const equipoEnriquecido = (canchas || []).map(enriquecerCancha);
+    const equipoEnriquecido = (canchas || [])
+      .filter((c) => {
+        const nLower = (c.nombre || '').toLowerCase();
+        return !nLower.includes('manicurista 4') && nLower !== '4';
+      })
+      .map(enriquecerCancha);
     const bootstrapData = {
       complejo,
       equipo: equipoEnriquecido,

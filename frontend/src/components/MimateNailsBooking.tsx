@@ -228,7 +228,6 @@ const EMPLEADAS_DEFAULT: Empleada[] = [
   { id: 'f6010000-0000-0000-0000-000000000001', nombre: 'Manicurista 1' },
   { id: 'f6020000-0000-0000-0000-000000000002', nombre: 'Manicurista 2' },
   { id: 'f6030000-0000-0000-0000-000000000003', nombre: 'Manicurista 3' },
-  { id: 'f6040000-0000-0000-0000-000000000004', nombre: 'Manicurista 4' },
 ];
 
 const CATEGORIAS = [
@@ -637,7 +636,14 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
             setServicios(parsed.servicios);
           }
           if (parsed.equipo && parsed.equipo.length > 0) {
-            setEmpleadas(parsed.equipo.map(normalizarNombreYFotoEmpleada));
+            setEmpleadas(
+              parsed.equipo
+                .filter((c: any) => {
+                  const nLower = (c.nombre || '').toLowerCase();
+                  return !nLower.includes('manicurista 4') && nLower !== '4';
+                })
+                .map(normalizarNombreYFotoEmpleada)
+            );
           }
           if (parsed.config) {
             setSpaConfig((prev) => ({ ...prev, ...parsed.config }));
@@ -654,7 +660,14 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
           setServicios(d.servicios);
         }
         if (d.equipo && d.equipo.length > 0) {
-          setEmpleadas(d.equipo.map(normalizarNombreYFotoEmpleada));
+          setEmpleadas(
+            d.equipo
+              .filter((c: any) => {
+                const nLower = (c.nombre || '').toLowerCase();
+                return !nLower.includes('manicurista 4') && nLower !== '4';
+              })
+              .map(normalizarNombreYFotoEmpleada)
+          );
         }
         if (d.config) {
           setSpaConfig((prev) => ({ ...prev, ...d.config }));
@@ -808,8 +821,14 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
       if (listaEmp.length === 0) {
         const { data: canchasDb } = await supabase.from('canchas').select('id, nombre').eq('activa', true);
         if (canchasDb && canchasDb.length > 0) {
-          listaEmp = canchasDb;
-          setEmpleadas(canchasDb);
+          const filtradas = canchasDb
+            .filter((c: any) => {
+              const nLower = (c.nombre || '').toLowerCase();
+              return !nLower.includes('manicurista 4') && nLower !== '4';
+            })
+            .map(normalizarNombreYFotoEmpleada);
+          listaEmp = filtradas;
+          setEmpleadas(filtradas);
         }
       }
 

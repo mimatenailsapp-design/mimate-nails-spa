@@ -262,7 +262,12 @@ export class BookingService {
     }
     const { data, error } = await query;
     if (error) throw error;
-    return (data || []).map(enriquecerCancha);
+    return (data || [])
+      .filter((c) => {
+        const nLower = (c.nombre || '').toLowerCase();
+        return !nLower.includes('manicurista 4') && nLower !== '4';
+      })
+      .map(enriquecerCancha);
   }
 
   /**

@@ -132,17 +132,6 @@ const PERFILES_SPA_CONFIG: Omit<StaffProfile, 'canchaId'>[] = [
     foto: '/equipo/manuela.jpg',
     colorBadge: 'bg-[#FFF5F7] text-[#C74B66] border-[#F2C4D2]',
   },
-  {
-    id: 'staff-m4',
-    canchaNombreMatch: 'Manicurista 4',
-    nombre: 'Manicurista 4',
-    alias: 'Manicurista 4',
-    rol: 'manicurista',
-    pinHash: STAFF_DEFAULT_PIN_HASH,
-    descripcion: 'Vista personal de turnos del día y gestión de atención de clientas asignadas.',
-    avatar: '🌸',
-    colorBadge: 'bg-[#FFF5F7] text-[#C74B66] border-[#F2C4D2]',
-  },
 ];
 
 interface Props {
@@ -1084,15 +1073,20 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
         const idReal = d.complejo?.id || complejoId || '3bd1708c-21de-42a8-a529-d7c91fd41ed2';
         setIdComplejoDetectado(idReal);
         if (d.equipo) {
-          const normalizadas = d.equipo.map((c: any) => {
-            let nombre = c.nombre;
-            const nLower = nombre.trim().toLowerCase();
-            if (nLower.includes('manicurista 1') || nLower === '1') nombre = 'Lili';
-            else if (nLower.includes('manicurista 2') || nLower === '2') nombre = 'Jhoana';
-            else if (nLower.includes('manicurista 3') || nLower === '3') nombre = 'Manuela';
-            const foto = c.foto || FOTOS_EQUIPO_ADMIN[nombre.toLowerCase()] || FOTOS_EQUIPO_ADMIN[c.nombre.toLowerCase()] || null;
-            return { ...c, nombre, foto };
-          });
+          const normalizadas = d.equipo
+            .filter((c: any) => {
+              const nLower = (c.nombre || '').toLowerCase();
+              return !nLower.includes('manicurista 4') && nLower !== '4';
+            })
+            .map((c: any) => {
+              let nombre = c.nombre;
+              const nLower = nombre.trim().toLowerCase();
+              if (nLower.includes('manicurista 1') || nLower === '1') nombre = 'Lili';
+              else if (nLower.includes('manicurista 2') || nLower === '2') nombre = 'Jhoana';
+              else if (nLower.includes('manicurista 3') || nLower === '3') nombre = 'Manuela';
+              const foto = c.foto || FOTOS_EQUIPO_ADMIN[nombre.toLowerCase()] || FOTOS_EQUIPO_ADMIN[c.nombre.toLowerCase()] || null;
+              return { ...c, nombre, foto };
+            });
           setCanchas(normalizadas);
         }
         if (d.servicios) setServicios(d.servicios);
@@ -1220,8 +1214,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
           cLower.includes(pMatch) ||
           (p.id === 'admin-m1' && (cLower.includes('1') || cLower.includes('lili'))) ||
           ((p.id === 'staff-m2' || p.id === 'admin-m2') && (cLower.includes('2') || cLower.includes('jhoana'))) ||
-          (p.id === 'staff-m3' && (cLower.includes('3') || cLower.includes('manuela'))) ||
-          (p.id === 'staff-m4' && (cLower.includes('4') || cLower.includes('manicurista 4')))
+          (p.id === 'staff-m3' && (cLower.includes('3') || cLower.includes('manuela')))
         );
       });
       return {
@@ -3149,13 +3142,13 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
               </div>
             )}
 
-            {/* Barra de Acciones Deslizable y Limpia para Móvil */}
-            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5">
+            {/* Barra de Acciones Móvil en Grilla Táctica (Opción 1: Sin scroll, clara y accesible) */}
+            <div className="grid grid-cols-2 gap-2 pt-1 pb-0.5">
               {/* Agendar */}
               {esAdmin && (
                 <button
                   onClick={() => abrirModalAgendar()}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-[#8C243B] to-[#C74B66] text-white text-xs font-bold rounded-xl transition shadow-xs shrink-0 cursor-pointer active:scale-95"
+                  className="flex items-center justify-center gap-1.5 px-3 py-2 bg-gradient-to-r from-[#8C243B] to-[#C74B66] text-white text-xs font-bold rounded-xl transition shadow-xs cursor-pointer active:scale-95"
                 >
                   <IconPlus className="w-3.5 h-3.5 stroke-[3]" />
                   <span>Agendar Cita</span>
@@ -3165,7 +3158,9 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
               {/* Bloquear */}
               <button
                 onClick={() => abrirModalBloquear()}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 text-white text-xs font-bold rounded-xl transition shadow-xs shrink-0 cursor-pointer active:scale-95"
+                className={`flex items-center justify-center gap-1.5 px-3 py-2 bg-amber-500 text-white text-xs font-bold rounded-xl transition shadow-xs cursor-pointer active:scale-95 ${
+                  !esAdmin ? 'col-span-2' : ''
+                }`}
               >
                 <IconLock className="w-3.5 h-3.5 stroke-[2.5]" />
                 <span>{esAdmin ? 'Bloquear Horario' : 'Bloquear Mi Horario'}</span>
@@ -3175,7 +3170,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
               {esAdmin && (
                 <button
                   onClick={() => setModalConfigAnticipoAbierto(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-[#8C243B] border border-[#F2C4D2] text-xs font-bold rounded-xl transition shadow-xs shrink-0 cursor-pointer active:scale-95"
+                  className="flex items-center justify-center gap-1.5 px-3 py-2 bg-white text-[#8C243B] border border-[#F2C4D2] text-xs font-bold rounded-xl transition shadow-xs cursor-pointer active:scale-95 hover:bg-[#FFF5F7]"
                 >
                   <IconSettings className="w-3.5 h-3.5 text-[#C74B66]" />
                   <span>Config. Spa</span>
@@ -3186,7 +3181,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
               {esAdmin && (
                 <button
                   onClick={() => setModalWhatsAppAbierto(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-emerald-800 border border-emerald-300 text-xs font-bold rounded-xl transition shadow-xs shrink-0 cursor-pointer active:scale-95"
+                  className="flex items-center justify-center gap-1.5 px-3 py-2 bg-white text-emerald-800 border border-emerald-300 text-xs font-bold rounded-xl transition shadow-xs cursor-pointer active:scale-95 hover:bg-emerald-50"
                 >
                   <IconBrandWhatsapp className="w-3.5 h-3.5 text-emerald-600" />
                   <span>WhatsApp</span>
@@ -3206,12 +3201,12 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
               {esAdmin && (
                 <button
                   onClick={abrirModalExclusiones}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-[#8C243B] border border-[#F2C4D2] text-xs font-bold rounded-xl transition shadow-xs shrink-0 cursor-pointer active:scale-95"
+                  className="col-span-2 flex items-center justify-center gap-2 px-3 py-2 bg-white text-[#8C243B] border border-[#F2C4D2] text-xs font-bold rounded-xl transition shadow-xs cursor-pointer active:scale-95 hover:bg-[#FFF5F7]"
                 >
                   <IconLock className="w-3.5 h-3.5 text-[#8C243B]" />
                   <span>Números Restringidos</span>
                   {exclusionesBot.length > 0 && (
-                    <span className="px-1.5 py-0.2 rounded-full bg-[#8C243B] text-white text-[9px] font-mono font-bold">
+                    <span className="px-1.5 py-0.5 rounded-full bg-[#8C243B] text-white text-[10px] font-mono font-bold leading-none">
                       {exclusionesBot.length}
                     </span>
                   )}
