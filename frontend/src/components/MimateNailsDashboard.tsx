@@ -32,6 +32,7 @@ import { SelectorFechaMimate, SelectorMesMimate } from './dashboard/SelectorFech
 import { ExclusionesBotModal } from './dashboard/ExclusionesBotModal';
 import { DetalleCitaPopover, sumarAdicionalesCita } from './dashboard/DetalleCitaPopover';
 import { ModalAgregarAdicional } from './dashboard/ModalAgregarAdicional';
+import { WhatsAppVinculacionModal } from './dashboard/WhatsAppVinculacionModal';
 
 interface Cancha {
   id: string;
@@ -576,6 +577,34 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   // Estado para el modal de añadir servicio adicional (decorados, cristales, diseño extra)
   const [citaParaAdicional, setCitaParaAdicional] = useState<Reserva | null>(null);
   const [guardandoAdicional, setGuardandoAdicional] = useState(false);
+
+  // Estado para el Modal de Vinculación y QR de WhatsApp (Exclusivo Administradora)
+  const [modalWhatsAppAbierto, setModalWhatsAppAbierto] = useState(false);
+  const [whatsappConectado, setWhatsappConectado] = useState<boolean | null>(null);
+
+  // Sondeo inicial y discreto de conexión de WhatsApp para el badge del botón
+  useEffect(() => {
+    let montado = true;
+    const verificarWhatsAppBadge = async () => {
+      try {
+        const res = await fetch(`/api/baileys/status?_t=${Date.now()}`);
+        if (!res.ok) return;
+        const d = await res.json();
+        const status = d.status || d.baileys?.status;
+        if (montado) {
+          setWhatsappConectado(status === 'CONECTADO');
+        }
+      } catch {
+        // Silencioso para no interferir
+      }
+    };
+    verificarWhatsAppBadge();
+    const interval = setInterval(verificarWhatsAppBadge, 45000); // Chequeo ligero cada 45s
+    return () => {
+      montado = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   const abrirModalAdicional = (cita: Reserva) => {
     setCitaParaAdicional(cita);
@@ -2955,6 +2984,34 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                   </button>
                 )}
 
+                {/* Botón Exclusivo para la Admin: Vinculación de WhatsApp (No invasivo) */}
+                {esAdmin && (
+                  <button
+                    onClick={() => setModalWhatsAppAbierto(true)}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 text-xs font-bold rounded-xl transition shadow-xs cursor-pointer active:scale-95"
+                    title="Estado del bot de WhatsApp y escaneo del código QR"
+                  >
+                    <IconBrandWhatsapp className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>WhatsApp</span>
+                    <span
+                      className={`w-2 h-2 rounded-full ${
+                        whatsappConectado === true
+                          ? 'bg-emerald-500'
+                          : whatsappConectado === false
+                          ? 'bg-amber-500 animate-pulse'
+                          : 'bg-slate-400'
+                      }`}
+                      title={
+                        whatsappConectado === true
+                          ? 'Conectado'
+                          : whatsappConectado === false
+                          ? 'Requiere vincular QR'
+                          : 'Consultando'
+                      }
+                    />
+                  </button>
+                )}
+
                 {/* Botón Exclusivo para la Admin: Clientes con Bot Silenciado (Atención Humana) */}
                 {esAdmin && (
                   <button
@@ -3122,6 +3179,26 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                 >
                   <IconSettings className="w-3.5 h-3.5 text-[#C74B66]" />
                   <span>Config. Spa</span>
+                </button>
+              )}
+
+              {/* WhatsApp Vinculación (Móvil) */}
+              {esAdmin && (
+                <button
+                  onClick={() => setModalWhatsAppAbierto(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-emerald-800 border border-emerald-300 text-xs font-bold rounded-xl transition shadow-xs shrink-0 cursor-pointer active:scale-95"
+                >
+                  <IconBrandWhatsapp className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>WhatsApp</span>
+                  <span
+                    className={`w-2 h-2 rounded-full ${
+                      whatsappConectado === true
+                        ? 'bg-emerald-500'
+                        : whatsappConectado === false
+                        ? 'bg-amber-500 animate-pulse'
+                        : 'bg-slate-400'
+                    }`}
+                  />
                 </button>
               )}
 
@@ -4392,6 +4469,13 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
         guardando={guardandoAdicional}
         obtenerNombreClienta={obtenerNombreClienta}
         obtenerServicioCita={obtenerServicioCita}
+      />
+
+      {/* Modal de Vinculación y Código QR de WhatsApp */}
+      <WhatsAppVinculacionModal
+        isOpen={modalWhatsAppAbierto}
+        onClose={() => setModalWhatsAppAbierto(false)}
+        onStatusChange={(conectado) => setWhatsappConectado(conectado)}
       />
 
     </div>
