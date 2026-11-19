@@ -211,7 +211,7 @@ function obtenerDetalleBloqueo(cita: Reserva): { motivo: string; por: string } {
 export function calcularHorasOpcionesBloqueo(
   horaApertura: string = '08:00',
   horaCierre: string = '19:00',
-  intervaloMinutos: number = 30
+  intervaloMinutos: number = 60
 ): string[] {
   const [aperH, aperM] = (horaApertura || '08:00').split(':').map(Number);
   const [cierH, cierM] = (horaCierre || '19:00').split(':').map(Number);
@@ -231,7 +231,7 @@ export function calcularHorasOpcionesBloqueo(
 export const HORAS_OPCIONES_BLOQUEO = (
   horaApertura: string = '08:00',
   horaCierre: string = '19:00',
-  intervaloMinutos: number = 30
+  intervaloMinutos: number = 60
 ): string[] => calcularHorasOpcionesBloqueo(horaApertura, horaCierre, intervaloMinutos);
 
 export function calcularHorasTimeline(horaApertura: string = '08:00', horaCierre: string = '19:00'): number[] {
@@ -897,9 +897,9 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     return [servicioSeleccionadoForm.nombre, ...serviciosExtrasForm.map((s) => s.nombre)].join(' + ');
   }, [servicioSeleccionadoForm, serviciosExtrasForm]);
 
-  // Horas base de opciones de bloqueo calculadas dinámicamente según horario configurado en el spa
+  // Horas base de opciones de bloqueo calculadas dinámicamente según horario configurado en el spa (1 hora por bloque)
   const horasOpcionesBloqueoDinamicas = useMemo(() => {
-    return calcularHorasOpcionesBloqueo(configAnticipo.horaApertura, configAnticipo.horaCierre, 30);
+    return calcularHorasOpcionesBloqueo(configAnticipo.horaApertura, configAnticipo.horaCierre, 60);
   }, [configAnticipo.horaApertura, configAnticipo.horaCierre]);
 
   // Horas para el timeline visual calculadas dinámicamente según horario de apertura y cierre
@@ -1019,7 +1019,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
     for (const h of horasOpcionesBloqueoDinamicas) {
       const slotStartMs = new Date(`${bloquearFecha}T${h}:00-05:00`).getTime();
-      const slotEndMs = slotStartMs + 30 * 60 * 1000;
+      const slotEndMs = slotStartMs + 60 * 60 * 1000;
 
       const estaOcupada = reservas.some((r) => {
         if (r.estado === 'cancelada') return false;
@@ -1506,31 +1506,90 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
     
     try {
-      const res = await fetch('/api/spa/reservar', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          servicio_nombre: nombreServiciosAdmin,
-          precio: precioTotalAdmin,
-          duracion_minutos: duracionTotalAdmin,
-          fecha: agendarFecha,
-          hora: agendarHora,
-          cancha_id: agendarManicuristaId || undefined,
-          cliente_nombre: agendarNombre.trim(),
-          cliente_telefono: agendarTelefono.trim(),
-        }),
-      });
+      let reservado = false;
+      try {
+        const res = await fetch('/api/spa/reservar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            servicio_nombre: nombreServiciosAdmin,
+            precio: precioTotalAdmin,
+            duracion_minutos: duracionTotalAdmin,
+            fecha: agendarFecha,
+            hora: agendarHora,
+            cancha_id: agendarManicuristaId || undefined,
+            cliente_nombre: agendarNombre.trim(),
+            cliente_telefono: agendarTelefono.trim(),
+          }),
+        });
 
-      const data = await res.json();
+        const data = await res.json().catch(() => ({}));
 
-      if (res.ok) {
-        setModalAgendarAbierto(false);
-        cargarReservas();
-      } else {
-        setErrorAgendar(data.error || 'No se pudo agendar la cita. Verifica el horario.');
+        if (res.ok) {
+          reservado = true;
+        } else {
+          setErrorAgendar(data.error || 'No se pudo agendar la cita. Verifica el horario.');
+          setGuardandoCita(false);
+          return;
+        }
+      } catch (errNet) {
+        console.warn('API /api/spa/reservar offline o sin conexión, usando Supabase directo:', errNet);
       }
+
+      if (!reservado) {
+        // Fallback directo en Supabase
+        let cleanPhone = String(agendarTelefono.trim()).replace(/\D/g, '');
+        if (cleanPhone.length === 10 && cleanPhone.startsWith('3')) {
+          cleanPhone = `57${cleanPhone}`;
+        }
+
+        let clienteId: string | null = null;
+        const { data: clienteExistente } = await supabase
+          .from('clientes')
+          .select('id')
+          .eq('telefono_wa', cleanPhone)
+          .maybeSingle();
+
+        if (clienteExistente) {
+          clienteId = clienteExistente.id;
+        } else {
+          const { data: clienteCreado } = await supabase
+            .from('clientes')
+            .insert({ telefono_wa: cleanPhone, nombre: agendarNombre.trim() })
+            .select('id')
+            .single();
+          if (clienteCreado) clienteId = clienteCreado.id;
+        }
+
+        const dInicio = new Date(`${agendarFecha}T${agendarHora}:00-05:00`);
+        const dFin = new Date(dInicio.getTime() + (Number(duracionTotalAdmin) || 60) * 60 * 1000);
+        const autor = perfilActual ? (perfilActual.alias || perfilActual.nombre) : 'Personal';
+
+        const { error: sbErr } = await supabase.from('reservas').insert({
+          cancha_id: agendarManicuristaId || canchas[0]?.id,
+          cliente_id: clienteId,
+          fecha_inicio: dInicio.toISOString(),
+          fecha_fin: dFin.toISOString(),
+          valor_total: precioTotalAdmin,
+          valor_anticipo_requerido: 0,
+          estado: 'confirmada',
+          notas: `💅 Servicio: ${nombreServiciosAdmin} | Duración: ${duracionTotalAdmin} min | Clienta: ${agendarNombre.trim()} | Agendado en cabina por: ${autor}`,
+        });
+
+        if (sbErr) {
+          if (sbErr.code === '23P01') {
+            setErrorAgendar('Este horario ya está ocupado por otra cita o bloqueo.');
+            setGuardandoCita(false);
+            return;
+          }
+          throw sbErr;
+        }
+      }
+
+      setModalAgendarAbierto(false);
+      await cargarReservas();
     } catch (err: any) {
-      setErrorAgendar('Error de conexión al agendar cita: ' + err.message);
+      setErrorAgendar('Error al agendar cita: ' + (err.message || 'Error desconocido'));
     } finally {
       setGuardandoCita(false);
     }
@@ -1649,7 +1708,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
       // 2. Si la API no respondió exitosamente, fallback directo a Supabase
       if (!apiSuccess) {
-        const durPaso = 30;
+        const durPaso = 60;
         const minutos = Array.from(new Set(bloquearHorasSeleccionadas))
           .map((h) => {
             const [hh, mm] = h.split(':').map(Number);
@@ -4257,10 +4316,10 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       </main>
 
       {/* ==================================================================== */}
-      {/* MODAL EXCLUSIVO DE LA ADMIN: AGENDAR CITA CON MENÚS DESPLEGABLES     */}
+      {/* MODAL: AGENDAR CITA CON MENÚS DESPLEGABLES (ADMIN Y MANICURISTAS)     */}
       {/* ==================================================================== */}
       <AgendarCitaModal
-        abierto={esAdmin && modalAgendarAbierto}
+        abierto={modalAgendarAbierto}
         onClose={() => setModalAgendarAbierto(false)}
         onSubmit={handleCrearCitaAdmin}
         canchas={canchas}

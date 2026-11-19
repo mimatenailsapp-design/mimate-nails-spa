@@ -298,8 +298,15 @@ export const BloquearHorarioModal: React.FC<BloquearHorarioModalProps> = ({
                             Ocupada
                           </span>
                         ) : estaMarcada ? (
-                          <IconCheck className="w-3.5 h-3.5 stroke-[3]" />
-                        ) : null}
+                          <span className="flex items-center gap-0.5 text-[9px] font-sans font-bold">
+                            <IconCheck className="w-3 h-3 stroke-[3]" />
+                            <span>1 hora</span>
+                          </span>
+                        ) : (
+                          <span className="text-[9px] font-sans text-[#7D6870]/70">
+                            1 hora
+                          </span>
+                        )}
                       </button>
                     );
                   })}

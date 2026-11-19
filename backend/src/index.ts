@@ -872,8 +872,8 @@ app.post('/api/bloqueos', async (req: Request, res: Response) => {
         });
       }
     } else if (fecha && Array.isArray(horas) && horas.length > 0) {
-      // Si viene fecha YYYY-MM-DD y lista de horas ['09:30', '10:30', ...]
-      const durPaso = Number(duracion_minutos) || 30; // Cada ranura es de 30 minutos por defecto
+      // Si viene fecha YYYY-MM-DD y lista de horas ['09:00', '10:00', ...]
+      const durPaso = Number(duracion_minutos) || 60; // Cada ranura es de 1 hora (60 minutos) por defecto
 
       // Agrupar horas contiguas en rangos continuos para evitar solapamientos y exclusiones de BD
       const minutos = Array.from(new Set(horas))
@@ -925,7 +925,7 @@ app.post('/api/bloqueos', async (req: Request, res: Response) => {
     } else if (fecha && req.body.hora) {
       // Si viene una sola hora
       const h = req.body.hora;
-      const durMin = Number(duracion_minutos) || 30; // ranura de 30 min por defecto
+      const durMin = Number(duracion_minutos) || 60; // ranura de 1 hora (60 min) por defecto
       const dInicio = new Date(`${fecha}T${h}:00-05:00`);
       const dFin = new Date(dInicio.getTime() + durMin * 60 * 1000);
 
