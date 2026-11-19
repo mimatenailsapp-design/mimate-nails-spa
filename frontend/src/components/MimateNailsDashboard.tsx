@@ -467,6 +467,22 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   // Selector de vista de agenda: Día (diario por horas / 4 columnas) vs Semana (planificador de 7 días)
   const [vistaAgenda, setVistaAgenda] = useState<'dia' | 'semana'>('dia');
 
+  // Altura dinámica del encabezado principal sticky para anclar el subencabezado de días exactamente debajo
+  const headerRef = useRef<HTMLElement>(null);
+  const [headerHeight, setHeaderHeight] = useState(105);
+
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el) return;
+    const actualizar = () => {
+      if (el) setHeaderHeight(el.offsetHeight);
+    };
+    actualizar();
+    const observer = new ResizeObserver(actualizar);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [perfilActual, tabAdmin]);
+
   // Estado para la pestaña de Métricas (Por Día vs Por Mes)
   const [modoMetricas, setModoMetricas] = useState<'dia' | 'semana' | 'mes'>('dia');
   const [mesSeleccionado, setMesSeleccionado] = useState<string>(() => {
@@ -2893,16 +2909,16 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     return (
       <motion.div
         key={`semana-${diasDeLaSemana[0]?.fechaIso || fechaSeleccionada}`}
-        initial={{ x: direccionSlide * 60, opacity: 0.3 }}
-        animate={{ x: 0, opacity: 1 }}
-        transition={{ type: 'spring', stiffness: 360, damping: 28 }}
-        className="bg-white rounded-3xl border border-[#F2C4D2] shadow-xs overflow-hidden"
+        initial={{ opacity: 0.35 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.2 }}
+        className="bg-white rounded-3xl border border-[#F2C4D2] shadow-xs"
       >
         {/* Cabecera del Timeline Semanal */}
         <div
           onTouchStart={handleTouchStartCabeceraSemanal}
           onTouchEnd={handleTouchEndCabeceraSemanal}
-          className="p-4 bg-gradient-to-r from-[#FFF5F7] to-[#FCE8EF] border-b border-[#F2C4D2] flex flex-wrap items-center justify-between gap-3 touch-pan-y select-none"
+          className="p-4 bg-gradient-to-r from-[#FFF5F7] to-[#FCE8EF] border-b border-[#F2C4D2] rounded-t-3xl flex flex-wrap items-center justify-between gap-3 touch-pan-y select-none"
         >
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-white border border-[#F2C4D2] flex items-center justify-center font-bold text-base text-[#8C243B] shadow-2xs">
@@ -2942,67 +2958,72 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
           ref={scrollSemanalRef}
           onTouchStart={handleTouchStartSemanalBody}
           onTouchEnd={handleTouchEndSemanalBody}
-          className="relative p-4 sm:p-6 overflow-x-auto touch-pan-x"
+          className="relative p-4 sm:p-6 overflow-x-auto lg:overflow-x-visible touch-pan-x"
         >
           <div className="min-w-[1050px]">
-            {/* ENCABEZADOS DE LOS 7 DÍAS */}
-            <div className="flex border-b border-[#F2C4D2] pb-3 mb-1">
-              <div className="w-16 sm:w-24 pr-3 flex-shrink-0 text-right select-none">
-                <span className="text-[11px] font-extrabold text-[#8C243B] uppercase tracking-wider">
-                  HORA
-                </span>
-              </div>
+            {/* ENCABEZADOS DE LOS 7 DÍAS (ANCLADOS/STICKY ARRIBA AL HACER SCROLL DOWN) */}
+            <div
+              className="sticky z-30 bg-white/95 backdrop-blur-md -mx-4 sm:-mx-6 px-4 sm:px-6 pt-2 pb-3 mb-1 border-b border-[#F2C4D2] shadow-2xs transition-all"
+              style={{ top: `${headerHeight}px` }}
+            >
+              <div className="flex items-center">
+                <div className="w-16 sm:w-24 pr-3 flex-shrink-0 text-right select-none">
+                  <span className="text-[11px] font-extrabold text-[#8C243B] uppercase tracking-wider">
+                    HORA
+                  </span>
+                </div>
 
-              <div className="flex-1 grid grid-cols-7 divide-x divide-[#F2C4D2]/60">
-                {diasDeLaSemana.map((d) => {
-                  const citasDelDia = citasFiltradas.filter((r) => {
-                    if (!r.fecha_inicio) return false;
-                    const fCita = new Date(r.fecha_inicio).toLocaleDateString('en-CA', {
-                      timeZone: 'America/Bogota',
+                <div className="flex-1 grid grid-cols-7 divide-x divide-[#F2C4D2]/60">
+                  {diasDeLaSemana.map((d) => {
+                    const citasDelDia = citasFiltradas.filter((r) => {
+                      if (!r.fecha_inicio) return false;
+                      const fCita = new Date(r.fecha_inicio).toLocaleDateString('en-CA', {
+                        timeZone: 'America/Bogota',
+                      });
+                      return fCita === d.fechaIso && r.estado !== 'cancelada' && r.estado !== 'bloqueada';
                     });
-                    return fCita === d.fechaIso && r.estado !== 'cancelada' && r.estado !== 'bloqueada';
-                  });
 
-                  return (
-                    <div
-                      key={d.fechaIso}
-                      className={`px-1.5 py-1 text-center transition-colors rounded-xl mx-0.5 ${
-                        d.esHoy ? 'bg-[#FFF5F7] ring-1 ring-[#8C243B]/25' : ''
-                      }`}
-                    >
-                      <p
-                        className={`text-[11px] font-bold uppercase tracking-wider ${
-                          d.esHoy ? 'text-[#8C243B]' : 'text-[#7D6870]'
+                    return (
+                      <div
+                        key={d.fechaIso}
+                        className={`px-1.5 py-1 text-center transition-colors rounded-xl mx-0.5 ${
+                          d.esHoy ? 'bg-[#FFF5F7] ring-1 ring-[#8C243B]/25' : ''
                         }`}
                       >
-                        {d.nombreCorto}
-                      </p>
-                      <div className="flex items-center justify-center gap-1 my-0.5">
-                        <span
-                          className={`text-base font-extrabold font-serif ${
-                            d.esHoy ? 'text-[#8C243B]' : 'text-[#2D2529]'
+                        <p
+                          className={`text-[11px] font-bold uppercase tracking-wider ${
+                            d.esHoy ? 'text-[#8C243B]' : 'text-[#7D6870]'
                           }`}
                         >
-                          {d.diaNum} {d.mesCorto}
-                        </span>
-                        {d.esHoy && (
-                          <span className="text-[8px] font-extrabold px-1.5 py-0.2 rounded-full bg-[#8C243B] text-white leading-none">
-                            HOY
+                          {d.nombreCorto}
+                        </p>
+                        <div className="flex items-center justify-center gap-1 my-0.5">
+                          <span
+                            className={`text-base font-extrabold font-serif ${
+                              d.esHoy ? 'text-[#8C243B]' : 'text-[#2D2529]'
+                            }`}
+                          >
+                            {d.diaNum} {d.mesCorto}
                           </span>
-                        )}
+                          {d.esHoy && (
+                            <span className="text-[8px] font-extrabold px-1.5 py-0.2 rounded-full bg-[#8C243B] text-white leading-none">
+                              HOY
+                            </span>
+                          )}
+                        </div>
+                        <span
+                          className={`text-[9px] font-semibold px-2 py-0.5 rounded-full border inline-block ${
+                            d.esHoy
+                              ? 'bg-[#8C243B] text-white border-[#8C243B]'
+                              : 'bg-white text-[#8C243B] border-[#F2C4D2]'
+                          }`}
+                        >
+                          {citasDelDia.length} {citasDelDia.length === 1 ? 'cita' : 'citas'}
+                        </span>
                       </div>
-                      <span
-                        className={`text-[9px] font-semibold px-2 py-0.5 rounded-full border inline-block ${
-                          d.esHoy
-                            ? 'bg-[#8C243B] text-white border-[#8C243B]'
-                            : 'bg-white text-[#8C243B] border-[#F2C4D2]'
-                        }`}
-                      >
-                        {citasDelDia.length} {citasDelDia.length === 1 ? 'cita' : 'citas'}
-                      </span>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
             </div>
 
@@ -3211,7 +3232,10 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       </AnimatePresence>
 
       {/* BARRA SUPERIOR ELEGANTE */}
-      <header className="bg-white/95 backdrop-blur-md sticky top-0 z-40 border-b border-[#F2C4D2] shadow-xs">
+      <header
+        ref={headerRef}
+        className="bg-white/95 backdrop-blur-md sticky top-0 z-40 border-b border-[#F2C4D2] shadow-xs"
+      >
         <div className="max-w-7xl mx-auto px-3.5 sm:px-4 py-2.5 sm:py-3">
           
           {/* FILA PRINCIPAL: Marca/Perfil a la izquierda, Controles a la derecha */}
