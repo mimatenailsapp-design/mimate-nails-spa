@@ -14,9 +14,15 @@ const PIN_PEPPER_SALT = 'MimateNails_Spa_SecurePin_Salt_2026_@JL!_98f4e2b1';
  * Hashes criptográficos precalculados con salting/pepper:
  * - Hash del PIN predeterminado del staff autorizado
  * - Hash del PIN maestro administrativo
+ * - Hashes individuales protegidos con salting para cada especialista
  */
 export const STAFF_DEFAULT_PIN_HASH = 'fb03a4b64b8bcb37d2967b46951043048eed9c56629857495bba7d295520f186';
 export const ADMIN_MASTER_PIN_HASH = '7dc28d72e8f9bfaf28453b71d5a662b5f5baacdc373a6a1796f4acaa57b0138e';
+
+// Hashes criptográficos salteados con pepper (FIPS 180-4 SHA-256) para cada miembro del equipo
+export const HASH_ACCESO_LILI = '4923057e68a376e2ea02a68b1ce057b977b2b9e82803184fadcd8ffed0c68c7c';
+export const HASH_ACCESO_JHOANA = '767db4e02b5bd73fb26a136a01393baa4793692b615a82f7b7828daf731f2c6c';
+export const HASH_ACCESO_MANUELA = '62be8d3a876bddec3b22097879e54def7e5a3886b078a81fc7eececd43a76d2b';
 
 /**
  * Genera el hash criptográfico SHA-256 salteado de un PIN o clave en texto plano.
