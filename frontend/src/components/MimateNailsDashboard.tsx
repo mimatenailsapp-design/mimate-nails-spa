@@ -4036,9 +4036,9 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
         )}
       </AnimatePresence>
 
-      {/* BARRA SUPERIOR ELEGANTE */}
-      <header className="bg-white/95 backdrop-blur-md sticky top-0 z-40 border-b border-[#F2C4D2] shadow-xs">
-        <div className="max-w-7xl mx-auto px-3.5 sm:px-4 py-2.5 sm:py-3">
+      {/* BARRA SUPERIOR ELEGANTE (En móvil se desplaza al bajar; en desktop/tablet permanece fija) */}
+      <header className="bg-white/95 backdrop-blur-md md:sticky md:top-0 z-40 md:border-b border-[#F2C4D2] md:shadow-xs">
+        <div className="max-w-7xl mx-auto px-3.5 sm:px-4 pt-2.5 pb-1.5 md:py-3">
           
           {/* FILA 1: Marca/Perfil a la izquierda, Controles del Sistema a la derecha */}
           <div className="flex items-center justify-between gap-3">
@@ -4242,10 +4242,10 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
             </div>
           </div>
 
-          {/* FILA EXCLUSIVA PARA MÓVIL (< md): Segmented Tabs & Barra de Acciones Deslizable */}
-          <div className="md:hidden mt-2 pt-2 border-t border-[#F2C4D2]/40 space-y-2">
-            {/* Pestañas Agenda / Métricas a ancho completo en móvil */}
-            {esAdmin && (
+          {/* FILA EXCLUSIVA PARA MÓVIL (< md): Pestañas y Botones Secundarios (Quedan arriba al hacer scroll hacia abajo) */}
+          {esAdmin && (
+            <div className="md:hidden mt-2 pt-2 border-t border-[#F2C4D2]/40 space-y-2">
+              {/* Pestañas Agenda / Métricas a ancho completo en móvil */}
               <div className="grid grid-cols-2 bg-[#FCE8EF] p-1 rounded-xl border border-[#F2C4D2]">
                 <button
                   onClick={() => setTabAdmin('agenda')}
@@ -4270,30 +4270,10 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                   <span>Métricas</span>
                 </button>
               </div>
-            )}
 
-            {/* Barra de Acciones Móvil en Grilla Táctica (Opción 1: Sin scroll, clara y accesible) */}
-            <div className="grid grid-cols-2 gap-2 pt-1 pb-0.5">
-              {/* Agendar (Disponible para Admin y Manicuristas) */}
-              <button
-                onClick={() => abrirModalAgendar()}
-                className="flex items-center justify-center gap-1.5 px-3 py-2 bg-gradient-to-r from-[#8C243B] to-[#C74B66] text-white text-xs font-bold rounded-xl transition shadow-xs cursor-pointer active:scale-95"
-              >
-                <IconPlus className="w-3.5 h-3.5 stroke-[3]" />
-                <span>Agendar Cita</span>
-              </button>
-
-              {/* Bloquear */}
-              <button
-                onClick={() => abrirModalBloquear()}
-                className="flex items-center justify-center gap-1.5 px-3 py-2 bg-amber-500 text-white text-xs font-bold rounded-xl transition shadow-xs cursor-pointer active:scale-95"
-              >
-                <IconLock className="w-3.5 h-3.5 stroke-[2.5]" />
-                <span>{esAdmin ? 'Bloquear Horario' : 'Bloquear Mi Horario'}</span>
-              </button>
-
-              {/* Configuración Spa */}
-              {esAdmin && (
+              {/* Botones Secundarios de Administración (Config. Spa, WhatsApp, Números Restringidos) */}
+              <div className="grid grid-cols-2 gap-2 pt-0.5">
+                {/* Configuración Spa */}
                 <button
                   onClick={() => setModalConfigAnticipoAbierto(true)}
                   className="flex items-center justify-center gap-1.5 px-3 py-2 bg-white text-[#8C243B] border border-[#F2C4D2] text-xs font-bold rounded-xl transition shadow-xs cursor-pointer active:scale-95 hover:bg-[#FFF5F7]"
@@ -4301,10 +4281,8 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                   <IconSettings className="w-3.5 h-3.5 text-[#C74B66]" />
                   <span>Config. Spa</span>
                 </button>
-              )}
 
-              {/* WhatsApp Vinculación (Móvil) */}
-              {esAdmin && (
+                {/* WhatsApp Vinculación (Móvil) */}
                 <button
                   onClick={() => setModalWhatsAppAbierto(true)}
                   className="flex items-center justify-center gap-1.5 px-3 py-2 bg-white text-emerald-800 border border-emerald-300 text-xs font-bold rounded-xl transition shadow-xs cursor-pointer active:scale-95 hover:bg-emerald-50"
@@ -4321,10 +4299,8 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                     }`}
                   />
                 </button>
-              )}
 
-              {/* Números Restringidos */}
-              {esAdmin && (
+                {/* Números Restringidos */}
                 <button
                   onClick={abrirModalExclusiones}
                   className="col-span-2 flex items-center justify-center gap-2 px-3 py-2 bg-white text-[#8C243B] border border-[#F2C4D2] text-xs font-bold rounded-xl transition shadow-xs cursor-pointer active:scale-95 hover:bg-[#FFF5F7]"
@@ -4337,12 +4313,35 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                     </span>
                   )}
                 </button>
-              )}
+              </div>
             </div>
-          </div>
+          )}
 
         </div>
       </header>
+
+      {/* BARRA FIJA (STICKY) EXCLUSIVA EN MÓVIL (< md): Ubicada debajo de los demás controles para que al bajar solo queden fijos "Agendar Cita" y "Bloquear Horario" con transición suave */}
+      <div className="md:hidden sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-[#F2C4D2] shadow-xs px-3.5 py-2">
+        <div className="max-w-7xl mx-auto grid grid-cols-2 gap-2">
+          {/* Agendar (Disponible para Admin y Manicuristas) */}
+          <button
+            onClick={() => abrirModalAgendar()}
+            className="flex items-center justify-center gap-1.5 px-3 py-2 bg-gradient-to-r from-[#8C243B] to-[#C74B66] text-white text-xs font-bold rounded-xl transition shadow-xs cursor-pointer active:scale-95"
+          >
+            <IconPlus className="w-3.5 h-3.5 stroke-[3]" />
+            <span>Agendar Cita</span>
+          </button>
+
+          {/* Bloquear */}
+          <button
+            onClick={() => abrirModalBloquear()}
+            className="flex items-center justify-center gap-1.5 px-3 py-2 bg-amber-500 text-white text-xs font-bold rounded-xl transition shadow-xs cursor-pointer active:scale-95"
+          >
+            <IconLock className="w-3.5 h-3.5 stroke-[2.5]" />
+            <span>{esAdmin ? 'Bloquear Horario' : 'Bloquear Mi Horario'}</span>
+          </button>
+        </div>
+      </div>
 
       {/* CONTENIDO PRINCIPAL */}
       <main className="max-w-7xl mx-auto w-full p-3 sm:p-6 space-y-4 sm:space-y-6 flex-1">
