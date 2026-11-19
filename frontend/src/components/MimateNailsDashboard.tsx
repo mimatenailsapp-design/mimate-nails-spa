@@ -3238,209 +3238,206 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       >
         <div className="max-w-7xl mx-auto px-3.5 sm:px-4 py-2.5 sm:py-3">
           
-          {/* FILA PRINCIPAL: Marca/Perfil a la izquierda, Controles a la derecha */}
+          {/* FILA 1: Marca/Perfil a la izquierda, Controles del Sistema a la derecha */}
           <div className="flex items-center justify-between gap-3">
-            
-            {/* Lado Izquierdo: Logo, Nombre y Botones Operativos en Desktop */}
-            <div className="flex items-center gap-3 md:gap-4 min-w-0">
-              {/* Logo y Nombre */}
-              <div className="flex items-center gap-2.5 shrink-0">
-                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#FFF5F7] p-1 border border-[#F2C4D2] overflow-hidden shrink-0 flex items-center justify-center">
-                  <img
-                    src="/mimate-nails-logo.png"
-                    alt="Logo JL Mímate Nails"
-                    className="w-full h-full object-contain"
-                    onError={(e) => {
-                      (e.target as HTMLElement).style.display = 'none';
-                    }}
-                  />
-                </div>
-                <div>
-                  <div className="flex items-center gap-1.5 sm:gap-2">
-                    <h1 className="font-bold text-sm sm:text-base text-[#2D2529] font-serif leading-none truncate">
-                      JL Mímate Nails
-                    </h1>
-                    <span className={`text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full border shrink-0 flex items-center gap-1.5 ${perfilActual.colorBadge}`}>
-                      {perfilActual.foto ? (
-                        <img src={perfilActual.foto} alt="" className="w-3.5 h-3.5 rounded-full object-cover border border-[#F2C4D2]" />
-                      ) : (
-                        <span>{perfilActual.avatar}</span>
-                      )}
-                      <span>{esAdmin ? `${perfilActual.nombre.replace(/\s*\(Administradora\)/i, '')} (Admin)` : perfilActual.nombre}</span>
-                    </span>
-                  </div>
-                  <p className="text-[10px] sm:text-[11px] text-[#7D6870] mt-0.5 hidden sm:block">
-                    Pereira, Cuba · Panel de Control de Turnos
-                  </p>
-                </div>
+            {/* Lado Izquierdo: Logo, Nombre y Perfil */}
+            <div className="flex items-center gap-2.5 shrink-0">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#FFF5F7] p-1 border border-[#F2C4D2] overflow-hidden shrink-0 flex items-center justify-center">
+                <img
+                  src="/mimate-nails-logo.png"
+                  alt="Logo JL Mímate Nails"
+                  className="w-full h-full object-contain"
+                  onError={(e) => {
+                    (e.target as HTMLElement).style.display = 'none';
+                  }}
+                />
               </div>
-
-              {/* Botones Operativos en DESKTOP (Ocultos en móvil para mantener la vista limpia) */}
-              <div className="hidden md:flex items-center gap-2 pl-2">
-                {/* Botón Bloquear Horario */}
-                <button
-                  onClick={() => abrirModalBloquear()}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-xl transition shadow-xs cursor-pointer active:scale-95"
-                  title="Bloquear una o varias horas para que las clientas no puedan reservar"
-                >
-                  <IconLock className="w-3.5 h-3.5 stroke-[2.5]" />
-                  <span>{esAdmin ? 'Bloquear Horario' : 'Bloquear Mi Horario'}</span>
-                </button>
-
-                {/* Botón Exclusivo para la Admin: Configuración de Horario de Trabajo y Anticipos */}
-                {esAdmin && (
-                  <button
-                    onClick={() => setModalConfigAnticipoAbierto(true)}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition shadow-xs cursor-pointer border bg-white border-[#F2C4D2] text-[#8C243B] hover:bg-[#FCE8EF]"
-                    title="Configuración general del spa: horarios de trabajo, anticipos y cuentas de recaudo"
-                  >
-                    <IconSettings className="w-3.5 h-3.5 text-[#C74B66]" />
-                    <span>Configuración del Spa</span>
-                  </button>
-                )}
-
-                {/* Botón Agendar Cita (Disponible para Admin y Manicuristas) */}
-                <button
-                  onClick={() => abrirModalAgendar()}
-                  className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-[#8C243B] to-[#C74B66] hover:from-[#731D30] hover:to-[#B03C54] text-white text-xs font-bold rounded-xl transition shadow-xs cursor-pointer active:scale-95"
-                >
-                  <IconPlus className="w-4 h-4 stroke-[3]" />
-                  <span>Agendar Cita</span>
-                </button>
-
-                {/* Botón Exclusivo para la Admin: Vinculación de WhatsApp (No invasivo) */}
-                {esAdmin && (
-                  <button
-                    onClick={() => setModalWhatsAppAbierto(true)}
-                    className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 text-xs font-bold rounded-xl transition shadow-xs cursor-pointer active:scale-95"
-                    title="Estado del bot de WhatsApp y escaneo del código QR"
-                  >
-                    <IconBrandWhatsapp className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>WhatsApp</span>
-                    <span
-                      className={`w-2 h-2 rounded-full ${
-                        whatsappConectado === true
-                          ? 'bg-emerald-500'
-                          : whatsappConectado === false
-                          ? 'bg-amber-500 animate-pulse'
-                          : 'bg-slate-400'
-                      }`}
-                      title={
-                        whatsappConectado === true
-                          ? 'Conectado'
-                          : whatsappConectado === false
-                          ? 'Requiere vincular QR'
-                          : 'Consultando'
-                      }
-                    />
-                  </button>
-                )}
-
-                {/* Botón Exclusivo para la Admin: Clientes con Bot Silenciado (Atención Humana) */}
-                {esAdmin && (
-                  <button
-                    onClick={abrirModalExclusiones}
-                    className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2] text-xs font-bold rounded-xl transition shadow-xs cursor-pointer active:scale-95"
-                    title="Gestionar números restringidos del bot para atención personalizada"
-                  >
-                    <IconLock className="w-3.5 h-3.5 text-[#8C243B]" />
-                    <span>Números Restringidos</span>
-                    {exclusionesBot.length > 0 && (
-                      <span className="px-1.5 py-0.2 rounded-full bg-[#8C243B] text-white text-[10px] font-mono font-bold">
-                        {exclusionesBot.length}
-                      </span>
+              <div>
+                <div className="flex items-center gap-1.5 sm:gap-2">
+                  <h1 className="font-bold text-sm sm:text-base text-[#2D2529] font-serif leading-none truncate">
+                    JL Mímate Nails
+                  </h1>
+                  <span className={`text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full border shrink-0 flex items-center gap-1.5 ${perfilActual.colorBadge}`}>
+                    {perfilActual.foto ? (
+                      <img src={perfilActual.foto} alt="" className="w-3.5 h-3.5 rounded-full object-cover border border-[#F2C4D2]" />
+                    ) : (
+                      <span>{perfilActual.avatar}</span>
                     )}
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Lado Derecho: Recargar, Volver Web y Salir ARRIBA; Agenda de Turnos y Métricas DEBAJO (con más separación) */}
-            <div className="flex flex-col items-end gap-3 shrink-0">
-              {/* Arriba a la derecha: Indicador Realtime y 3 botones */}
-              <div className="flex items-center gap-1.5 sm:gap-2">
-                {/* Indicador de conexión Realtime */}
-                <div
-                  className={`flex items-center gap-1.5 px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl text-2xs font-semibold border transition select-none ${
-                    realtimeConectado
-                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                      : 'bg-slate-50 text-slate-500 border-slate-200'
-                  }`}
-                  title={
-                    realtimeConectado
-                      ? 'Conexión en vivo activa: Las nuevas citas y cambios se actualizan al instante'
-                      : 'Conectando con Supabase Realtime...'
-                  }
-                >
-                  <span
-                    className={`w-1.5 h-1.5 rounded-full ${
-                      realtimeConectado ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
-                    }`}
-                  />
-                  <span className="hidden sm:inline">
-                    {realtimeConectado ? 'En vivo' : 'Conectando'}
+                    <span>{esAdmin ? `${perfilActual.nombre.replace(/\s*\(Administradora\)/i, '')} (Admin)` : perfilActual.nombre}</span>
                   </span>
                 </div>
-
-                {/* Recargar datos */}
-                <button
-                  onClick={() => cargarReservas()}
-                  disabled={cargando}
-                  className="p-1.5 sm:p-2 rounded-xl border border-[#F2C4D2] hover:bg-[#FCE8EF] text-[#7D6870] hover:text-[#8C243B] transition cursor-pointer"
-                  title="Actualizar datos manualmente"
-                >
-                  <IconRefresh className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${cargando ? 'animate-spin' : ''}`} />
-                </button>
-
-                {/* Volver a la página principal */}
-                <button
-                  onClick={onIrAWebReservas}
-                  className="p-1.5 sm:p-2 rounded-xl border border-[#F2C4D2] hover:bg-[#FCE8EF] text-[#7D6870] hover:text-[#8C243B] transition cursor-pointer"
-                  title="Volver a la página principal (Reservas de clientas)"
-                >
-                  <IconExternalLink className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                </button>
-
-                {/* Salir */}
-                <button
-                  onClick={handleCerrarSesion}
-                  className="flex items-center gap-1 p-1.5 sm:px-2.5 sm:py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-[#7D6870] text-xs font-semibold transition cursor-pointer"
-                  title="Cambiar de perfil / Cerrar sesión"
-                >
-                  <IconLogout className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  <span className="hidden sm:inline">Salir</span>
-                </button>
+                <p className="text-[10px] sm:text-[11px] text-[#7D6870] mt-0.5 hidden sm:block">
+                  Pereira, Cuba · Panel de Control de Turnos
+                </p>
               </div>
-
-              {/* Debajo de los 3 botones, a la derecha en DESKTOP: Agenda de Turnos y Métricas */}
-              {esAdmin && (
-                <div className="hidden md:flex items-center bg-[#FCE8EF] p-1 rounded-xl border border-[#F2C4D2]">
-                  <button
-                    onClick={() => setTabAdmin('agenda')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
-                      tabAdmin === 'agenda'
-                        ? 'bg-white text-[#8C243B] shadow-xs'
-                        : 'text-[#7D6870] hover:text-[#2D2529]'
-                    }`}
-                  >
-                    <IconCalendar className="w-3.5 h-3.5" />
-                    <span>Agenda de Turnos</span>
-                  </button>
-                  <button
-                    onClick={() => setTabAdmin('metricas')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
-                      tabAdmin === 'metricas'
-                        ? 'bg-white text-[#8C243B] shadow-xs'
-                        : 'text-[#7D6870] hover:text-[#2D2529]'
-                    }`}
-                  >
-                    <IconChartBar className="w-3.5 h-3.5" />
-                    <span>Métricas</span>
-                  </button>
-                </div>
-              )}
             </div>
 
+            {/* Lado Derecho: Indicador Realtime, Recargar, Volver Web y Salir */}
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+              {/* Indicador de conexión Realtime */}
+              <div
+                className={`flex items-center gap-1.5 px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl text-2xs font-semibold border transition select-none ${
+                  realtimeConectado
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : 'bg-slate-50 text-slate-500 border-slate-200'
+                }`}
+                title={
+                  realtimeConectado
+                    ? 'Conexión en vivo activa: Las nuevas citas y cambios se actualizan al instante'
+                    : 'Conectando con Supabase Realtime...'
+                }
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    realtimeConectado ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
+                  }`}
+                />
+                <span className="hidden sm:inline">
+                  {realtimeConectado ? 'En vivo' : 'Conectando'}
+                </span>
+              </div>
+
+              {/* Recargar datos */}
+              <button
+                onClick={() => cargarReservas()}
+                disabled={cargando}
+                className="p-1.5 sm:p-2 rounded-xl border border-[#F2C4D2] hover:bg-[#FCE8EF] text-[#7D6870] hover:text-[#8C243B] transition cursor-pointer"
+                title="Actualizar datos manualmente"
+              >
+                <IconRefresh className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${cargando ? 'animate-spin' : ''}`} />
+              </button>
+
+              {/* Volver a la página principal */}
+              <button
+                onClick={onIrAWebReservas}
+                className="p-1.5 sm:p-2 rounded-xl border border-[#F2C4D2] hover:bg-[#FCE8EF] text-[#7D6870] hover:text-[#8C243B] transition cursor-pointer"
+                title="Volver a la página principal (Reservas de clientas)"
+              >
+                <IconExternalLink className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              </button>
+
+              {/* Salir */}
+              <button
+                onClick={handleCerrarSesion}
+                className="flex items-center gap-1 p-1.5 sm:px-2.5 sm:py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-[#7D6870] text-xs font-semibold transition cursor-pointer"
+                title="Cambiar de perfil / Cerrar sesión"
+              >
+                <IconLogout className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <span className="hidden sm:inline">Salir</span>
+              </button>
+            </div>
+          </div>
+
+          {/* FILA 2: VISTA TABLET & DESKTOP (>= md) - Pestañas a la izquierda, Botones operativos a la derecha sin sobreposición */}
+          <div className="hidden md:flex items-center justify-between gap-3 mt-2.5 pt-2.5 border-t border-[#F2C4D2]/50">
+            {/* Pestañas Agenda / Métricas (Izquierda en Tablet/Desktop) */}
+            {esAdmin ? (
+              <div className="flex items-center bg-[#FCE8EF] p-1 rounded-xl border border-[#F2C4D2] shrink-0">
+                <button
+                  onClick={() => setTabAdmin('agenda')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                    tabAdmin === 'agenda'
+                      ? 'bg-white text-[#8C243B] shadow-xs'
+                      : 'text-[#7D6870] hover:text-[#2D2529]'
+                  }`}
+                >
+                  <IconCalendar className="w-3.5 h-3.5" />
+                  <span>Agenda de Turnos</span>
+                </button>
+                <button
+                  onClick={() => setTabAdmin('metricas')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                    tabAdmin === 'metricas'
+                      ? 'bg-white text-[#8C243B] shadow-xs'
+                      : 'text-[#7D6870] hover:text-[#2D2529]'
+                  }`}
+                >
+                  <IconChartBar className="w-3.5 h-3.5" />
+                  <span>Métricas</span>
+                </button>
+              </div>
+            ) : (
+              <div />
+            )}
+
+            {/* Botones Operativos en Tablet / Desktop (con flex-wrap para pantallas medianas) */}
+            <div className="flex items-center gap-2 flex-wrap justify-end">
+              {/* Botón Agendar Cita (Disponible para Admin y Manicuristas) */}
+              <button
+                onClick={() => abrirModalAgendar()}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 sm:py-2 bg-gradient-to-r from-[#8C243B] to-[#C74B66] hover:from-[#731D30] hover:to-[#B03C54] text-white text-xs font-bold rounded-xl transition shadow-xs cursor-pointer active:scale-95"
+              >
+                <IconPlus className="w-4 h-4 stroke-[3]" />
+                <span>Agendar Cita</span>
+              </button>
+
+              {/* Botón Bloquear Horario */}
+              <button
+                onClick={() => abrirModalBloquear()}
+                className="flex items-center gap-1.5 px-3 py-1.5 sm:py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-xl transition shadow-xs cursor-pointer active:scale-95"
+                title="Bloquear una o varias horas para que las clientas no puedan reservar"
+              >
+                <IconLock className="w-3.5 h-3.5 stroke-[2.5]" />
+                <span>{esAdmin ? 'Bloquear Horario' : 'Bloquear Mi Horario'}</span>
+              </button>
+
+              {/* Botón Exclusivo para la Admin: Configuración de Horario de Trabajo y Anticipos */}
+              {esAdmin && (
+                <button
+                  onClick={() => setModalConfigAnticipoAbierto(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition shadow-xs cursor-pointer border bg-white border-[#F2C4D2] text-[#8C243B] hover:bg-[#FCE8EF]"
+                  title="Configuración general del spa: horarios de trabajo, anticipos y cuentas de recaudo"
+                >
+                  <IconSettings className="w-3.5 h-3.5 text-[#C74B66]" />
+                  <span>Configuración del Spa</span>
+                </button>
+              )}
+
+              {/* Botón Exclusivo para la Admin: Vinculación de WhatsApp (No invasivo) */}
+              {esAdmin && (
+                <button
+                  onClick={() => setModalWhatsAppAbierto(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 sm:py-2 bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 text-xs font-bold rounded-xl transition shadow-xs cursor-pointer active:scale-95"
+                  title="Estado del bot de WhatsApp y escaneo del código QR"
+                >
+                  <IconBrandWhatsapp className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>WhatsApp</span>
+                  <span
+                    className={`w-2 h-2 rounded-full ${
+                      whatsappConectado === true
+                        ? 'bg-emerald-500'
+                        : whatsappConectado === false
+                        ? 'bg-amber-500 animate-pulse'
+                        : 'bg-slate-400'
+                    }`}
+                    title={
+                      whatsappConectado === true
+                        ? 'Conectado'
+                        : whatsappConectado === false
+                        ? 'Requiere vincular QR'
+                        : 'Consultando'
+                    }
+                  />
+                </button>
+              )}
+
+              {/* Botón Exclusivo para la Admin: Clientes con Bot Silenciado (Atención Humana) */}
+              {esAdmin && (
+                <button
+                  onClick={abrirModalExclusiones}
+                  className="flex items-center gap-1.5 px-3 py-1.5 sm:py-2 bg-white hover:bg-[#FCE8EF] text-[#8C243B] border border-[#F2C4D2] text-xs font-bold rounded-xl transition shadow-xs cursor-pointer active:scale-95"
+                  title="Gestionar números restringidos del bot para atención personalizada"
+                >
+                  <IconLock className="w-3.5 h-3.5 text-[#8C243B]" />
+                  <span>Números Restringidos</span>
+                  {exclusionesBot.length > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full bg-[#8C243B] text-white text-[10px] font-mono font-bold">
+                      {exclusionesBot.length}
+                    </span>
+                  )}
+                </button>
+              )}
+            </div>
           </div>
 
           {/* FILA EXCLUSIVA PARA MÓVIL (< md): Segmented Tabs & Barra de Acciones Deslizable */}
