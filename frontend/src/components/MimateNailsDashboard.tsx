@@ -338,6 +338,11 @@ function formatearMinutosAHHMM(horaAperturaBase: number, minDesdeApertura: numbe
   return `${hh}:${mm}`;
 }
 
+/** Indica si una fecha YYYY-MM-DD cae en domingo regular cerrado (diciembre sí abre domingos). */
+function esDomingoCerradoIso(fechaIso: string): boolean {
+  return new Date(`${fechaIso}T12:00:00-05:00`).getDay() === 0 && !/^\d{4}-12-/.test(fechaIso);
+}
+
 function calcularPosicionesCitas(citas: Reserva[], horaBaseApertura: number = 8): CitaPosicionada[] {
   if (!citas || citas.length === 0) return [];
 
@@ -1053,7 +1058,25 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     if (modalAgendarAbierto) {
       if (horasDisponiblesAgendarAdmin.length > 0) {
         if (!horasDisponiblesAgendarAdmin.includes(agendarHora)) {
-          setAgendarHora(horasDisponiblesAgendarAdmin[0]);
+          if (agendarHora && agendarHora.includes(':')) {
+            const [th, tm] = agendarHora.split(':').map(Number);
+            const targetMin = (isNaN(th) ? 0 : th) * 60 + (isNaN(tm) ? 0 : tm);
+            const parseMin = (hStr: string) => {
+              const [hh, mm] = hStr.split(':').map(Number);
+              return (isNaN(hh) ? 0 : hh) * 60 + (isNaN(mm) ? 0 : mm);
+            };
+            const posterior = horasDisponiblesAgendarAdmin.find((h) => parseMin(h) >= targetMin);
+            if (posterior) {
+              setAgendarHora(posterior);
+            } else {
+              const masCercana = [...horasDisponiblesAgendarAdmin].sort(
+                (a, b) => Math.abs(parseMin(a) - targetMin) - Math.abs(parseMin(b) - targetMin)
+              )[0];
+              setAgendarHora(masCercana);
+            }
+          } else {
+            setAgendarHora(horasDisponiblesAgendarAdmin[0]);
+          }
         }
       } else {
         setAgendarHora('');
@@ -2237,6 +2260,117 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     setModalAgendarAbierto(true);
   };
 
+  // Abrir modal de agendar al hacer clic sobre un espacio vacío de la cuadrícula (semanal o diaria)
+  const handleClickEspacioVacioCuadricula = (
+    fechaIso: string,
+    horaClick: string,
+    canchaIdContexto?: string
+  ) => {
+    if (
+      dragCitaSemanalRef.current ||
+      pointerHoldInfoRef.current?.dragging ||
+      Date.now() < suppressSwipeUntilRef.current
+    ) {
+      return;
+    }
+
+    if (popoverCita) {
+      setPopoverCita(null);
+    }
+
+    // Validar domingo cerrado (excepto diciembre)
+    if (esDomingoCerradoIso(fechaIso)) {
+      mostrarNotificacionRealtime('⚠️ Los domingos regulares el spa está cerrado (excepto en diciembre)');
+      return;
+    }
+
+    // Validar fecha u hora pasada
+    if (fechaIso < hoyStr) {
+      mostrarNotificacionRealtime('⚠️ No es posible agendar citas en fechas pasadas');
+      return;
+    }
+
+    const slotStartMs = new Date(`${fechaIso}T${horaClick}:00-05:00`).getTime();
+    if (fechaIso === hoyStr && slotStartMs <= Date.now()) {
+      mostrarNotificacionRealtime('⚠️ Este horario ya pasó. Selecciona una franja futura');
+      return;
+    }
+
+    // Validar hora de cierre del spa
+    const cierreStr = (configAnticipo.horaCierre || '19:00').slice(0, 5);
+    const horaCierreMs = new Date(`${fechaIso}T${cierreStr}:00-05:00`).getTime();
+    if (slotStartMs >= horaCierreMs) {
+      mostrarNotificacionRealtime('⚠️ Este horario excede la hora de cierre del spa');
+      return;
+    }
+
+    // Determinar especialista a preseleccionar
+    let maniId = '';
+    if (!esAdmin && perfilActual?.canchaId) {
+      maniId = perfilActual.canchaId;
+    } else if (canchaIdContexto && canchaIdContexto !== 'todas') {
+      maniId = canchaIdContexto;
+    } else {
+      const durBaseMin = servicioSeleccionadoForm?.duracion || 45;
+      const slotEndMs = slotStartMs + durBaseMin * 60 * 1000;
+      const estaLibreEnRango = (canchaIdBuscar: string, finCheckMs: number) =>
+        !reservas.some((r) => {
+          if (r.estado === 'cancelada' || r.cancha_id !== canchaIdBuscar || !r.fecha_inicio) return false;
+          const rStart = new Date(r.fecha_inicio).getTime();
+          const rEnd = r.fecha_fin ? new Date(r.fecha_fin).getTime() : rStart + 45 * 60000;
+          return rStart < finCheckMs && rEnd > slotStartMs;
+        });
+
+      const especialistaLibre =
+        canchas.find((c) => estaLibreEnRango(c.id, slotEndMs)) ||
+        canchas.find((c) => estaLibreEnRango(c.id, slotStartMs + 1));
+
+      maniId = especialistaLibre?.id || canchas[0]?.id || '';
+    }
+
+    abrirModalAgendar(maniId, horaClick, fechaIso);
+  };
+
+  // Sub-franjas interactivas de 30 minutos (:00 y :30) para crear cita al hacer clic en espacios vacíos
+  const renderSubFranjas30Min = (
+    h: number,
+    fechaIso: string,
+    canchaIdContexto: string | undefined,
+    esHoyCheck: boolean,
+    ahoraCheckMs: number,
+    variante: 'diaria' | 'semanal'
+  ) => {
+    const cerrado = esDomingoCerradoIso(fechaIso);
+    const cierreStr = (configAnticipo.horaCierre || '19:00').slice(0, 5);
+    const horaCierreMs = new Date(`${fechaIso}T${cierreStr}:00-05:00`).getTime();
+
+    return (['00', '30'] as const).map((mm) => {
+      const hStr = `${String(h).padStart(2, '0')}:${mm}`;
+      const slotMs = new Date(`${fechaIso}T${hStr}:00-05:00`).getTime();
+      const habilitado =
+        !cerrado && !(fechaIso < hoyStr || (esHoyCheck && slotMs <= ahoraCheckMs) || slotMs >= horaCierreMs);
+
+      return (
+        <div
+          key={mm}
+          onClick={() => handleClickEspacioVacioCuadricula(fechaIso, hStr, canchaIdContexto)}
+          className={`h-1/2 w-full transition-colors flex items-center pointer-events-auto group/slot ${
+            mm === '30' ? 'border-t border-dashed border-[#F2C4D2]/35' : ''
+          } ${
+            variante === 'semanal' ? 'justify-center' : 'pl-2 sm:pl-3'
+          } ${habilitado ? 'hover:bg-[#FCE8EF]/45 cursor-pointer' : ''}`}
+          title={habilitado ? `Clic para agendar a las ${hStr}` : undefined}
+        >
+          {habilitado && (
+            <span className="text-[10px] font-bold text-[#8C243B]/80 opacity-0 group-hover/slot:opacity-100 transition-opacity select-none">
+              {variante === 'semanal' ? `+ ${hStr}` : `+ Agendar ${hStr}`}
+            </span>
+          )}
+        </div>
+      );
+    });
+  };
+
   // Enviar formulario de Agendar Cita (Solo Admin)
   const handleCrearCitaAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -3091,25 +3225,32 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                   </div>
                 )}
 
-                {/* Filas de fondo con guías horarias completas y de media hora */}
-                <div className="absolute inset-0 flex flex-col pointer-events-none">
+                {/* Filas de fondo con guías horarias completas y de media hora clicables para agendar */}
+                <div className="absolute inset-0 flex flex-col">
                   {horasTimeline.map((h) => {
-                    const hStr = `${String(h).padStart(2, '0')}:00`;
-                    const horaSlotMs = new Date(`${fechaActualTimeline}T${hStr}:00-05:00`).getTime();
-                    const esHoraPasadaTimeline = fechaActualTimeline < hoyStr || (esHoy && horaSlotMs <= ahoraMs);
+                    const hStr00 = `${String(h).padStart(2, '0')}:00`;
+                    const cierreStr = (configAnticipo.horaCierre || '19:00').slice(0, 5);
+                    const horaCierreMs = new Date(`${fechaActualTimeline}T${cierreStr}:00-05:00`).getTime();
+                    const slot00Ms = new Date(`${fechaActualTimeline}T${hStr00}:00-05:00`).getTime();
+                    const esHoraPasadaTimeline = fechaActualTimeline < hoyStr || (esHoy && slot00Ms <= ahoraMs);
+
                     return (
                       <div
                         key={h}
-                        className="relative group transition border-b border-[#F2C4D2]/60 hover:bg-[#FFF5F7]/30"
+                        className="relative group border-b border-[#F2C4D2]/60 flex flex-col"
                         style={{ height: `${ALTURA_HORA_PX}px` }}
                       >
-                        <div className="absolute left-0 right-0 top-1/2 border-b border-dashed border-[#F2C4D2]/35 pointer-events-none" />
+                        {renderSubFranjas30Min(h, fechaActualTimeline, canchaId, esHoy, ahoraMs, 'diaria')}
 
                         {/* Botones de acción rápida al pasar el cursor */}
                         <div className="absolute right-3 top-2 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition z-10 pointer-events-auto">
-                          {canchaId && !esHoraPasadaTimeline && (
+                          {canchaId && !esHoraPasadaTimeline && slot00Ms < horaCierreMs && (
                             <button
-                              onClick={() => abrirModalBloquear(canchaId, hStr, fechaActualTimeline)}
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                abrirModalBloquear(canchaId, hStr00, fechaActualTimeline);
+                              }}
                               className="px-2 py-0.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-bold hover:bg-amber-100 cursor-pointer shadow-2xs active:scale-95 flex items-center gap-1"
                               title="Bloquear este horario"
                             >
@@ -3117,9 +3258,13 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                               <span>Bloquear</span>
                             </button>
                           )}
-                          {puedeAgendar && !esHoraPasadaTimeline && (
+                          {puedeAgendar && !esHoraPasadaTimeline && slot00Ms < horaCierreMs && (
                             <button
-                              onClick={() => abrirModalAgendar(canchaId || undefined, hStr, fechaActualTimeline)}
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                abrirModalAgendar(canchaId || undefined, hStr00, fechaActualTimeline);
+                              }}
                               className="px-2 py-0.5 rounded-lg bg-white border border-[#F2C4D2] text-[#8C243B] text-[10px] font-bold hover:bg-[#FCE8EF] cursor-pointer shadow-2xs active:scale-95 flex items-center gap-1"
                             >
                               <IconPlus className="w-3 h-3" />
@@ -3155,6 +3300,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                     return (
                       <div
                         key={cita.id}
+                        onClick={(e) => e.stopPropagation()}
                         onMouseEnter={(e) => abrirPopoverCita(cita, e)}
                         onMouseLeave={cerrarPopoverCita}
                         style={{
@@ -3641,15 +3787,15 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                           : ''
                       }`}
                     >
-                      {/* Filas de fondo con guías horarias completas y de media hora */}
-                      <div className="absolute inset-0 flex flex-col pointer-events-none">
+                      {/* Filas de fondo con guías horarias completas y de media hora clicables para agendar */}
+                      <div className="absolute inset-0 flex flex-col">
                         {horasTimeline.map((h) => (
                           <div
                             key={h}
-                            className="relative border-b border-[#F2C4D2]/60"
+                            className="relative border-b border-[#F2C4D2]/60 flex flex-col"
                             style={{ height: `${ALTURA_HORA_PX}px` }}
                           >
-                            <div className="absolute left-0 right-0 top-1/2 border-b border-dashed border-[#F2C4D2]/35" />
+                            {renderSubFranjas30Min(h, d.fechaIso, especialistaIdActual, d.esHoy, ahoraMs, 'semanal')}
                           </div>
                         ))}
                       </div>
@@ -3681,6 +3827,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                             <div
                               key={cita.id}
                               data-cita-sem-card="true"
+                              onClick={(e) => e.stopPropagation()}
                               onPointerDown={(e) => iniciarHoldCitaSemanal(cita, dayIdx, d.fechaIso, pos, e)}
                               onContextMenu={(e) => {
                                 if (esMovible) e.preventDefault();
@@ -4524,8 +4671,26 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                       </span>
                     </div>
 
-                    {/* Lista de Citas Asignadas a esta Manicurista */}
-                    <div className="p-3 space-y-2.5 flex-1 min-h-[220px]">
+                    {/* Lista de Citas Asignadas a esta Manicurista (clic en espacio vacío agenda cita) */}
+                    <div
+                      onClick={() => {
+                        if (esDomingoCerradoIso(fechaSeleccionada)) {
+                          mostrarNotificacionRealtime('⚠️ Los domingos regulares el spa está cerrado (excepto en diciembre)');
+                          return;
+                        }
+                        if (fechaSeleccionada < hoyStr) {
+                          mostrarNotificacionRealtime('⚠️ No es posible agendar citas en fechas pasadas');
+                          return;
+                        }
+                        abrirModalAgendar(cancha.id, undefined, fechaSeleccionada);
+                      }}
+                      className={`p-3 space-y-2.5 flex-1 min-h-[220px] transition-colors ${
+                        fechaSeleccionada >= hoyStr && !esDomingoCerradoIso(fechaSeleccionada)
+                          ? 'hover:bg-[#FFF5F7]/45 cursor-pointer'
+                          : ''
+                      }`}
+                      title={fechaSeleccionada >= hoyStr ? `Clic en un espacio vacío para agendar con ${cancha.nombre}` : undefined}
+                    >
                       {citasCancha.length === 0 ? (
                         <div className="text-center py-8 text-[#7D6870] space-y-1">
                           <p className="text-xs font-semibold text-[#8C243B]">Sin citas para este día</p>
@@ -4550,6 +4715,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                           return (
                             <div
                               key={cita.id}
+                              onClick={(e) => e.stopPropagation()}
                               onMouseEnter={(e) => abrirPopoverCita(cita, e)}
                               onMouseLeave={cerrarPopoverCita}
                               className={`p-2.5 rounded-xl border text-xs space-y-1.5 transition cursor-pointer hover:shadow-md hover:scale-[1.01] ${
@@ -5249,7 +5415,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                       misCitas,
                       perfilActual.nombre,
                       perfilActual.canchaId,
-                      false
+                      true
                     );
                   })()}
                 </motion.div>
