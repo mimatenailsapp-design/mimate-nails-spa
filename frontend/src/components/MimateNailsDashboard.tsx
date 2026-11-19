@@ -1272,6 +1272,158 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     setFechaSeleccionada(`${nuevoY}-${nuevoM}-${nuevoD}`);
   };
 
+  // ============================================================================
+  // GESTOS TÁCTILES MÓVILES (SWIPE DÍA A DÍA Y SEMANA A SEMANA CON TOPE)
+  // ============================================================================
+  const [feedbackSwipe, setFeedbackSwipe] = useState<string | null>(null);
+  const feedbackSwipeTimerRef = useRef<any>(null);
+  const touchInicioRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const scrollSemanalRef = useRef<HTMLDivElement | null>(null);
+  const touchSemanalRef = useRef<{
+    startX: number;
+    startY: number;
+    scrollLeftStart: number;
+    time: number;
+  } | null>(null);
+
+  const mostrarFeedbackSwipe = (texto: string) => {
+    if (feedbackSwipeTimerRef.current) clearTimeout(feedbackSwipeTimerRef.current);
+    setFeedbackSwipe(texto);
+    feedbackSwipeTimerRef.current = setTimeout(() => {
+      setFeedbackSwipe(null);
+    }, 1100);
+  };
+
+  // 1. Gesto en Vista de Día: Deslizar izquierda -> siguiente día; derecha -> día anterior
+  const handleTouchStartDia = (e: React.TouchEvent) => {
+    if (e.touches.length !== 1) return;
+    touchInicioRef.current = {
+      x: e.touches[0].clientX,
+      y: e.touches[0].clientY,
+      time: Date.now(),
+    };
+  };
+
+  const handleTouchEndDia = (e: React.TouchEvent) => {
+    if (!touchInicioRef.current) return;
+    const touchEnd = e.changedTouches[0];
+    const deltaX = touchEnd.clientX - touchInicioRef.current.x;
+    const deltaY = touchEnd.clientY - touchInicioRef.current.y;
+    const duracionMs = Date.now() - touchInicioRef.current.time;
+    touchInicioRef.current = null;
+
+    // Verificar intención horizontal limpia: recorrido >= 50px y al menos 1.4x más horizontal que vertical
+    if (duracionMs < 800 && Math.abs(deltaX) >= 50 && Math.abs(deltaX) > Math.abs(deltaY) * 1.4) {
+      if (deltaX < 0) {
+        // Desliza hacia la izquierda -> Siguiente día
+        cambiarDia(1);
+        mostrarFeedbackSwipe('Siguiente día →');
+      } else {
+        // Desliza hacia la derecha -> Día anterior
+        cambiarDia(-1);
+        mostrarFeedbackSwipe('← Día anterior');
+      }
+    }
+  };
+
+  // 2. Gesto en Cabecera Semanal: Deslizar izquierda -> siguiente semana; derecha -> semana anterior
+  const handleTouchStartCabeceraSemanal = (e: React.TouchEvent) => {
+    if (e.touches.length !== 1) return;
+    touchInicioRef.current = {
+      x: e.touches[0].clientX,
+      y: e.touches[0].clientY,
+      time: Date.now(),
+    };
+  };
+
+  const handleTouchEndCabeceraSemanal = (e: React.TouchEvent) => {
+    if (!touchInicioRef.current) return;
+    const touchEnd = e.changedTouches[0];
+    const deltaX = touchEnd.clientX - touchInicioRef.current.x;
+    const deltaY = touchEnd.clientY - touchInicioRef.current.y;
+    const duracionMs = Date.now() - touchInicioRef.current.time;
+    touchInicioRef.current = null;
+
+    if (duracionMs < 800 && Math.abs(deltaX) >= 50 && Math.abs(deltaX) > Math.abs(deltaY) * 1.4) {
+      if (deltaX < 0) {
+        cambiarSemana(1);
+        mostrarFeedbackSwipe('Semana siguiente →');
+      } else {
+        cambiarSemana(-1);
+        mostrarFeedbackSwipe('← Semana anterior');
+      }
+    }
+  };
+
+  // 3. Gesto en Grilla Semanal: Permite deslizar los días sin interferir.
+  // Solo si está en el tope derecho y desliza hacia la izquierda -> semana siguiente.
+  // Solo si está en el tope izquierdo y desliza hacia la derecha -> semana anterior.
+  const handleTouchStartSemanalBody = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length !== 1) return;
+    const container = e.currentTarget;
+    touchSemanalRef.current = {
+      startX: e.touches[0].clientX,
+      startY: e.touches[0].clientY,
+      scrollLeftStart: container.scrollLeft,
+      time: Date.now(),
+    };
+  };
+
+  const handleTouchEndSemanalBody = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (!touchSemanalRef.current) return;
+    const container = e.currentTarget;
+    const touchEnd = e.changedTouches[0];
+    const deltaX = touchEnd.clientX - touchSemanalRef.current.startX;
+    const deltaY = touchEnd.clientY - touchSemanalRef.current.startY;
+    const duracionMs = Date.now() - touchSemanalRef.current.time;
+    const scrollLeftStart = touchSemanalRef.current.scrollLeftStart;
+    const maxScrollLeft = Math.max(0, container.scrollWidth - container.clientWidth);
+    touchSemanalRef.current = null;
+
+    // Solo evaluar gestos deliberadamente horizontales
+    if (duracionMs < 800 && Math.abs(deltaX) >= 50 && Math.abs(deltaX) > Math.abs(deltaY) * 1.4) {
+      // Si la grilla completa cabe en pantalla (sin scroll horizontal necesario):
+      if (maxScrollLeft <= 10) {
+        if (deltaX < 0) {
+          cambiarSemana(1);
+          mostrarFeedbackSwipe('Semana siguiente →');
+        } else {
+          cambiarSemana(-1);
+          mostrarFeedbackSwipe('← Semana anterior');
+        }
+        return;
+      }
+
+      // Si tiene scroll horizontal activo:
+      // A. Tope derecho (Domingo): si estaba en el límite derecho y desliza hacia la izquierda
+      const estabaEnTopeDerecho = scrollLeftStart >= maxScrollLeft - 20;
+      const estaEnTopeDerecho = container.scrollLeft >= maxScrollLeft - 20;
+      if (deltaX < 0 && (estabaEnTopeDerecho || estaEnTopeDerecho)) {
+        cambiarSemana(1);
+        mostrarFeedbackSwipe('Semana siguiente →');
+        setTimeout(() => {
+          if (scrollSemanalRef.current) scrollSemanalRef.current.scrollLeft = 0;
+        }, 60);
+        return;
+      }
+
+      // B. Tope izquierdo (Lunes): si estaba en el límite izquierdo y desliza hacia la derecha
+      const estabaEnTopeIzquierdo = scrollLeftStart <= 20;
+      const estaEnTopeIzquierdo = container.scrollLeft <= 20;
+      if (deltaX > 0 && (estabaEnTopeIzquierdo || estaEnTopeIzquierdo)) {
+        cambiarSemana(-1);
+        mostrarFeedbackSwipe('← Semana anterior');
+        setTimeout(() => {
+          if (scrollSemanalRef.current) scrollSemanalRef.current.scrollLeft = 0;
+        }, 60);
+        return;
+      }
+
+      // En cualquier otro caso: el usuario estaba deslizándose por los días intermedios (Martes a Sábado)
+      // El scroll nativo se encarga fluidamente y NO cambia la semana.
+    }
+  };
+
   // Navegar semanas hacia atrás o adelante (desplaza 7 días)
   const cambiarSemana = (offsetSemanas: number) => {
     const [y, m, d] = fechaSeleccionada.split('-').map(Number);
@@ -2716,7 +2868,11 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     return (
       <div className="bg-white rounded-3xl border border-[#F2C4D2] shadow-xs overflow-hidden">
         {/* Cabecera del Timeline Semanal */}
-        <div className="p-4 bg-gradient-to-r from-[#FFF5F7] to-[#FCE8EF] border-b border-[#F2C4D2] flex flex-wrap items-center justify-between gap-3">
+        <div
+          onTouchStart={handleTouchStartCabeceraSemanal}
+          onTouchEnd={handleTouchEndCabeceraSemanal}
+          className="p-4 bg-gradient-to-r from-[#FFF5F7] to-[#FCE8EF] border-b border-[#F2C4D2] flex flex-wrap items-center justify-between gap-3 touch-pan-y select-none"
+        >
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-white border border-[#F2C4D2] flex items-center justify-center font-bold text-base text-[#8C243B] shadow-2xs">
               {icono}
@@ -2744,8 +2900,19 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
           </div>
         </div>
 
+        {/* Indicador táctil para celular */}
+        <div className="sm:hidden px-3 py-1.5 bg-[#FFF0F4] border-b border-[#F2C4D2] text-[10px] text-[#8C243B] font-medium flex items-center justify-center gap-1.5 select-none">
+          <span>↔️</span>
+          <span>Desliza para ver días · En los topes cambia de semana</span>
+        </div>
+
         {/* Grilla Semanal dividida en 7 días y con horas de apertura a cierre */}
-        <div className="relative p-4 sm:p-6 overflow-x-auto">
+        <div
+          ref={scrollSemanalRef}
+          onTouchStart={handleTouchStartSemanalBody}
+          onTouchEnd={handleTouchEndSemanalBody}
+          className="relative p-4 sm:p-6 overflow-x-auto touch-pan-x"
+        >
           <div className="min-w-[1050px]">
             {/* ENCABEZADOS DE LOS 7 DÍAS */}
             <div className="flex border-b border-[#F2C4D2] pb-3 mb-1">
@@ -3569,20 +3736,32 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                 true,
                 especialistaSeleccionadaId
               )
-            ) : especialistaSeleccionadaId !== 'todas' ? (
-              (() => {
-                const targetCancha = canchas.find((c) => c.id === especialistaSeleccionadaId);
-                const citasTarget = reservasDelDia.filter((r) => r.cancha_id === especialistaSeleccionadaId && r.estado !== 'cancelada');
-                return renderTimelineManicurista(
-                  citasTarget,
-                  targetCancha?.nombre || 'Especialista',
-                  targetCancha?.id,
-                  true
-                );
-              })()
             ) : (
-              /* TABLAS EN 4 COLUMNAS (1 POR CADA MANICURISTA) */
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div
+                onTouchStart={handleTouchStartDia}
+                onTouchEnd={handleTouchEndDia}
+                className="touch-pan-y"
+              >
+                {/* Indicador táctil para celular */}
+                <div className="sm:hidden mb-2 px-3 py-1 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl text-[10px] text-[#8C243B] font-medium flex items-center justify-center gap-1.5 select-none">
+                  <span>↔️</span>
+                  <span>Desliza a la izquierda o derecha para cambiar de día</span>
+                </div>
+
+                {especialistaSeleccionadaId !== 'todas' ? (
+                  (() => {
+                    const targetCancha = canchas.find((c) => c.id === especialistaSeleccionadaId);
+                    const citasTarget = reservasDelDia.filter((r) => r.cancha_id === especialistaSeleccionadaId && r.estado !== 'cancelada');
+                    return renderTimelineManicurista(
+                      citasTarget,
+                      targetCancha?.nombre || 'Especialista',
+                      targetCancha?.id,
+                      true
+                    );
+                  })()
+                ) : (
+                  /* TABLAS EN 4 COLUMNAS (1 POR CADA MANICURISTA) */
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {canchas.map((cancha) => {
                 const citasCancha = reservasDelDia.filter((r) => r.cancha_id === cancha.id && r.estado !== 'cancelada');
                 const esColumnaAdmin = cancha.nombre.toLowerCase().includes('lili') || cancha.nombre.toLowerCase().includes('jhoana');
@@ -3802,6 +3981,8 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
           )}
         </div>
       )}
+    </div>
+  )}
 
         {/* ==================================================================== */}
         {/* CASO B: VISTA DE LA ADMINISTRADORA - PESTAÑA MÉTRICAS                 */}
@@ -4311,19 +4492,31 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                 perfilActual.canchaId
               )
             ) : (
-              /* TIMELINE DIARIO CRONOLÓGICO DE LA MANICURISTA CON LÍNEA ROJA EN TIEMPO REAL */
-              (() => {
-                const misCitas = reservasDelDia.filter(
-                  (r) => r.cancha_id === perfilActual.canchaId && r.estado !== 'cancelada'
-                );
+              <div
+                onTouchStart={handleTouchStartDia}
+                onTouchEnd={handleTouchEndDia}
+                className="touch-pan-y space-y-2"
+              >
+                {/* Indicador táctil para celular */}
+                <div className="sm:hidden px-3 py-1 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl text-[10px] text-[#8C243B] font-medium flex items-center justify-center gap-1.5 select-none">
+                  <span>↔️</span>
+                  <span>Desliza a la izquierda o derecha para cambiar de día</span>
+                </div>
 
-                return renderTimelineManicurista(
-                  misCitas,
-                  perfilActual.nombre,
-                  perfilActual.canchaId,
-                  false
-                );
-              })()
+                {/* TIMELINE DIARIO CRONOLÓGICO DE LA MANICURISTA CON LÍNEA ROJA EN TIEMPO REAL */}
+                {(() => {
+                  const misCitas = reservasDelDia.filter(
+                    (r) => r.cancha_id === perfilActual.canchaId && r.estado !== 'cancelada'
+                  );
+
+                  return renderTimelineManicurista(
+                    misCitas,
+                    perfilActual.nombre,
+                    perfilActual.canchaId,
+                    false
+                  );
+                })()}
+              </div>
             )}
 
             {/* Aviso de permisos */}
@@ -4577,6 +4770,21 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
         onClose={() => setModalWhatsAppAbierto(false)}
         onStatusChange={(conectado) => setWhatsappConectado(conectado)}
       />
+
+      {/* Indicador Flotante de Deslizamiento (Swipe Táctil en Móvil) */}
+      <AnimatePresence>
+        {feedbackSwipe && (
+          <motion.div
+            initial={{ opacity: 0, y: -16, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -16, scale: 0.95 }}
+            className="fixed top-16 sm:top-20 left-1/2 -translate-x-1/2 z-50 bg-gradient-to-r from-[#8C243B] to-[#C74B66] text-white text-xs font-bold px-4 py-2 rounded-full shadow-2xl border border-rose-300 pointer-events-none flex items-center gap-1.5"
+          >
+            <span>✨</span>
+            <span>{feedbackSwipe}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
     </div>
   );
