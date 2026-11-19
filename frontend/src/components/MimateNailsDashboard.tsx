@@ -316,6 +316,28 @@ interface CitaPosicionada {
   totalCols: number;
 }
 
+interface DragCitaSemanalState {
+  cita: Reserva;
+  duracionMinutos: number;
+  alturaPx: number;
+  fechaOriginalIso: string;
+  minInicioOriginal: number;
+  targetFechaIso: string;
+  targetDayIndex: number;
+  targetMinInicio: number;
+  rawTopPx: number;
+  snappedTopPx: number;
+  esValido: boolean;
+  motivoInvalido: string | null;
+}
+
+function formatearMinutosAHHMM(horaAperturaBase: number, minDesdeApertura: number): string {
+  const totalMin = Math.max(0, Math.round(horaAperturaBase * 60 + minDesdeApertura));
+  const hh = String(Math.floor(totalMin / 60)).padStart(2, '0');
+  const mm = String(totalMin % 60).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+
 function calcularPosicionesCitas(citas: Reserva[], horaBaseApertura: number = 8): CitaPosicionada[] {
   if (!citas || citas.length === 0) return [];
 
@@ -410,10 +432,11 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     rect: { top: number; left: number; right: number; bottom: number; width: number; height: number };
   } | null>(null);
   const popoverTimeoutRef = useRef<any>(null);
+  const popoverWrapperRef = useRef<HTMLDivElement | null>(null);
 
-  const abrirPopoverCita = (cita: Reserva, e: React.MouseEvent) => {
+  const abrirPopoverDesdeElemento = (cita: Reserva, el: HTMLElement) => {
     if (popoverTimeoutRef.current) clearTimeout(popoverTimeoutRef.current);
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const r = el.getBoundingClientRect();
     setPopoverCita({
       cita,
       rect: {
@@ -427,6 +450,10 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     });
   };
 
+  const abrirPopoverCita = (cita: Reserva, e: React.MouseEvent) => {
+    abrirPopoverDesdeElemento(cita, e.currentTarget as HTMLElement);
+  };
+
   const cerrarPopoverCita = () => {
     popoverTimeoutRef.current = setTimeout(() => {
       setPopoverCita(null);
@@ -436,6 +463,19 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   const mantenerPopoverCita = () => {
     if (popoverTimeoutRef.current) clearTimeout(popoverTimeoutRef.current);
   };
+
+  useEffect(() => {
+    if (!popoverCita) return;
+    const handleOutsidePointerDown = (ev: PointerEvent) => {
+      const target = ev.target as HTMLElement | null;
+      if (!target) return;
+      if (popoverWrapperRef.current && popoverWrapperRef.current.contains(target)) return;
+      if (target.closest('[data-cita-sem-card="true"]')) return;
+      setPopoverCita(null);
+    };
+    window.addEventListener('pointerdown', handleOutsidePointerDown);
+    return () => window.removeEventListener('pointerdown', handleOutsidePointerDown);
+  }, [popoverCita]);
 
 
 
@@ -1315,6 +1355,28 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   const feedbackSwipeTimerRef = useRef<any>(null);
   const touchInicioRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const scrollSemanalRef = useRef<HTMLDivElement | null>(null);
+  const columnasDiasSemanalRef = useRef<HTMLDivElement | null>(null);
+  const [dragCitaSemanal, setDragCitaSemanal] = useState<DragCitaSemanalState | null>(null);
+  const dragCitaSemanalRef = useRef<DragCitaSemanalState | null>(null);
+  const holdDragTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoScrollFrameRef = useRef<number | null>(null);
+  const lastPointerPosRef = useRef<{ clientX: number; clientY: number } | null>(null);
+  const isMovingCitaRef = useRef<boolean>(false);
+  const suppressSwipeUntilRef = useRef<number>(0);
+  const pointerHoldInfoRef = useRef<{
+    pointerId: number;
+    cita: Reserva;
+    startX: number;
+    startY: number;
+    grabOffsetY: number;
+    dayIndexOriginal: number;
+    fechaOriginalIso: string;
+    minInicioOriginal: number;
+    duracionMinutos: number;
+    alturaPx: number;
+    cardEl: HTMLElement;
+    dragging: boolean;
+  } | null>(null);
   const touchSemanalRef = useRef<{
     startX: number;
     startY: number;
@@ -1395,7 +1457,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   // Solo si está en el tope derecho y desliza hacia la izquierda -> semana siguiente.
   // Solo si está en el tope izquierdo y desliza hacia la derecha -> semana anterior.
   const handleTouchStartSemanalBody = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (e.touches.length !== 1) return;
+    if (e.touches.length !== 1 || dragCitaSemanalRef.current || pointerHoldInfoRef.current?.dragging) return;
     const container = e.currentTarget;
     touchSemanalRef.current = {
       startX: e.touches[0].clientX,
@@ -1406,7 +1468,15 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   };
 
   const handleTouchEndSemanalBody = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (!touchSemanalRef.current) return;
+    if (
+      !touchSemanalRef.current ||
+      dragCitaSemanalRef.current ||
+      pointerHoldInfoRef.current?.dragging ||
+      Date.now() < suppressSwipeUntilRef.current
+    ) {
+      touchSemanalRef.current = null;
+      return;
+    }
     const container = e.currentTarget;
     const touchEnd = e.changedTouches[0];
     const deltaX = touchEnd.clientX - touchSemanalRef.current.startX;
@@ -1497,6 +1567,497 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     }
     return dias;
   }, [fechaSeleccionada, hoyStr]);
+
+  // ============================================================================
+  // DRAG & DROP (HOLD-TO-MOVE) EN VISTA SEMANAL (ADMIN Y ESPECIALISTAS)
+  // Diferencia click corto (abre DetalleCitaPopover) vs mantener presionado (arrastre suave)
+  // ============================================================================
+  const validarDestinoCitaSemanal = (
+    cita: Reserva,
+    targetFechaIso: string,
+    targetMinInicio: number,
+    duracionMinutos: number
+  ): { esValido: boolean; motivoInvalido: string | null } => {
+    const horaAperturaNum = parseInt((configAnticipo.horaApertura || '08:00').split(':')[0], 10) || 8;
+    const horaInicioStr = formatearMinutosAHHMM(horaAperturaNum, targetMinInicio);
+    const slotStartMs = new Date(`${targetFechaIso}T${horaInicioStr}:00-05:00`).getTime();
+    const slotEndMs = slotStartMs + duracionMinutos * 60 * 1000;
+
+    // 1. Domingo cerrado (excepto diciembre)
+    const esDiciembre = /^\d{4}-12-/.test(targetFechaIso);
+    const esDomingo = new Date(`${targetFechaIso}T12:00:00-05:00`).getDay() === 0;
+    if (esDomingo && !esDiciembre) {
+      return { esValido: false, motivoInvalido: 'Domingo cerrado' };
+    }
+
+    // 2. Fecha u hora ya pasada
+    if (targetFechaIso < hoyStr || slotStartMs <= Date.now()) {
+      return { esValido: false, motivoInvalido: 'Horario ya pasado' };
+    }
+
+    // 3. Supera hora de cierre del spa
+    const cierreStr = (configAnticipo.horaCierre || '19:00').slice(0, 5);
+    const horaCierreMs = new Date(`${targetFechaIso}T${cierreStr}:00-05:00`).getTime();
+    if (slotEndMs > horaCierreMs) {
+      return { esValido: false, motivoInvalido: 'Supera hora de cierre' };
+    }
+
+    // 4. Colisión con otra reserva activa o bloqueo de la misma especialista
+    const hayColision = reservas.some((r) => {
+      if (r.id === cita.id || r.estado === 'cancelada' || r.cancha_id !== cita.cancha_id) return false;
+      if (!r.fecha_inicio) return false;
+      const rStart = new Date(r.fecha_inicio).getTime();
+      const rEnd = r.fecha_fin ? new Date(r.fecha_fin).getTime() : rStart + 45 * 60000;
+      return rStart < slotEndMs && rEnd > slotStartMs;
+    });
+
+    if (hayColision) {
+      return { esValido: false, motivoInvalido: 'Ocupado' };
+    }
+
+    return { esValido: true, motivoInvalido: null };
+  };
+
+  const handleMoverCitaSemanal = async (drag: DragCitaSemanalState) => {
+    if (isMovingCitaRef.current) return;
+    isMovingCitaRef.current = true;
+
+    const horaAperturaNum = parseInt((configAnticipo.horaApertura || '08:00').split(':')[0], 10) || 8;
+    const horaInicioNueva = formatearMinutosAHHMM(horaAperturaNum, drag.targetMinInicio);
+    const dInicio = new Date(`${drag.targetFechaIso}T${horaInicioNueva}:00-05:00`);
+    const dFin = new Date(dInicio.getTime() + drag.duracionMinutos * 60 * 1000);
+    const nuevoInicioIso = dInicio.toISOString();
+    const nuevoFinIso = dFin.toISOString();
+    const horaFinNueva = obtenerHoraMinutosBogota(nuevoFinIso);
+    const nombreClienta = obtenerNombreClienta(drag.cita);
+
+    const estadoPrevio = {
+      fecha_inicio: drag.cita.fecha_inicio,
+      fecha_fin: drag.cita.fecha_fin,
+    };
+
+    // Actualización optimista inmediata: libera el horario anterior y ocupa el nuevo
+    setReservas((prev) =>
+      prev.map((r) =>
+        r.id === drag.cita.id
+          ? { ...r, fecha_inicio: nuevoInicioIso, fecha_fin: nuevoFinIso }
+          : r
+      )
+    );
+
+    try {
+      let apiHandled = false;
+      try {
+        const res = await fetch(`/api/reservas/${drag.cita.id}/horario`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fecha_inicio: nuevoInicioIso,
+            fecha_fin: nuevoFinIso,
+          }),
+        });
+
+        if (res.ok) {
+          apiHandled = true;
+          const payload = await res.json().catch(() => null);
+          if (payload?.reserva) {
+            setReservas((prev) =>
+              prev.map((r) => (r.id === drag.cita.id ? { ...r, ...payload.reserva } : r))
+            );
+          }
+        } else if (res.status === 400 || res.status === 404 || res.status === 409) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || 'No se pudo mover la cita a ese horario.');
+        }
+      } catch (errApi: any) {
+        if (errApi instanceof Error && errApi.name !== 'TypeError') {
+          throw errApi;
+        }
+        console.warn('API /api/reservas/:id/horario offline, usando Supabase directo:', errApi);
+      }
+
+      if (!apiHandled) {
+        const { error: sbErr } = await supabase
+          .from('reservas')
+          .update({
+            fecha_inicio: nuevoInicioIso,
+            fecha_fin: nuevoFinIso,
+            actualizado_en: new Date().toISOString(),
+          })
+          .eq('id', drag.cita.id);
+
+        if (sbErr) {
+          if (sbErr.code === '23P01') {
+            throw new Error('Este horario ya está ocupado por otra cita o bloqueo.');
+          }
+          throw sbErr;
+        }
+      }
+
+      try {
+        sessionStorage.removeItem('mimate_bootstrap');
+      } catch {}
+
+      mostrarNotificacionRealtime(
+        `✨ Cita de ${nombreClienta} reprogramada: ${horaInicioNueva} - ${horaFinNueva}`
+      );
+    } catch (err: any) {
+      // Revertir en caso de conflicto o error
+      setReservas((prev) =>
+        prev.map((r) =>
+          r.id === drag.cita.id
+            ? { ...r, fecha_inicio: estadoPrevio.fecha_inicio, fecha_fin: estadoPrevio.fecha_fin }
+            : r
+        )
+      );
+      mostrarNotificacionRealtime(
+        `⚠️ ${err?.message || 'No se pudo mover la cita. Se restauró su horario.'}`
+      );
+    } finally {
+      isMovingCitaRef.current = false;
+    }
+  };
+
+  const detenerAutoScroll = () => {
+    if (autoScrollFrameRef.current !== null) {
+      cancelAnimationFrame(autoScrollFrameRef.current);
+      autoScrollFrameRef.current = null;
+    }
+  };
+
+  const actualizarPosicionDrag = (clientX: number, clientY: number) => {
+    const info = pointerHoldInfoRef.current;
+    const gridEl = columnasDiasSemanalRef.current;
+    if (!info || !info.dragging || !gridEl || diasDeLaSemana.length < 7) return;
+
+    const gridRect = gridEl.getBoundingClientRect();
+    if (gridRect.width <= 0) return;
+
+    const colWidth = gridRect.width / 7;
+    const relX = clientX - gridRect.left;
+    const targetDayIndex = Math.max(0, Math.min(6, Math.floor(relX / colWidth)));
+    const targetDia = diasDeLaSemana[targetDayIndex];
+    if (!targetDia) return;
+
+    const targetFechaIso = targetDia.fechaIso;
+    const horaAperturaNum = parseInt((configAnticipo.horaApertura || '08:00').split(':')[0], 10) || 8;
+    const horaCierreNum = parseInt((configAnticipo.horaCierre || '19:00').split(':')[0], 10) || 19;
+    const cierreParts = (configAnticipo.horaCierre || '19:00').slice(0, 5).split(':').map(Number);
+    const cierreMinTotal = (isNaN(cierreParts[0]) ? horaCierreNum : cierreParts[0]) * 60 + (isNaN(cierreParts[1]) ? 0 : cierreParts[1]);
+    const maxMinPermitidos = Math.max(0, cierreMinTotal - horaAperturaNum * 60 - info.duracionMinutos);
+    const maxRawTopPx = Math.max(0, horasTimeline.length * ALTURA_HORA_PX - info.alturaPx);
+
+    const rawTopUnclamped = clientY - gridRect.top - info.grabOffsetY;
+    const rawTopPx = Math.max(0, Math.min(maxRawTopPx, rawTopUnclamped));
+    const rawMin = (rawTopPx / ALTURA_HORA_PX) * 60;
+
+    // Snapping híbrido: bloques de 15 min + snap magnético a citas adyacentes (<= 8 min)
+    let snappedMin = Math.round(rawMin / 15) * 15;
+    const puntosMagneticos: number[] = [];
+    for (const r of reservas) {
+      if (r.id === info.cita.id || r.estado === 'cancelada' || r.cancha_id !== info.cita.cancha_id || !r.fecha_inicio) {
+        continue;
+      }
+      const fCita = new Date(r.fecha_inicio).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+      if (fCita !== targetFechaIso) continue;
+      const rMinIni = obtenerMinutosDesdeAperturaBogota(r.fecha_inicio, horaAperturaNum);
+      const rDur = obtenerDuracionMinutosCita(r.fecha_inicio, r.fecha_fin);
+      const rMinFin = rMinIni + rDur;
+      puntosMagneticos.push(rMinFin);
+      if (rMinIni - info.duracionMinutos >= 0) {
+        puntosMagneticos.push(rMinIni - info.duracionMinutos);
+      }
+    }
+
+    let mejorDist = 9;
+    for (const pt of puntosMagneticos) {
+      const dist = Math.abs(rawMin - pt);
+      if (dist <= 8 && dist < mejorDist) {
+        mejorDist = dist;
+        snappedMin = pt;
+      }
+    }
+
+    const targetMinInicio = Math.max(0, Math.min(maxMinPermitidos, snappedMin));
+    const snappedTopPx = (targetMinInicio / 60) * ALTURA_HORA_PX;
+
+    const { esValido, motivoInvalido } = validarDestinoCitaSemanal(
+      info.cita,
+      targetFechaIso,
+      targetMinInicio,
+      info.duracionMinutos
+    );
+
+    const nextDragState: DragCitaSemanalState = {
+      cita: info.cita,
+      duracionMinutos: info.duracionMinutos,
+      alturaPx: info.alturaPx,
+      fechaOriginalIso: info.fechaOriginalIso,
+      minInicioOriginal: info.minInicioOriginal,
+      targetFechaIso,
+      targetDayIndex,
+      targetMinInicio,
+      rawTopPx,
+      snappedTopPx,
+      esValido,
+      motivoInvalido,
+    };
+
+    dragCitaSemanalRef.current = nextDragState;
+    setDragCitaSemanal(nextDragState);
+  };
+
+  const finalizarDrag = (commit: boolean) => {
+    if (holdDragTimerRef.current) {
+      clearTimeout(holdDragTimerRef.current);
+      holdDragTimerRef.current = null;
+    }
+    detenerAutoScroll();
+
+    const info = pointerHoldInfoRef.current;
+    const drag = dragCitaSemanalRef.current;
+
+    pointerHoldInfoRef.current = null;
+    dragCitaSemanalRef.current = null;
+    lastPointerPosRef.current = null;
+    setDragCitaSemanal(null);
+
+    if (info?.dragging) {
+      suppressSwipeUntilRef.current = Date.now() + 300;
+      touchSemanalRef.current = null;
+    }
+
+    if (!info || !info.dragging || !drag || !commit) return;
+
+    const mismoHorario =
+      drag.targetFechaIso === drag.fechaOriginalIso &&
+      drag.targetMinInicio === drag.minInicioOriginal;
+    if (mismoHorario) return;
+
+    if (!drag.esValido) {
+      mostrarNotificacionRealtime(
+        `⚠️ No se puede mover aquí: ${drag.motivoInvalido || 'Horario no disponible'}`
+      );
+      return;
+    }
+
+    handleMoverCitaSemanal(drag);
+  };
+
+  const actualizarPosicionDragRef = useRef(actualizarPosicionDrag);
+  actualizarPosicionDragRef.current = actualizarPosicionDrag;
+  const finalizarDragRef = useRef(finalizarDrag);
+  finalizarDragRef.current = finalizarDrag;
+
+  const iniciarAutoScroll = () => {
+    detenerAutoScroll();
+    const step = () => {
+      const container = scrollSemanalRef.current;
+      const pos = lastPointerPosRef.current;
+      const info = pointerHoldInfoRef.current;
+      if (!container || !pos || !info || !info.dragging) {
+        autoScrollFrameRef.current = null;
+        return;
+      }
+
+      const rect = container.getBoundingClientRect();
+      const leftStickyWidth = typeof window !== 'undefined' && window.innerWidth < 640 ? 64 : 96;
+      const topStickyHeight = 68;
+      const edge = 42;
+      let dx = 0;
+      let dy = 0;
+
+      if (pos.clientX < rect.left + leftStickyWidth + edge) {
+        const factor = Math.max(0, Math.min(1, (rect.left + leftStickyWidth + edge - pos.clientX) / edge));
+        dx = -Math.ceil(factor * 10);
+      } else if (pos.clientX > rect.right - edge) {
+        const factor = Math.max(0, Math.min(1, (pos.clientX - (rect.right - edge)) / edge));
+        dx = Math.ceil(factor * 10);
+      }
+
+      if (pos.clientY < rect.top + topStickyHeight + edge) {
+        const factor = Math.max(0, Math.min(1, (rect.top + topStickyHeight + edge - pos.clientY) / edge));
+        dy = -Math.ceil(factor * 10);
+      } else if (pos.clientY > rect.bottom - edge) {
+        const factor = Math.max(0, Math.min(1, (pos.clientY - (rect.bottom - edge)) / edge));
+        dy = Math.ceil(factor * 10);
+      }
+
+      if (dx !== 0 || dy !== 0) {
+        const prevL = container.scrollLeft;
+        const prevT = container.scrollTop;
+        container.scrollLeft += dx;
+        container.scrollTop += dy;
+        if (container.scrollLeft !== prevL || container.scrollTop !== prevT) {
+          actualizarPosicionDragRef.current(pos.clientX, pos.clientY);
+        }
+      }
+
+      autoScrollFrameRef.current = requestAnimationFrame(step);
+    };
+    autoScrollFrameRef.current = requestAnimationFrame(step);
+  };
+
+  useEffect(() => {
+    const onGlobalPointerMove = (e: PointerEvent) => {
+      const info = pointerHoldInfoRef.current;
+      if (!info || e.pointerId !== info.pointerId) return;
+      lastPointerPosRef.current = { clientX: e.clientX, clientY: e.clientY };
+
+      if (!info.dragging) {
+        const dist = Math.hypot(e.clientX - info.startX, e.clientY - info.startY);
+        if (dist > 8) {
+          // Desplazamiento antes de 220ms: cancelar hold para permitir scroll nativo
+          if (holdDragTimerRef.current) {
+            clearTimeout(holdDragTimerRef.current);
+            holdDragTimerRef.current = null;
+          }
+          pointerHoldInfoRef.current = null;
+        }
+        return;
+      }
+
+      actualizarPosicionDragRef.current(e.clientX, e.clientY);
+    };
+
+    const onGlobalPointerUp = (e: PointerEvent) => {
+      const info = pointerHoldInfoRef.current;
+      if (!info || e.pointerId !== info.pointerId) return;
+
+      if (info.dragging) {
+        finalizarDragRef.current(true);
+        return;
+      }
+
+      // Hold no alcanzó 220ms -> evaluar si es un click corto (< 8px) para abrir el modal/popover
+      const dist = Math.hypot(e.clientX - info.startX, e.clientY - info.startY);
+      const cardEl = info.cardEl;
+      const citaClick = info.cita;
+
+      if (holdDragTimerRef.current) {
+        clearTimeout(holdDragTimerRef.current);
+        holdDragTimerRef.current = null;
+      }
+      pointerHoldInfoRef.current = null;
+
+      if (dist < 8 && cardEl) {
+        abrirPopoverDesdeElemento(citaClick, cardEl);
+      }
+    };
+
+    const onGlobalPointerCancel = (e: PointerEvent) => {
+      const info = pointerHoldInfoRef.current;
+      if (!info || e.pointerId !== info.pointerId) return;
+      finalizarDragRef.current(false);
+    };
+
+    const onGlobalTouchMove = (e: TouchEvent) => {
+      if (pointerHoldInfoRef.current?.dragging && e.cancelable) {
+        e.preventDefault();
+      }
+    };
+
+    const onGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && pointerHoldInfoRef.current?.dragging) {
+        finalizarDragRef.current(false);
+      }
+    };
+
+    window.addEventListener('pointermove', onGlobalPointerMove);
+    window.addEventListener('pointerup', onGlobalPointerUp);
+    window.addEventListener('pointercancel', onGlobalPointerCancel);
+    window.addEventListener('touchmove', onGlobalTouchMove, { passive: false });
+    window.addEventListener('keydown', onGlobalKeyDown);
+
+    return () => {
+      window.removeEventListener('pointermove', onGlobalPointerMove);
+      window.removeEventListener('pointerup', onGlobalPointerUp);
+      window.removeEventListener('pointercancel', onGlobalPointerCancel);
+      window.removeEventListener('touchmove', onGlobalTouchMove);
+      window.removeEventListener('keydown', onGlobalKeyDown);
+      if (holdDragTimerRef.current) clearTimeout(holdDragTimerRef.current);
+      detenerAutoScroll();
+    };
+  }, []);
+
+  const iniciarHoldCitaSemanal = (
+    cita: Reserva,
+    dayIndex: number,
+    fechaIso: string,
+    pos: CitaPosicionada,
+    e: React.PointerEvent<HTMLDivElement>
+  ) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+
+    if (holdDragTimerRef.current) {
+      clearTimeout(holdDragTimerRef.current);
+      holdDragTimerRef.current = null;
+    }
+
+    const cardEl = e.currentTarget;
+    const cardRect = cardEl.getBoundingClientRect();
+    const grabOffsetY = Math.max(8, Math.min(cardRect.height - 8, e.clientY - cardRect.top));
+    const horaAperturaNum = parseInt((configAnticipo.horaApertura || '08:00').split(':')[0], 10) || 8;
+    const minInicioOriginal = Math.max(
+      0,
+      obtenerMinutosDesdeAperturaBogota(cita.fecha_inicio, horaAperturaNum)
+    );
+    const duracionMinutos = obtenerDuracionMinutosCita(cita.fecha_inicio, cita.fecha_fin);
+    const alturaPx = Math.max(44, pos.height);
+
+    lastPointerPosRef.current = { clientX: e.clientX, clientY: e.clientY };
+    pointerHoldInfoRef.current = {
+      pointerId: e.pointerId,
+      cita,
+      startX: e.clientX,
+      startY: e.clientY,
+      grabOffsetY,
+      dayIndexOriginal: dayIndex,
+      fechaOriginalIso: fechaIso,
+      minInicioOriginal,
+      duracionMinutos,
+      alturaPx,
+      cardEl,
+      dragging: false,
+    };
+
+    holdDragTimerRef.current = setTimeout(() => {
+      holdDragTimerRef.current = null;
+      const info = pointerHoldInfoRef.current;
+      if (!info) return;
+
+      const esBloqueada = cita.estado === 'bloqueada';
+      const finMs = cita.fecha_fin
+        ? new Date(cita.fecha_fin).getTime()
+        : new Date(cita.fecha_inicio).getTime() + 45 * 60000;
+      const esMovible =
+        cita.estado !== 'completada' &&
+        cita.estado !== 'cancelada' &&
+        !esBloqueada &&
+        finMs > Date.now();
+
+      if (!esMovible) {
+        pointerHoldInfoRef.current = null;
+        if (!esBloqueada) {
+          mostrarNotificacionRealtime('⚠️ Las citas completadas o pasadas no se pueden mover');
+        }
+        return;
+      }
+
+      info.dragging = true;
+      setPopoverCita(null);
+      try {
+        navigator.vibrate?.(20);
+      } catch {}
+      try {
+        info.cardEl.setPointerCapture(info.pointerId);
+      } catch {}
+
+      const p = lastPointerPosRef.current || { clientX: info.startX, clientY: info.startY };
+      actualizarPosicionDragRef.current(p.clientX, p.clientY);
+      iniciarAutoScroll();
+    }, 220);
+  };
 
   // Etiqueta legible del rango de la semana (ej: "5 al 11 de octubre de 2026")
   const etiquetaSemana = useMemo(() => {
@@ -2965,12 +3526,19 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                       });
                       return fCita === d.fechaIso && r.estado !== 'cancelada' && r.estado !== 'bloqueada';
                     });
+                    const esDiaDestinoDrag = dragCitaSemanal?.targetFechaIso === d.fechaIso;
 
                     return (
                       <div
                         key={d.fechaIso}
                         className={`px-1.5 py-1 text-center transition-colors rounded-xl mx-0.5 ${
-                          d.esHoy ? 'bg-[#FFF5F7] ring-1 ring-[#8C243B]/25' : ''
+                          esDiaDestinoDrag
+                            ? dragCitaSemanal.esValido
+                              ? 'bg-emerald-50 ring-2 ring-emerald-500/60'
+                              : 'bg-rose-50 ring-2 ring-rose-500/60'
+                            : d.esHoy
+                            ? 'bg-[#FFF5F7] ring-1 ring-[#8C243B]/25'
+                            : ''
                         }`}
                       >
                         <p
@@ -3028,7 +3596,10 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
               </div>
 
               {/* 7 Columnas de los Días a la derecha */}
-              <div className="flex-1 grid grid-cols-7 divide-x divide-[#F2C4D2]/60 relative border-l border-r border-[#F2C4D2]/60">
+              <div
+                ref={columnasDiasSemanalRef}
+                className="flex-1 grid grid-cols-7 divide-x divide-[#F2C4D2]/60 relative border-l border-r border-[#F2C4D2]/60"
+              >
                 {/* FRONTAL: Línea roja de la hora actual en tiempo real si esta semana incluye hoy */}
                 {esSemanaActual && estaEnHorario && (
                   <div
@@ -3045,7 +3616,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                 )}
 
                 {/* Las 7 Columnas de días */}
-                {diasDeLaSemana.map((d) => {
+                {diasDeLaSemana.map((d, dayIdx) => {
                   const citasDelDia = citasFiltradas.filter((r) => {
                     if (!r.fecha_inicio) return false;
                     const fCita = new Date(r.fecha_inicio).toLocaleDateString('en-CA', {
@@ -3055,11 +3626,20 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                   });
 
                   const posicionesDia = calcularPosicionesCitas(citasDelDia, horaAperturaNum);
+                  const esColumnaDestinoDrag = dragCitaSemanal?.targetFechaIso === d.fechaIso;
 
                   return (
                     <div
                       key={d.fechaIso}
-                      className={`relative h-full ${d.esHoy ? 'bg-rose-50/10' : ''}`}
+                      className={`relative h-full transition-colors ${
+                        esColumnaDestinoDrag
+                          ? dragCitaSemanal.esValido
+                            ? 'bg-emerald-50/35'
+                            : 'bg-rose-50/35'
+                          : d.esHoy
+                          ? 'bg-rose-50/10'
+                          : ''
+                      }`}
                     >
                       {/* Filas de fondo con guías horarias completas y de media hora */}
                       <div className="absolute inset-0 flex flex-col pointer-events-none">
@@ -3088,6 +3668,8 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                           const inicioMs = new Date(cita.fecha_inicio).getTime();
                           const finMs = cita.fecha_fin ? new Date(cita.fecha_fin).getTime() : inicioMs + 45 * 60000;
                           const estaEnAtencion = d.esHoy && !esBloqueada && cita.estado !== 'completada' && cita.estado !== 'cancelada' && ahoraMs >= inicioMs && ahoraMs < finMs;
+                          const esMovible = !esBloqueada && cita.estado !== 'completada' && cita.estado !== 'cancelada' && finMs > ahoraMs;
+                          const esCitaArrastrada = dragCitaSemanal?.cita.id === cita.id;
 
                           const leftPercent = (colIndex / totalCols) * 100;
                           const widthPercent = (1 / totalCols) * 100;
@@ -3098,28 +3680,42 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                           return (
                             <div
                               key={cita.id}
-                              onMouseEnter={(e) => abrirPopoverCita(cita, e)}
-                              onMouseLeave={cerrarPopoverCita}
+                              data-cita-sem-card="true"
+                              onPointerDown={(e) => iniciarHoldCitaSemanal(cita, dayIdx, d.fechaIso, pos, e)}
+                              onContextMenu={(e) => {
+                                if (esMovible) e.preventDefault();
+                              }}
                               style={{
                                 top: `${top}px`,
                                 height: `${alturaReal}px`,
                                 left: `calc(${leftPercent}% + 2px)`,
                                 width: `calc(${widthPercent}% - 4px)`,
+                                WebkitTouchCallout: 'none',
                               }}
-                              className={`absolute z-20 pointer-events-auto rounded-xl border text-xs p-1.5 transition-all shadow-2xs hover:shadow-lg hover:scale-[1.02] hover:z-30 flex flex-col justify-between overflow-hidden cursor-pointer ${
-                                esBloqueada
-                                  ? 'bg-gradient-to-r from-amber-50 to-orange-50/80 border-amber-300 text-amber-900 shadow-amber-100/50'
-                                  : estaEnAtencion
-                                  ? 'bg-rose-50/90 border-[#8C243B] ring-2 ring-[#8C243B]/20 text-[#8C243B]'
-                                  : cita.estado === 'pendiente_anticipo' || cita.estado === 'pendiente_pago'
-                                  ? 'bg-amber-50/90 border-amber-300 text-amber-950'
-                                  : cita.estado === 'completada'
-                                  ? 'bg-emerald-50/90 border-emerald-300 text-emerald-950'
-                                  : cita.estado === 'cancelada'
-                                  ? 'bg-slate-50 border-slate-200 opacity-60 text-slate-700'
-                                  : 'bg-white border-[#F2C4D2] hover:border-[#8C243B] text-[#2D2529]'
+                              className={`absolute z-20 pointer-events-auto rounded-xl border text-xs p-1.5 transition-all select-none flex flex-col justify-between overflow-hidden ${
+                                esCitaArrastrada
+                                  ? 'border-2 border-dashed border-[#8C243B]/45 bg-[#FFF5F7]/70 opacity-60 shadow-none pointer-events-none'
+                                  : `shadow-2xs hover:shadow-lg hover:scale-[1.02] hover:z-30 ${
+                                      esMovible ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
+                                    } ${
+                                      esBloqueada
+                                        ? 'bg-gradient-to-r from-amber-50 to-orange-50/80 border-amber-300 text-amber-900 shadow-amber-100/50'
+                                        : estaEnAtencion
+                                        ? 'bg-rose-50/90 border-[#8C243B] ring-2 ring-[#8C243B]/20 text-[#8C243B]'
+                                        : cita.estado === 'pendiente_anticipo' || cita.estado === 'pendiente_pago'
+                                        ? 'bg-amber-50/90 border-amber-300 text-amber-950'
+                                        : cita.estado === 'completada'
+                                        ? 'bg-emerald-50/90 border-emerald-300 text-emerald-950'
+                                        : cita.estado === 'cancelada'
+                                        ? 'bg-slate-50 border-slate-200 opacity-60 text-slate-700'
+                                        : 'bg-white border-[#F2C4D2] hover:border-[#8C243B] text-[#2D2529]'
+                                    }`
                               }`}
-                              title="Pasa el mouse para ver todos los detalles de esta cita"
+                              title={
+                                esMovible
+                                  ? 'Clic corto: ver detalles · Mantén presionado: mover a otro día u horario'
+                                  : 'Clic para ver todos los detalles de esta cita'
+                              }
                             >
                               {/* Fila 1: Hora exacta y Estado */}
                               <div className="flex items-center justify-between gap-1 leading-none">
@@ -3185,6 +3781,85 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                     </div>
                   );
                 })}
+
+                {/* Previsualización magnética y bloque flotante durante el arrastre */}
+                {dragCitaSemanal && (() => {
+                  const dragHoraIni = formatearMinutosAHHMM(horaAperturaNum, dragCitaSemanal.targetMinInicio);
+                  const dragHoraFin = formatearMinutosAHHMM(
+                    horaAperturaNum,
+                    dragCitaSemanal.targetMinInicio + dragCitaSemanal.duracionMinutos
+                  );
+                  const dragNombre = obtenerNombreClienta(dragCitaSemanal.cita);
+                  const dragServicio = obtenerServicioCita(dragCitaSemanal.cita);
+
+                  return (
+                    <>
+                      {/* Recuadro guía magnético (posición exacta donde encajará al soltar) */}
+                      <div
+                        style={{
+                          top: `${dragCitaSemanal.snappedTopPx}px`,
+                          height: `${dragCitaSemanal.alturaPx}px`,
+                          left: `calc(${(dragCitaSemanal.targetDayIndex / 7) * 100}% + 2px)`,
+                          width: `calc(${100 / 7}% - 4px)`,
+                          transition: 'top 90ms ease-out, left 100ms ease-out',
+                        }}
+                        className={`absolute z-30 pointer-events-none rounded-xl border-2 border-dashed flex items-center justify-center p-1 text-center ${
+                          dragCitaSemanal.esValido
+                            ? 'border-emerald-500 bg-emerald-50/75 text-emerald-800 shadow-sm'
+                            : 'border-rose-500 bg-rose-50/80 text-rose-700 shadow-sm'
+                        }`}
+                      >
+                        <span className="text-[9px] font-extrabold font-mono px-1.5 py-0.5 rounded bg-white/90 shadow-2xs truncate">
+                          {dragCitaSemanal.esValido
+                            ? `✓ ${dragHoraIni}-${dragHoraFin}`
+                            : `⚠ ${dragCitaSemanal.motivoInvalido || 'No disponible'}`}
+                        </span>
+                      </div>
+
+                      {/* Bloque flotante con movimiento continuo */}
+                      <div
+                        style={{
+                          top: `${dragCitaSemanal.rawTopPx}px`,
+                          height: `${dragCitaSemanal.alturaPx}px`,
+                          left: `calc(${(dragCitaSemanal.targetDayIndex / 7) * 100}% + 2px)`,
+                          width: `calc(${100 / 7}% - 4px)`,
+                          transition: 'left 100ms ease-out',
+                        }}
+                        className={`absolute z-40 pointer-events-none rounded-xl border-2 p-1.5 shadow-2xl scale-[1.03] flex flex-col justify-between overflow-hidden ring-4 backdrop-blur-xs select-none ${
+                          dragCitaSemanal.esValido
+                            ? 'bg-white/95 border-[#8C243B] ring-emerald-400/35 text-[#2D2529]'
+                            : 'bg-rose-50/95 border-rose-500 ring-rose-400/35 text-rose-950'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-1 leading-none">
+                          <div className="font-mono font-bold text-[9px] truncate flex items-center gap-0.5 text-[#8C243B]">
+                            <IconClock className="w-2.5 h-2.5 shrink-0" />
+                            <span>{dragHoraIni}-{dragHoraFin}</span>
+                          </div>
+                          <span
+                            className={`text-[8px] font-extrabold px-1 py-0.2 rounded border shrink-0 ${
+                              dragCitaSemanal.esValido
+                                ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                : 'bg-rose-100 text-rose-800 border-rose-300'
+                            }`}
+                          >
+                            {dragCitaSemanal.esValido ? '✓ Libre' : dragCitaSemanal.motivoInvalido}
+                          </span>
+                        </div>
+
+                        <div className="leading-tight my-0.5 truncate">
+                          <p className="font-bold text-[10px] truncate">{dragNombre}</p>
+                        </div>
+
+                        {dragCitaSemanal.alturaPx >= 54 && (
+                          <div className="leading-none text-[9px] text-[#7D6870] truncate pt-0.5 border-t border-[#FCE8EF]/70">
+                            <span className="truncate">💅 {dragServicio}</span>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             </div>
           </div>
@@ -4792,28 +5467,30 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       {/* ============================================================================ */}
       {/* VIEW EMERGENTE (POPOVER FLOTANTE) AL PASAR EL MOUSE POR ENCIMA DE UNA CITA    */}
       {/* ============================================================================ */}
-      <DetalleCitaPopover
-        popoverCita={popoverCita}
-        onMouseEnter={mantenerPopoverCita}
-        onMouseLeave={cerrarPopoverCita}
-        esAdmin={esAdmin}
-        perfilActual={perfilActual}
-        canchas={canchas}
-        ahora={ahora}
-        obtenerHoraMinutosBogota={obtenerHoraMinutosBogota}
-        obtenerDuracionMinutosCita={obtenerDuracionMinutosCita}
-        obtenerDetalleBloqueo={obtenerDetalleBloqueo}
-        obtenerNombreClienta={obtenerNombreClienta}
-        obtenerServicioCita={obtenerServicioCita}
-        handleDesbloquearHorario={handleDesbloquearHorario}
-        handleAprobarAnticipo={handleAprobarAnticipo}
-        handleRechazarAnticipo={handleRechazarAnticipo}
-        handleCambiarEstado={handleCambiarEstado}
-        procesandoAccionAnticipo={procesandoAccionAnticipo}
-        onClose={() => setPopoverCita(null)}
-        onAbrirModalAdicional={abrirModalAdicional}
-        onEliminarAdicional={handleEliminarAdicional}
-      />
+      <div ref={popoverWrapperRef}>
+        <DetalleCitaPopover
+          popoverCita={popoverCita}
+          onMouseEnter={mantenerPopoverCita}
+          onMouseLeave={cerrarPopoverCita}
+          esAdmin={esAdmin}
+          perfilActual={perfilActual}
+          canchas={canchas}
+          ahora={ahora}
+          obtenerHoraMinutosBogota={obtenerHoraMinutosBogota}
+          obtenerDuracionMinutosCita={obtenerDuracionMinutosCita}
+          obtenerDetalleBloqueo={obtenerDetalleBloqueo}
+          obtenerNombreClienta={obtenerNombreClienta}
+          obtenerServicioCita={obtenerServicioCita}
+          handleDesbloquearHorario={handleDesbloquearHorario}
+          handleAprobarAnticipo={handleAprobarAnticipo}
+          handleRechazarAnticipo={handleRechazarAnticipo}
+          handleCambiarEstado={handleCambiarEstado}
+          procesandoAccionAnticipo={procesandoAccionAnticipo}
+          onClose={() => setPopoverCita(null)}
+          onAbrirModalAdicional={abrirModalAdicional}
+          onEliminarAdicional={handleEliminarAdicional}
+        />
+      </div>
 
       {/* Modal para Añadir Servicio Adicional (Decorados, etc.) */}
       <ModalAgregarAdicional

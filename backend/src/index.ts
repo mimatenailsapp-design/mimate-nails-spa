@@ -1028,6 +1028,89 @@ app.patch('/api/reservas/:id/estado', async (req: Request, res: Response) => {
   res.json(data);
 });
 
+// Mover / reprogramar fecha y hora de una cita desde el planificador (libera horario anterior y ocupa el nuevo)
+app.patch('/api/reservas/:id/horario', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  if (!esUUIDValido(id)) return res.status(400).json({ error: 'ID de reserva inválido' });
+
+  const { fecha_inicio, fecha_fin } = req.body || {};
+  if (!fecha_inicio || !fecha_fin) {
+    return res.status(400).json({ error: 'Se requieren fecha_inicio y fecha_fin válidas' });
+  }
+
+  try {
+    const { data: reserva, error: fetchError } = await supabase
+      .from('reservas')
+      .select('id, cancha_id, fecha_inicio, fecha_fin, estado')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (fetchError) return res.status(500).json({ error: fetchError.message });
+    if (!reserva) return res.status(404).json({ error: 'Reserva no encontrada' });
+
+    if (reserva.estado === 'completada' || reserva.estado === 'cancelada' || reserva.estado === 'bloqueada') {
+      return res.status(400).json({ error: 'No se puede mover una cita completada, cancelada o un bloqueo' });
+    }
+
+    const finOriginalMs = reserva.fecha_fin ? new Date(reserva.fecha_fin).getTime() : new Date(reserva.fecha_inicio).getTime();
+    if (!isNaN(finOriginalMs) && finOriginalMs <= Date.now()) {
+      return res.status(400).json({ error: 'No se pueden mover citas que ya han pasado' });
+    }
+
+    const dInicio = new Date(fecha_inicio);
+    const dFin = new Date(fecha_fin);
+    if (isNaN(dInicio.getTime()) || isNaN(dFin.getTime()) || dFin.getTime() <= dInicio.getTime()) {
+      return res.status(400).json({ error: 'Rango de fecha y hora inválido' });
+    }
+
+    if (dInicio.getTime() <= Date.now()) {
+      return res.status(400).json({ error: 'No se puede mover la cita a un horario que ya pasó' });
+    }
+
+    const fechaBogotaIso = dInicio.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+    if (esDiaCerradoPorDomingo(fechaBogotaIso)) {
+      return res.status(400).json({ error: 'Los domingos regulares el spa está cerrado' });
+    }
+
+    const { data: colisiones, error: colError } = await supabase
+      .from('reservas')
+      .select('id')
+      .eq('cancha_id', reserva.cancha_id)
+      .neq('id', id)
+      .neq('estado', 'cancelada')
+      .lt('fecha_inicio', dFin.toISOString())
+      .gt('fecha_fin', dInicio.toISOString());
+
+    if (colError) return res.status(500).json({ error: colError.message });
+    if (colisiones && colisiones.length > 0) {
+      return res.status(409).json({ error: 'Este horario ya está ocupado por otra cita o bloqueo' });
+    }
+
+    const { data, error } = await supabase
+      .from('reservas')
+      .update({
+        fecha_inicio: dInicio.toISOString(),
+        fecha_fin: dFin.toISOString(),
+        actualizado_en: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .select('*, canchas(*), clientes(*)')
+      .single();
+
+    if (error) {
+      if (error.code === '23P01') {
+        return res.status(409).json({ error: 'Este horario ya está ocupado por otra cita o bloqueo' });
+      }
+      return res.status(500).json({ error: error.message });
+    }
+
+    notificarCambioReservas('UPDATE', { id });
+    return res.json({ ok: true, reserva: data });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Error interno al mover la cita' });
+  }
+});
+
 // Obtener detalles de una reserva por ID
 app.get('/api/reservas/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
