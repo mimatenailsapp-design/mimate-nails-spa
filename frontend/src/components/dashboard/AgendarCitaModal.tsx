@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { SelectorFechaMimate } from './SelectorFechaMimate';
+import { supabase } from '../../config/supabase';
 import {
   IconX,
   IconClock,
@@ -8,6 +9,7 @@ import {
   IconChevronDown,
   IconAlertCircle,
   IconLoader2,
+  IconSparkles,
 } from '@tabler/icons-react';
 
 export interface AgendarCitaModalProps {
@@ -95,6 +97,69 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
   guardandoCita,
 }) => {
   const [menuExtrasAbierto, setMenuExtrasAbierto] = useState(false);
+  const [buscandoCliente, setBuscandoCliente] = useState(false);
+  const [clienteEncontrado, setClienteEncontrado] = useState<string | null>(null);
+  const ultimoTelefonoBuscado = useRef<string>('');
+
+  // Resetear estados al cerrar modal
+  useEffect(() => {
+    if (!abierto) {
+      setClienteEncontrado(null);
+      setBuscandoCliente(false);
+      ultimoTelefonoBuscado.current = '';
+    }
+  }, [abierto]);
+
+  // Asociación automática de teléfono -> nombre en la base de datos (solo en vista de administradoras y especialistas)
+  useEffect(() => {
+    if (!abierto) return;
+    const raw = agendarTelefono.trim();
+    const digits = raw.replace(/\D/g, '');
+
+    if (digits.length < 7) {
+      setClienteEncontrado(null);
+      setBuscandoCliente(false);
+      ultimoTelefonoBuscado.current = '';
+      return;
+    }
+
+    let conPais = digits;
+    let sinPais = digits;
+    if (digits.length === 10 && digits.startsWith('3')) {
+      conPais = `57${digits}`;
+    } else if (digits.length === 12 && digits.startsWith('573')) {
+      sinPais = digits.substring(2);
+    }
+
+    if (ultimoTelefonoBuscado.current === digits) return;
+
+    const timer = setTimeout(async () => {
+      ultimoTelefonoBuscado.current = digits;
+      setBuscandoCliente(true);
+      try {
+        const { data } = await supabase
+          .from('clientes')
+          .select('id, nombre, telefono_wa')
+          .or(`telefono_wa.eq.${digits},telefono_wa.eq.${conPais},telefono_wa.eq.${sinPais}`)
+          .limit(1)
+          .maybeSingle();
+
+        if (data && data.nombre) {
+          setClienteEncontrado(data.nombre);
+          setAgendarNombre(data.nombre);
+        } else {
+          setClienteEncontrado(null);
+        }
+      } catch (err) {
+        console.error('Error buscando clienta por teléfono:', err);
+        setClienteEncontrado(null);
+      } finally {
+        setBuscandoCliente(false);
+      }
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [abierto, agendarTelefono, setAgendarNombre]);
 
   return (
     <AnimatePresence>
@@ -504,7 +569,45 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                 </div>
               </div>
 
-              {/* 4. DATOS DE LA CLIENTA */}
+              {/* 4. DATOS DE LA CLIENTA (CON ASOCIACIÓN AUTOMÁTICA EN VISTA DE ADMINISTRADORAS / ESPECIALISTAS) */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-bold text-[#7D6870] block">
+                    Teléfono WhatsApp (10 dígitos)
+                  </label>
+                  {buscandoCliente && (
+                    <span className="text-[10px] text-[#8C243B] flex items-center gap-1 font-medium animate-pulse">
+                      <IconLoader2 className="w-3 h-3 animate-spin" /> Buscando clienta...
+                    </span>
+                  )}
+                  {clienteEncontrado && (
+                    <span className="text-[10px] text-emerald-700 font-semibold flex items-center gap-1 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                      <IconCheck className="w-3 h-3 text-emerald-600" /> Registrada en sistema
+                    </span>
+                  )}
+                </div>
+                <input
+                  type="tel"
+                  placeholder="Ej: 321 961 0896"
+                  value={agendarTelefono}
+                  onChange={(e) => setAgendarTelefono(e.target.value)}
+                  className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl text-[#2D2529] font-mono outline-none focus:border-[#8C243B]"
+                  required
+                />
+                {clienteEncontrado ? (
+                  <div className="flex items-center gap-1.5 text-[11px] text-[#8C243B] bg-[#FCE8EF] px-2.5 py-1.5 rounded-xl mt-1.5 font-medium border border-[#F2C4D2]">
+                    <IconSparkles className="w-3.5 h-3.5 text-[#C74B66] shrink-0" />
+                    <span>
+                      Clienta identificada: <strong>{clienteEncontrado}</strong> (nombre llenado automáticamente)
+                    </span>
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-[#7D6870] mt-0.5">
+                    Al ingresar el número, el nombre se llenará automáticamente si la clienta ya existe en la base de datos.
+                  </p>
+                )}
+              </div>
+
               <div>
                 <label className="font-bold text-[#7D6870] block mb-1">
                   Nombre de la Clienta
@@ -517,23 +620,6 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                   className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl text-[#2D2529] font-medium outline-none focus:border-[#8C243B]"
                   required
                 />
-              </div>
-
-              <div>
-                <label className="font-bold text-[#7D6870] block mb-1">
-                  Teléfono WhatsApp (10 dígitos)
-                </label>
-                <input
-                  type="tel"
-                  placeholder="321 961 0896"
-                  value={agendarTelefono}
-                  onChange={(e) => setAgendarTelefono(e.target.value)}
-                  className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl text-[#2D2529] font-mono outline-none focus:border-[#8C243B]"
-                  required
-                />
-                <p className="text-[10px] text-[#7D6870] mt-0.5">
-                  Se enviará el voucher de confirmación automáticamente a su WhatsApp.
-                </p>
               </div>
 
               {/* 5. RESUMEN EN VIVO TOTAL: TIEMPO Y PRECIO COMBINADO */}
