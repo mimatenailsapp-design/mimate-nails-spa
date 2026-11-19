@@ -467,22 +467,6 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   // Selector de vista de agenda: Día (diario por horas / 4 columnas) vs Semana (planificador de 7 días)
   const [vistaAgenda, setVistaAgenda] = useState<'dia' | 'semana'>('dia');
 
-  // Altura dinámica del encabezado principal sticky para anclar el subencabezado de días exactamente debajo
-  const headerRef = useRef<HTMLElement>(null);
-  const [headerHeight, setHeaderHeight] = useState(105);
-
-  useEffect(() => {
-    const el = headerRef.current;
-    if (!el) return;
-    const actualizar = () => {
-      if (el) setHeaderHeight(el.offsetHeight);
-    };
-    actualizar();
-    const observer = new ResizeObserver(actualizar);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [perfilActual, tabAdmin]);
-
   // Estado para la pestaña de Métricas (Por Día vs Por Mes)
   const [modoMetricas, setModoMetricas] = useState<'dia' | 'semana' | 'mes'>('dia');
   const [mesSeleccionado, setMesSeleccionado] = useState<string>(() => {
@@ -2958,22 +2942,21 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
           ref={scrollSemanalRef}
           onTouchStart={handleTouchStartSemanalBody}
           onTouchEnd={handleTouchEndSemanalBody}
-          className="relative p-4 sm:p-6 overflow-x-auto lg:overflow-x-visible touch-pan-x"
+          className="relative max-h-[70vh] sm:max-h-[76vh] overflow-auto touch-pan-x touch-pan-y rounded-b-3xl bg-white"
         >
-          <div className="min-w-[1050px]">
-            {/* ENCABEZADOS DE LOS 7 DÍAS (ANCLADOS/STICKY ARRIBA AL HACER SCROLL DOWN) */}
+          <div className="min-w-[980px] sm:min-w-[1050px] w-full p-2.5 sm:p-5 pr-4 sm:pr-6">
+            {/* ENCABEZADOS DE LOS 7 DÍAS (ANCLADOS/STICKY ARRIBA AL HACER SCROLL VERTICAL) */}
             <div
-              className="sticky z-30 bg-white/95 backdrop-blur-md -mx-4 sm:-mx-6 px-4 sm:px-6 pt-2 pb-3 mb-1 border-b border-[#F2C4D2] shadow-2xs transition-all"
-              style={{ top: `${headerHeight}px` }}
+              className="sticky top-0 z-30 bg-white/95 backdrop-blur-md pt-1.5 pb-2.5 mb-1 border-b border-[#F2C4D2] shadow-xs"
             >
               <div className="flex items-center">
-                <div className="w-16 sm:w-24 pr-3 flex-shrink-0 text-right select-none">
+                <div className="w-16 sm:w-24 pr-3 flex-shrink-0 text-right select-none sticky left-0 z-30 bg-white/95 backdrop-blur-xs">
                   <span className="text-[11px] font-extrabold text-[#8C243B] uppercase tracking-wider">
                     HORA
                   </span>
                 </div>
 
-                <div className="flex-1 grid grid-cols-7 divide-x divide-[#F2C4D2]/60">
+                <div className="flex-1 grid grid-cols-7 divide-x divide-[#F2C4D2]/60 border-l border-r border-[#F2C4D2]/60">
                   {diasDeLaSemana.map((d) => {
                     const citasDelDia = citasFiltradas.filter((r) => {
                       if (!r.fecha_inicio) return false;
@@ -3030,7 +3013,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
             {/* CUERPO DEL TIMELINE CONTINUO POR COLUMNAS DE DÍAS (LUNES A DOMINGO) */}
             <div className="flex relative" style={{ height: `${ALTURA_TOTAL_TIMELINE}px` }}>
               {/* Columna de Horas a la izquierda */}
-              <div className="w-16 sm:w-24 pr-3 flex-shrink-0 relative select-none">
+              <div className="w-16 sm:w-24 pr-3 flex-shrink-0 relative select-none sticky left-0 z-20 bg-white/95 backdrop-blur-xs">
                 {horasTimeline.map((h, index) => (
                   <div
                     key={h}
@@ -3045,7 +3028,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
               </div>
 
               {/* 7 Columnas de los Días a la derecha */}
-              <div className="flex-1 grid grid-cols-7 divide-x divide-[#F2C4D2]/60 relative border-l border-[#F2C4D2]/60">
+              <div className="flex-1 grid grid-cols-7 divide-x divide-[#F2C4D2]/60 relative border-l border-r border-[#F2C4D2]/60">
                 {/* FRONTAL: Línea roja de la hora actual en tiempo real si esta semana incluye hoy */}
                 {esSemanaActual && estaEnHorario && (
                   <div
@@ -3232,10 +3215,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       </AnimatePresence>
 
       {/* BARRA SUPERIOR ELEGANTE */}
-      <header
-        ref={headerRef}
-        className="bg-white/95 backdrop-blur-md sticky top-0 z-40 border-b border-[#F2C4D2] shadow-xs"
-      >
+      <header className="bg-white/95 backdrop-blur-md sticky top-0 z-40 border-b border-[#F2C4D2] shadow-xs">
         <div className="max-w-7xl mx-auto px-3.5 sm:px-4 py-2.5 sm:py-3">
           
           {/* FILA 1: Marca/Perfil a la izquierda, Controles del Sistema a la derecha */}
