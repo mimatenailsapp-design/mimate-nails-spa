@@ -873,9 +873,41 @@ app.post('/api/bloqueos', async (req: Request, res: Response) => {
       }
     } else if (fecha && Array.isArray(horas) && horas.length > 0) {
       // Si viene fecha YYYY-MM-DD y lista de horas ['09:30', '10:30', ...]
-      for (const h of horas) {
-        const dInicio = new Date(`${fecha}T${h}:00-05:00`);
-        const dFin = new Date(dInicio.getTime() + (Number(duracion_minutos) || 60) * 60 * 1000);
+      const durPaso = Number(duracion_minutos) || 30; // Cada ranura es de 30 minutos por defecto
+
+      // Agrupar horas contiguas en rangos continuos para evitar solapamientos y exclusiones de BD
+      const minutos = Array.from(new Set(horas))
+        .map((h) => {
+          const [hh, mm] = h.split(':').map(Number);
+          return (isNaN(hh) ? 0 : hh) * 60 + (isNaN(mm) ? 0 : mm);
+        })
+        .sort((a, b) => a - b);
+
+      const rangos: { hInicio: string; hFin: string }[] = [];
+      if (minutos.length > 0) {
+        let actualInicio = minutos[0];
+        let actualFin = minutos[0] + durPaso;
+
+        for (let i = 1; i < minutos.length; i++) {
+          const m = minutos[i];
+          if (m === actualFin) {
+            actualFin = m + durPaso;
+          } else {
+            const hI = `${String(Math.floor(actualInicio / 60)).padStart(2, '0')}:${String(actualInicio % 60).padStart(2, '0')}`;
+            const hF = `${String(Math.floor(actualFin / 60)).padStart(2, '0')}:${String(actualFin % 60).padStart(2, '0')}`;
+            rangos.push({ hInicio: hI, hFin: hF });
+            actualInicio = m;
+            actualFin = m + durPaso;
+          }
+        }
+        const hI = `${String(Math.floor(actualInicio / 60)).padStart(2, '0')}:${String(actualInicio % 60).padStart(2, '0')}`;
+        const hF = `${String(Math.floor(actualFin / 60)).padStart(2, '0')}:${String(actualFin % 60).padStart(2, '0')}`;
+        rangos.push({ hInicio: hI, hFin: hF });
+      }
+
+      for (const r of rangos) {
+        const dInicio = new Date(`${fecha}T${r.hInicio}:00-05:00`);
+        const dFin = new Date(`${fecha}T${r.hFin}:00-05:00`);
 
         for (const cid of idsCanchas) {
           registrosAInsertar.push({
@@ -886,15 +918,16 @@ app.post('/api/bloqueos', async (req: Request, res: Response) => {
             estado: 'bloqueada',
             valor_total: 0,
             valor_anticipo_requerido: 0,
-            notas: `🔒 BLOQUEO: ${motivo} | Hora: ${h} | Por: ${bloqueado_por}`,
+            notas: `🔒 BLOQUEO: ${motivo} | Horario: ${r.hInicio} - ${r.hFin} | Por: ${bloqueado_por}`,
           });
         }
       }
     } else if (fecha && req.body.hora) {
       // Si viene una sola hora
       const h = req.body.hora;
+      const durMin = Number(duracion_minutos) || 30; // ranura de 30 min por defecto
       const dInicio = new Date(`${fecha}T${h}:00-05:00`);
-      const dFin = new Date(dInicio.getTime() + (Number(duracion_minutos) || 60) * 60 * 1000);
+      const dFin = new Date(dInicio.getTime() + durMin * 60 * 1000);
 
       for (const cid of idsCanchas) {
         registrosAInsertar.push({

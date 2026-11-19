@@ -116,7 +116,7 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                     Agendar Cita en el Spa
                   </h3>
                   <p className="text-[11px] text-[#7D6870]">
-                    Acceso exclusivo Administradora
+                    Registro rápido de cita en cabina
                   </p>
                 </div>
               </div>

@@ -1019,7 +1019,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
     for (const h of horasOpcionesBloqueoDinamicas) {
       const slotStartMs = new Date(`${bloquearFecha}T${h}:00-05:00`).getTime();
-      const slotEndMs = slotStartMs + 60 * 60 * 1000;
+      const slotEndMs = slotStartMs + 30 * 60 * 1000;
 
       const estaOcupada = reservas.some((r) => {
         if (r.estado === 'cancelada') return false;
@@ -1468,9 +1468,12 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     }
   }, [ahora, reservas]);
 
-  // Abrir modal de Agendar Cita con una manicurista preseleccionada
+  // Abrir modal de Agendar Cita (Admin y Manicuristas)
   const abrirModalAgendar = (manicuristaId?: string, horaInicial?: string, fechaInicial?: string) => {
-    const maniId = manicuristaId || canchas[0]?.id || '';
+    const defaultMani = (!esAdmin && perfilActual?.canchaId)
+      ? perfilActual.canchaId
+      : (canchas[0]?.id || '');
+    const maniId = manicuristaId || defaultMani;
     const fecha = fechaInicial || fechaSeleccionada;
     setAgendarManicuristaId(maniId);
     setAgendarFecha(fecha);
@@ -1646,10 +1649,40 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
       // 2. Si la API no respondió exitosamente, fallback directo a Supabase
       if (!apiSuccess) {
+        const durPaso = 30;
+        const minutos = Array.from(new Set(bloquearHorasSeleccionadas))
+          .map((h) => {
+            const [hh, mm] = h.split(':').map(Number);
+            return (isNaN(hh) ? 0 : hh) * 60 + (isNaN(mm) ? 0 : mm);
+          })
+          .sort((a, b) => a - b);
+
+        const rangos: { hInicio: string; hFin: string }[] = [];
+        if (minutos.length > 0) {
+          let actualInicio = minutos[0];
+          let actualFin = minutos[0] + durPaso;
+
+          for (let i = 1; i < minutos.length; i++) {
+            const m = minutos[i];
+            if (m === actualFin) {
+              actualFin = m + durPaso;
+            } else {
+              const hI = `${String(Math.floor(actualInicio / 60)).padStart(2, '0')}:${String(actualInicio % 60).padStart(2, '0')}`;
+              const hF = `${String(Math.floor(actualFin / 60)).padStart(2, '0')}:${String(actualFin % 60).padStart(2, '0')}`;
+              rangos.push({ hInicio: hI, hFin: hF });
+              actualInicio = m;
+              actualFin = m + durPaso;
+            }
+          }
+          const hI = `${String(Math.floor(actualInicio / 60)).padStart(2, '0')}:${String(actualInicio % 60).padStart(2, '0')}`;
+          const hF = `${String(Math.floor(actualFin / 60)).padStart(2, '0')}:${String(actualFin % 60).padStart(2, '0')}`;
+          rangos.push({ hInicio: hI, hFin: hF });
+        }
+
         const registros: any[] = [];
-        for (const h of bloquearHorasSeleccionadas) {
-          const dInicio = new Date(`${bloquearFecha}T${h}:00-05:00`);
-          const dFin = new Date(dInicio.getTime() + 60 * 60 * 1000);
+        for (const r of rangos) {
+          const dInicio = new Date(`${bloquearFecha}T${r.hInicio}:00-05:00`);
+          const dFin = new Date(`${bloquearFecha}T${r.hFin}:00-05:00`);
           for (const cid of targetCanchasIds) {
             registros.push({
               cancha_id: cid,
@@ -1659,7 +1692,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
               estado: 'bloqueada',
               valor_total: 0,
               valor_anticipo_requerido: 0,
-              notas: `🔒 BLOQUEO: ${motivoFinal} | Hora: ${h} | Por: ${autor}`,
+              notas: `🔒 BLOQUEO: ${motivoFinal} | Horario: ${r.hInicio} - ${r.hFin} | Por: ${autor}`,
             });
           }
         }
@@ -2966,16 +2999,14 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                   </button>
                 )}
 
-                {/* Botón Exclusivo para la Admin: Agendar Cita */}
-                {esAdmin && (
-                  <button
-                    onClick={() => abrirModalAgendar()}
-                    className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-[#8C243B] to-[#C74B66] hover:from-[#731D30] hover:to-[#B03C54] text-white text-xs font-bold rounded-xl transition shadow-xs cursor-pointer active:scale-95"
-                  >
-                    <IconPlus className="w-4 h-4 stroke-[3]" />
-                    <span>Agendar Cita</span>
-                  </button>
-                )}
+                {/* Botón Agendar Cita (Disponible para Admin y Manicuristas) */}
+                <button
+                  onClick={() => abrirModalAgendar()}
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-[#8C243B] to-[#C74B66] hover:from-[#731D30] hover:to-[#B03C54] text-white text-xs font-bold rounded-xl transition shadow-xs cursor-pointer active:scale-95"
+                >
+                  <IconPlus className="w-4 h-4 stroke-[3]" />
+                  <span>Agendar Cita</span>
+                </button>
 
                 {/* Botón Exclusivo para la Admin: Vinculación de WhatsApp (No invasivo) */}
                 {esAdmin && (
@@ -3144,23 +3175,19 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
             {/* Barra de Acciones Móvil en Grilla Táctica (Opción 1: Sin scroll, clara y accesible) */}
             <div className="grid grid-cols-2 gap-2 pt-1 pb-0.5">
-              {/* Agendar */}
-              {esAdmin && (
-                <button
-                  onClick={() => abrirModalAgendar()}
-                  className="flex items-center justify-center gap-1.5 px-3 py-2 bg-gradient-to-r from-[#8C243B] to-[#C74B66] text-white text-xs font-bold rounded-xl transition shadow-xs cursor-pointer active:scale-95"
-                >
-                  <IconPlus className="w-3.5 h-3.5 stroke-[3]" />
-                  <span>Agendar Cita</span>
-                </button>
-              )}
+              {/* Agendar (Disponible para Admin y Manicuristas) */}
+              <button
+                onClick={() => abrirModalAgendar()}
+                className="flex items-center justify-center gap-1.5 px-3 py-2 bg-gradient-to-r from-[#8C243B] to-[#C74B66] text-white text-xs font-bold rounded-xl transition shadow-xs cursor-pointer active:scale-95"
+              >
+                <IconPlus className="w-3.5 h-3.5 stroke-[3]" />
+                <span>Agendar Cita</span>
+              </button>
 
               {/* Bloquear */}
               <button
                 onClick={() => abrirModalBloquear()}
-                className={`flex items-center justify-center gap-1.5 px-3 py-2 bg-amber-500 text-white text-xs font-bold rounded-xl transition shadow-xs cursor-pointer active:scale-95 ${
-                  !esAdmin ? 'col-span-2' : ''
-                }`}
+                className="flex items-center justify-center gap-1.5 px-3 py-2 bg-amber-500 text-white text-xs font-bold rounded-xl transition shadow-xs cursor-pointer active:scale-95"
               >
                 <IconLock className="w-3.5 h-3.5 stroke-[2.5]" />
                 <span>{esAdmin ? 'Bloquear Horario' : 'Bloquear Mi Horario'}</span>
