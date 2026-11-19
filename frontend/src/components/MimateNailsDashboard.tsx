@@ -552,6 +552,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     porcentajeAnticipo?: number;
     nequiNumero: string;
     bancolombiaNumero: string;
+    llaveNumero?: string;
     titularCuenta: string;
     horaApertura: string;
     horaCierre: string;
@@ -559,9 +560,10 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     exigeAnticipo: false,
     montoAnticipoFijo: 20000,
     porcentajeAnticipo: 20000,
-    nequiNumero: '321 961 0896',
-    bancolombiaNumero: 'Ahorros 245-000123-88',
-    titularCuenta: 'JL Mímate Nails Spa',
+    nequiNumero: '',
+    bancolombiaNumero: '',
+    llaveNumero: '',
+    titularCuenta: '',
     horaApertura: '08:00',
     horaCierre: '19:00',
   });
@@ -708,9 +710,10 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
           exigeAnticipo: Boolean(d.exigeAnticipo),
           montoAnticipoFijo: montoFijo,
           porcentajeAnticipo: montoFijo,
-          nequiNumero: d.nequiNumero || '321 961 0896',
-          bancolombiaNumero: d.bancolombiaNumero || 'Ahorros 245-000123-88',
-          titularCuenta: d.titularCuenta || 'JL Mímate Nails Spa',
+          nequiNumero: d.nequiNumero || '',
+          bancolombiaNumero: d.bancolombiaNumero || '',
+          llaveNumero: d.llaveNumero || '',
+          titularCuenta: d.titularCuenta || '',
           horaApertura: d.horaApertura || '08:00',
           horaCierre: d.horaCierre || '19:00',
         });
@@ -1102,9 +1105,10 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
             exigeAnticipo: Boolean(d.config.exigeAnticipo),
             montoAnticipoFijo: montoFijo,
             porcentajeAnticipo: montoFijo,
-            nequiNumero: d.config.nequiNumero || '321 961 0896',
-            bancolombiaNumero: d.config.bancolombiaNumero || 'Ahorros 245-000123-88',
-            titularCuenta: d.config.titularCuenta || 'JL Mímate Nails Spa',
+            nequiNumero: d.config.nequiNumero || '',
+            bancolombiaNumero: d.config.bancolombiaNumero || '',
+            llaveNumero: d.config.llaveNumero || '',
+            titularCuenta: d.config.titularCuenta || '',
             horaApertura: d.config.horaApertura || '08:00',
             horaCierre: d.config.horaCierre || '19:00',
           });

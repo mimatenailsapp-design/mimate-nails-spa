@@ -24,8 +24,7 @@ export interface Complejo {
 /**
  * Obtiene la tarifa fija del abono para el spa.
  * Extrae el valor de la columna monto_anticipo_fijo si existe,
- * o del campo whatsapp_token (donde se persiste como JSON seguro sin límites de precisión),
- * o retorna 20.000 COP por defecto.
+ * o de whatsapp_phone_number_id (JSON o número), o retorna 20.000 COP por defecto.
  */
 export function getMontoAnticipoFijo(complejo: any): number {
   if (complejo?.monto_anticipo_fijo !== undefined && complejo?.monto_anticipo_fijo !== null) {
@@ -34,7 +33,14 @@ export function getMontoAnticipoFijo(complejo: any): number {
   }
   // Persistencia fija segura en Postgres: whatsapp_phone_number_id (nunca sobreescrito por Baileys)
   if (complejo?.whatsapp_phone_number_id) {
-    const num = Number(String(complejo.whatsapp_phone_number_id).trim());
+    const raw = String(complejo.whatsapp_phone_number_id).trim();
+    if (raw.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed?.monto && !isNaN(Number(parsed.monto))) return Number(parsed.monto);
+      } catch {}
+    }
+    const num = Number(raw.split('|')[0]);
     if (!isNaN(num) && num > 0) return num;
   }
   if (complejo?.whatsapp_token && typeof complejo.whatsapp_token === 'string') {
@@ -51,6 +57,56 @@ export function getMontoAnticipoFijo(complejo: any): number {
     } catch {}
   }
   return 20000;
+}
+
+/**
+ * Obtiene el número o código de Llave configurado en el spa (Bre-B / Transfiya / Llaves)
+ */
+export function getLlaveNumero(complejo: any): string {
+  if (complejo?.whatsapp_phone_number_id) {
+    const raw = String(complejo.whatsapp_phone_number_id).trim();
+    if (raw.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed?.llave) return String(parsed.llave).trim();
+      } catch {}
+    }
+    if (raw.includes('|')) {
+      const parts = raw.split('|');
+      if (parts.length > 1 && parts[1].trim()) return parts[1].trim();
+    }
+  }
+  if (complejo?.titular_cuenta && complejo.titular_cuenta.includes('[LLAVE:')) {
+    const match = complejo.titular_cuenta.match(/\[LLAVE:\s*([^\]]+)\]/i);
+    if (match && match[1]) return match[1].trim();
+  }
+  return '';
+}
+
+/**
+ * Obtiene el nombre del titular limpio de cualquier metadato
+ */
+export function getTitularLimpio(titular?: string | null): string {
+  if (!titular) return 'JL Mímate Nails Spa';
+  return titular.replace(/\[LLAVE:[^\]]+\]/gi, '').trim() || 'JL Mímate Nails Spa';
+}
+
+/**
+ * Genera el bloque de texto con las cuentas oficiales configuradas para enviar a las clientas por WhatsApp
+ */
+export function formatearCuentasRecaudoMensaje(complejo: any): string {
+  const nequi = (complejo?.nequi_numero || '').trim();
+  const bancolombia = (complejo?.daviplata_numero || '').trim();
+  const llave = getLlaveNumero(complejo);
+  const titular = getTitularLimpio(complejo?.titular_cuenta);
+
+  const lineas: string[] = [];
+  if (nequi) lineas.push(`• *Número Nequi / Daviplata:* ${nequi}`);
+  if (bancolombia) lineas.push(`• *Cuenta Bancolombia:* ${bancolombia}`);
+  if (llave) lineas.push(`• *Llave:* ${llave}`);
+  lineas.push(`• *Titular de la cuenta:* ${titular}`);
+
+  return lineas.join('\n');
 }
 
 /**

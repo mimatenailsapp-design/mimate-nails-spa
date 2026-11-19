@@ -1,7 +1,7 @@
 import axios from 'axios';
 import fs from 'fs';
 import path from 'path';
-import { Complejo, getMontoAnticipoFijo } from './bookingService.js';
+import { Complejo, getMontoAnticipoFijo, formatearCuentasRecaudoMensaje, getLlaveNumero, getTitularLimpio } from './bookingService.js';
 
 export interface ComplejoKnowledge {
   nombre?: string;
@@ -373,7 +373,9 @@ DATOS OFICIALES Y CONTEXTO DEL SPA:
   * Si el servicio solicitado vale menos que el anticipo (ej: $16.000 o $6.000), el abono requerido es únicamente el valor total del servicio (nunca se cobra de más).
   * ${exigeAnticipo ? 'Actualmente el anticipo está activado para apartar cita.' : 'En temporada regular el anticipo general puede estar desactivado (se cancela en el spa).'}
   * REGLA ESTRICTA DE DICIEMBRE (TEMPORADA ALTA): Si la cita es para cualquier fecha del mes de Diciembre, el anticipo es SIEMPRE OBLIGATORIO para apartar y congelar el cupo, incluso si el check general de anticipo esté desactivado. Si una persona reagenda de otro mes a diciembre, debe abonar el anticipo para confirmar.
-- Medios de pago: Nequi, Daviplata, Bancolombia (${complejo.nequi_numero || '3219610896'}, titular: ${complejo.titular_cuenta || 'JL Mímate Nails'}) y efectivo en el spa.
+- Medios de pago oficiales de transferencia:
+${formatearCuentasRecaudoMensaje(complejo)}
+  Y también efectivo en el spa.
 - Domicilios: NO realizamos servicio a domicilio. Todo es en nuestras instalaciones por bioseguridad y esterilización.
 - Especialistas / Manicuristas: Contamos con profesionales capacitadas y dedicadas. La clienta puede elegir su manicurista favorita directamente en la web.
 - Atención a hombres y niñas: ¡Sí atendemos caballeros y niñas!
@@ -383,7 +385,7 @@ MENSAJE DEL CLIENTE:
 
 REGLAS ESTRICTAS DE SEGURIDAD Y CERO ALUCINACIÓN (PROHIBIDO INVENTAR):
 1. SERVICIOS NO INCLUIDOS: No prestamos servicios ajenos a uñas (NO hacemos pestañas, cejas, depilación, masajes corporales, peluquería, tintes, peinados ni cortes de cabello). Si preguntan por cualquiera de estos u otros servicios ajenos, aclárales con amor que no los ofrecemos porque somos un spa especializado 100% exclusivo en el cuidado y embellecimiento de uñas.
-2. LO QUE NO SEPAS O NO ESTÉ AQUÍ, NO LO INVENTES: Si el cliente pregunta por promociones no oficiales (como 2x1 o descuentos especiales), venta de esmaltes al por mayor, cursos, convenios o cualquier tema del que no tengas certeza en esta ficha técnica, NUNCA inventes precios, condiciones ni respuestas al azar. Di amablemente que no dispones de esa información y sugiérele escribir la palabra *ASESOR* para que nuestra encargada le responda personalmente al WhatsApp ${complejo.telefono_whatsapp || '321 961 0896'}.
+2. LO QUE NO SEPAS O NO ESTÉ AQUÍ, NO LO INVENTES: Si el cliente pregunta por promociones no oficiales (como 2x1 o descuentos especiales), venta de esmaltes al por mayor, cursos, convenios o cualquier tema del que no tengas certeza en esta ficha técnica, NUNCA inventes precios, condiciones ni respuestas al azar. Di amablemente que no dispones de esa información y sugiérele escribir la palabra *ASESOR* para que nuestra encargada le responda personalmente al WhatsApp ${complejo.telefono_whatsapp || ''}.
 3. PREGUNTAS FUERA DE CONTEXTO: Si preguntan sobre temas totalmente ajenos al negocio (política, cultura general, etc.), responde amablemente que eres la recepcionista virtual de JL Mímate Nails Spa y que estás para asesorarle en servicios de uñas y citas.
 4. NO CONFIRMAR CITAS EN EL CHAT: No inventes que ya le apartaste la cita en el chat. Guía siempre a la clienta a revisar disponibilidad real y reservar en: ${baseUrl}
 5. FORMATO Y DURACIONES: Si preguntan precio o duración, indícalo exactamente expresando siempre la duración en minutos (ej: 60 min, 90 min, 120 min). Responde en máximo 3 a 4 oraciones cortas con tono cálido ("¡Hola reina!", "¡Claro que sí hermosa!") y emojis sutiles (💅🌸✨).`;
@@ -503,16 +505,16 @@ REGLAS ESTRICTAS DE SEGURIDAD Y CERO ALUCINACIÓN (PROHIBIDO INVENTAR):
       t.includes('como se paga') ||
       t.includes('pagar')
     ) {
-      const nequiNum = complejo.nequi_numero || '3219610896';
-      const titular = complejo.titular_cuenta || 'JL Mímate Nails';
+      const cuentasMsg = formatearCuentasRecaudoMensaje(complejo);
       return (
         `💳 *Medios de Pago y Política de Abono:*\n\n` +
         (exigeAnticipo
           ? `• Para asegurar tu cita se solicita un *abono fijo de $${montoAbono.toLocaleString('es-CO')} COP* (si el servicio elegido cuesta menos que el abono, solo transfieres el valor del servicio).\n` +
             `• El saldo restante lo pagas directamente en el spa al finalizar tu atención.\n` +
-            `• *Cuentas oficiales:* Nequi / Bancolombia / Daviplata *${nequiNum}* a nombre de *${titular}*.\n` +
+            `• *Cuentas oficiales de recaudo:*\n${cuentasMsg}\n` +
             `• También recibimos efectivo y transferencia en el local 💕.`
-          : `• Puedes pagar en efectivo, Nequi, Bancolombia o Daviplata directamente en el spa 💕.\n` +
+          : `• Puedes pagar en efectivo o transferencia directamente en el spa 💕.\n` +
+            `• *Cuentas oficiales de recaudo:*\n${cuentasMsg}\n` +
             `• *Nota de temporada:* Para todas las citas del mes de *diciembre* sí se solicita un abono fijo de *$${montoAbono.toLocaleString('es-CO')} COP* para asegurar el cupo.`) +
         pie
       );

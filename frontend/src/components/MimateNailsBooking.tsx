@@ -560,6 +560,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
     porcentajeAnticipo?: number;
     nequiNumero?: string;
     bancolombiaNumero?: string;
+    llaveNumero?: string;
     titularCuenta?: string;
     horaApertura?: string;
     horaCierre?: string;
@@ -567,9 +568,10 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
     exigeAnticipo: false,
     montoAnticipoFijo: 20000,
     porcentajeAnticipo: 20000,
-    nequiNumero: '321 961 0896',
-    bancolombiaNumero: 'Ahorros 245-000123-88',
-    titularCuenta: 'JL Mímate Nails Spa',
+    nequiNumero: '',
+    bancolombiaNumero: '',
+    llaveNumero: '',
+    titularCuenta: '',
     horaApertura: '08:00',
     horaCierre: '19:00',
   });
@@ -609,6 +611,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
     saldoRestante?: number;
     nequi?: string;
     bancolombia?: string;
+    llave?: string;
     titular?: string;
   } | null>(null);
 
@@ -1024,6 +1027,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
           saldoRestante: salRest,
           nequi: data.nequiNumero || spaConfig.nequiNumero,
           bancolombia: data.bancolombiaNumero || spaConfig.bancolombiaNumero,
+          llave: data.llaveNumero || spaConfig.llaveNumero,
           titular: data.titularCuenta || spaConfig.titularCuenta,
         });
         setPaso(3);
@@ -1105,6 +1109,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
           saldoRestante: salRest,
           nequi: spaConfig.nequiNumero,
           bancolombia: spaConfig.bancolombiaNumero,
+          llave: spaConfig.llaveNumero,
           titular: spaConfig.titularCuenta,
         });
         setPaso(3);
@@ -2576,22 +2581,34 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                         </div>
 
                         <div className="bg-white p-3 rounded-xl border border-[#F2C4D2] space-y-1.5 font-mono text-[11px]">
-                          <div className="flex justify-between items-center">
-                            <span className="text-[#7D6870]">📲 Nequi:</span>
-                            <span className="font-bold text-[#2D2529] select-all">
-                              {reservaConfirmada.nequi || '321 961 0896'}
-                            </span>
-                          </div>
-                          <div className="flex justify-between items-center">
-                            <span className="text-[#7D6870]">🏦 Bancolombia:</span>
-                            <span className="font-bold text-[#2D2529] select-all">
-                              {reservaConfirmada.bancolombia || 'Ahorros 245-000123-88'}
-                            </span>
-                          </div>
+                          {(reservaConfirmada.nequi || spaConfig.nequiNumero) && (
+                            <div className="flex justify-between items-center">
+                              <span className="text-[#7D6870]">📲 Número Nequi / Daviplata:</span>
+                              <span className="font-bold text-[#2D2529] select-all">
+                                {reservaConfirmada.nequi || spaConfig.nequiNumero}
+                              </span>
+                            </div>
+                          )}
+                          {(reservaConfirmada.bancolombia || spaConfig.bancolombiaNumero) && (
+                            <div className="flex justify-between items-center">
+                              <span className="text-[#7D6870]">🏦 Cuenta Bancolombia:</span>
+                              <span className="font-bold text-[#2D2529] select-all">
+                                {reservaConfirmada.bancolombia || spaConfig.bancolombiaNumero}
+                              </span>
+                            </div>
+                          )}
+                          {(reservaConfirmada.llave || spaConfig.llaveNumero) && (
+                            <div className="flex justify-between items-center">
+                              <span className="text-[#7D6870]">🔑 Llave:</span>
+                              <span className="font-bold text-[#2D2529] select-all">
+                                {reservaConfirmada.llave || spaConfig.llaveNumero}
+                              </span>
+                            </div>
+                          )}
                           <div className="flex justify-between items-center border-t border-[#FCE8EF] pt-1.5">
-                            <span className="text-[#7D6870]">Titular:</span>
+                            <span className="text-[#7D6870]">Titular de la cuenta:</span>
                             <span className="font-bold text-[#8C243B]">
-                              {reservaConfirmada.titular || 'JL Mímate Nails Spa'}
+                              {reservaConfirmada.titular || spaConfig.titularCuenta || 'JL Mímate Nails Spa'}
                             </span>
                           </div>
                         </div>

@@ -8,6 +8,7 @@ export interface ConfigAnticipoData {
   porcentajeAnticipo?: number;
   nequiNumero: string;
   bancolombiaNumero: string;
+  llaveNumero?: string;
   titularCuenta: string;
   horaApertura: string;
   horaCierre: string;
@@ -188,7 +189,7 @@ export const ConfigAnticipoModal: React.FC<ConfigAnticipoModalProps> = ({
 
                 <div>
                   <label className="font-bold text-[#7D6870] block mb-1">
-                    Número Nequi de recaudo
+                    Número Nequi / Daviplata
                   </label>
                   <input
                     type="text"
@@ -207,7 +208,7 @@ export const ConfigAnticipoModal: React.FC<ConfigAnticipoModalProps> = ({
 
                 <div>
                   <label className="font-bold text-[#7D6870] block mb-1">
-                    Cuenta Bancolombia / Daviplata
+                    Cuenta Bancolombia
                   </label>
                   <input
                     type="text"
@@ -220,7 +221,24 @@ export const ConfigAnticipoModal: React.FC<ConfigAnticipoModalProps> = ({
                     }
                     placeholder="Ahorros 245-000123-88"
                     className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl font-medium text-[#2D2529] outline-none focus:border-[#8C243B]"
-                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-[#7D6870] block mb-1">
+                    Llave
+                  </label>
+                  <input
+                    type="text"
+                    value={configAnticipo.llaveNumero || ''}
+                    onChange={(e) =>
+                      setConfigAnticipo((prev) => ({
+                        ...prev,
+                        llaveNumero: e.target.value,
+                      }))
+                    }
+                    placeholder="Número o identificador de llave"
+                    className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl font-medium text-[#2D2529] outline-none focus:border-[#8C243B]"
                   />
                 </div>
 
@@ -237,7 +255,7 @@ export const ConfigAnticipoModal: React.FC<ConfigAnticipoModalProps> = ({
                         titularCuenta: e.target.value,
                       }))
                     }
-                    placeholder="JL Mímate Nails Spa"
+                    placeholder="Nombre y apellido del titular"
                     className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl font-medium text-[#2D2529] outline-none focus:border-[#8C243B]"
                     required
                   />

@@ -1,4 +1,4 @@
-import { BookingService, Complejo, Cancha, HorarioDisponible, getMontoAnticipoFijo, requiereAnticipoParaFecha } from '../services/bookingService.js';
+import { BookingService, Complejo, Cancha, HorarioDisponible, getMontoAnticipoFijo, requiereAnticipoParaFecha, formatearCuentasRecaudoMensaje, getLlaveNumero, getTitularLimpio } from '../services/bookingService.js';
 import { ReceiptVerificationService } from '../services/receiptVerificationService.js';
 import { AIReceptionistService } from '../services/aiReceptionistService.js';
 import { NLUIntentService } from '../services/nluIntentService.js';
@@ -1078,9 +1078,7 @@ export class WhatsAppFlow {
       session.paso = 'ESPERA_PAGO';
 
       const anticipoFmt = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(reserva.valor_anticipo_requerido);
-      const titular = complejo.titular_cuenta || complejo.nombre;
-      const nequi = complejo.nequi_numero || 'Consultar con administración';
-      const daviplata = complejo.daviplata_numero || nequi;
+      const cuentasMsg = formatearCuentasRecaudoMensaje(complejo);
 
       return {
         texto: `🔒 *¡Cita apartada temporalmente por 15 minutos!*\n\n` +
@@ -1094,8 +1092,7 @@ export class WhatsAppFlow {
               `🏠 Saldo restante en el spa: *$0* (¡Servicio cubierto!)\n\n`
             : `💵 Anticipo requerido: *${anticipoFmt}*\n\n`) +
           `📲 *Cuentas Oficiales de Recaudo:*\n` +
-          `• Nequi / Daviplata: *${nequi}*\n` +
-          `• Titular: *${titular}*\n\n` +
+          `${cuentasMsg}\n\n` +
           `📸 *¿Cómo confirmar?*\n` +
           `Realiza la transferencia y *envía aquí la foto o captura del comprobante*.\n` +
           `🤖 Nuestro sistema con Inteligencia Artificial lo auditará al instante para confirmar tu cita, o será validado por la administración.\n\n` +
@@ -1169,13 +1166,15 @@ export class WhatsAppFlow {
       const mediaDescargado = { buffer: directImageBuffer, mimeType: mediaType || 'image/jpeg' };
 
       if (mediaDescargado) {
-        const cuentasOficiales = [complejo.nequi_numero, complejo.daviplata_numero].filter(Boolean) as string[];
+        const llave = getLlaveNumero(complejo);
+        const titularLimpio = getTitularLimpio(complejo.titular_cuenta);
+        const cuentasOficiales = [complejo.nequi_numero, complejo.daviplata_numero, llave].filter(Boolean) as string[];
         const analisis = await ReceiptVerificationService.analizarComprobante(
           mediaDescargado.buffer,
           mediaDescargado.mimeType,
           anticipoRequerido,
           cuentasOficiales,
-          complejo.titular_cuenta
+          titularLimpio
         );
 
         // 0. VERIFICAR QUE SEA UN COMPROBANTE BANCARIO (NO UNA FOTO CUALQUIERA)
@@ -1384,7 +1383,9 @@ export class WhatsAppFlow {
       }
 
       // Lista de cuentas oficiales configuradas para el negocio
-      const cuentasOficiales = [complejo.nequi_numero, complejo.daviplata_numero].filter(Boolean) as string[];
+      const llave = getLlaveNumero(complejo);
+      const titularLimpio = getTitularLimpio(complejo.titular_cuenta);
+      const cuentasOficiales = [complejo.nequi_numero, complejo.daviplata_numero, llave].filter(Boolean) as string[];
 
       // Analizar con Gemini Vision
       const analisis = await ReceiptVerificationService.analizarComprobante(
@@ -1392,7 +1393,7 @@ export class WhatsAppFlow {
         mediaDescargado.mimeType,
         anticipoRequerido,
         cuentasOficiales,
-        complejo.titular_cuenta
+        titularLimpio
       );
 
       // CASO 2.1: NO ES UN COMPROBANTE BANCARIO (selfie, sticker, uña, forro, meme, etc.)
@@ -1592,9 +1593,7 @@ export class WhatsAppFlow {
       // Para consultas de pago o clientes en paso ESPERA_PAGO, enviar instrucciones de transferencia:
       const anticipoRequerido = reservaTarget.valor_anticipo_requerido || getMontoAnticipoFijo(complejo);
       const anticipoFmt = '$' + Number(anticipoRequerido).toLocaleString('es-CO');
-      const nequiNum = complejo.nequi_numero || '3219610896';
-      const daviNum = complejo.daviplata_numero || nequiNum;
-      const titular = complejo.titular_cuenta || 'JL Mímate Nails';
+      const cuentasMsg = formatearCuentasRecaudoMensaje(complejo);
       const clienteNombre = reservaTarget.clientes?.nombre || 'reina';
       const nombreManicurista = reservaTarget.canchas?.nombre || 'tu manicurista';
 
@@ -1629,9 +1628,7 @@ export class WhatsAppFlow {
           `💳 Abono requerido: *${anticipoFmt}*\n\n` +
           `───────────────\n` +
           `📲 *CUENTAS PARA TRANSFERIR:*\n` +
-          `• Nequi: *${nequiNum}*\n` +
-          `• Bancolombia / Daviplata: *${daviNum}*\n` +
-          `• Titular: *${titular}*\n\n` +
+          `${cuentasMsg}\n\n` +
           `📸 *Para confirmar definitivamente tu cita:*\n` +
           `Por favor envía la foto o captura del comprobante por este mismo chat 📄💕 (${tiempoRestanteMsg}).\n\n` +
           `*(Si deseas cancelar esta pre-reserva para iniciar otra, escribe CANCELAR)*`,
@@ -1940,10 +1937,7 @@ export class WhatsAppFlow {
         const saldoFmt = '$' + saldoNum.toLocaleString('es-CO');
         const esTotalidad = saldoNum === 0;
 
-        const cuentasOficiales = [complejoRes.nequi_numero, complejoRes.daviplata_numero].filter(Boolean);
-        const nequiNum = complejoRes.nequi_numero || '3219610896';
-        const daviNum = complejoRes.daviplata_numero || nequiNum;
-        const titular = complejoRes.titular_cuenta || 'JL Mímate Nails';
+        const cuentasMsg = formatearCuentasRecaudoMensaje(complejoRes);
 
         return {
           texto:
@@ -1959,9 +1953,7 @@ export class WhatsAppFlow {
                 `🏠 Saldo restante en el spa: *${saldoFmt}*\n\n`) +
             `───────────────\n` +
             `📲 *CUENTAS OFICIALES PARA TRANSFERIR:*\n` +
-            `• Nequi: *${nequiNum}*\n` +
-            `• Bancolombia / Daviplata: *${daviNum}*\n` +
-            `• Titular: *${titular}*\n\n` +
+            `${cuentasMsg}\n\n` +
             `📸 *Para confirmar y asegurar tu cupo definitivamente:*\n` +
             `Por favor realiza la transferencia de ${esTotalidad ? `*${anticipoFmt}* (total del servicio)` : `*${anticipoFmt}*`} y envía la *foto o captura de pantalla del comprobante* por este mismo chat 💕.\n\n` +
             `¡Una vez recibamos tu comprobante, tu turno quedará 100% confirmado! 💅✨`,

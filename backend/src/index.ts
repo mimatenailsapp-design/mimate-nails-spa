@@ -8,7 +8,16 @@ import dotenv from 'dotenv';
 import { supabase } from './config/supabase.js';
 import { WhatsAppFlow, BotResponse } from './bot/whatsappFlow.js';
 import { ReminderService } from './services/reminderService.js';
-import { BookingService, getMontoAnticipoFijo, requiereAnticipoParaFecha, esFechaDiciembre, enriquecerCancha } from './services/bookingService.js';
+import {
+  BookingService,
+  getMontoAnticipoFijo,
+  requiereAnticipoParaFecha,
+  esFechaDiciembre,
+  enriquecerCancha,
+  getLlaveNumero,
+  getTitularLimpio,
+  formatearCuentasRecaudoMensaje,
+} from './services/bookingService.js';
 import { AIReceptionistService } from './services/aiReceptionistService.js';
 import { BotExclusionsService } from './services/botExclusionsService.js';
 import { BaileysService } from './services/baileysService.js';
@@ -673,7 +682,8 @@ app.get('/api/spa/config', async (req: Request, res: Response) => {
       porcentajeAnticipo: montoFijo, // Compatibilidad
       nequiNumero: complejo.nequi_numero || '321 961 0896',
       bancolombiaNumero: complejo.daviplata_numero || 'Ahorros 245-000123-88',
-      titularCuenta: complejo.titular_cuenta || 'JL Mímate Nails Spa',
+      llaveNumero: getLlaveNumero(complejo) || '',
+      titularCuenta: getTitularLimpio(complejo.titular_cuenta),
       horaApertura: complejo.hora_apertura ? complejo.hora_apertura.slice(0, 5) : '08:00',
       horaCierre: complejo.hora_cierre ? complejo.hora_cierre.slice(0, 5) : '19:00',
     });
@@ -691,6 +701,7 @@ app.patch('/api/spa/config', async (req: Request, res: Response) => {
       porcentajeAnticipo,
       nequiNumero,
       bancolombiaNumero,
+      llaveNumero,
       titularCuenta,
       horaApertura,
       horaCierre,
@@ -709,14 +720,19 @@ app.patch('/api/spa/config', async (req: Request, res: Response) => {
       }
     }
 
-    // Persistir el valor fijo en el campo seguro whatsapp_phone_number_id (VARCHAR que NO es sobreescrito por Baileys)
-    if (montoAnticipoFijo !== undefined || porcentajeAnticipo !== undefined || exigeAnticipo !== undefined) {
-      updateData.whatsapp_phone_number_id = String(montoFijoValido);
-    }
-
     if (nequiNumero !== undefined) updateData.nequi_numero = String(nequiNumero).trim();
     if (bancolombiaNumero !== undefined) updateData.daviplata_numero = String(bancolombiaNumero).trim();
-    if (titularCuenta !== undefined) updateData.titular_cuenta = String(titularCuenta).trim();
+    if (titularCuenta !== undefined) updateData.titular_cuenta = getTitularLimpio(String(titularCuenta).trim());
+
+    // Obtener complejo actual para preservar llave o monto si no vienen
+    const { data: compActual } = await supabase.from('complejos').select('*').eq('slug', 'mimate-nails').maybeSingle();
+    const llaveVal = llaveNumero !== undefined ? String(llaveNumero).trim() : (getLlaveNumero(compActual) || '');
+
+    // Persistir monto y llave en whatsapp_phone_number_id (VARCHAR(100) que NO es sobreescrito por Baileys)
+    updateData.whatsapp_phone_number_id = JSON.stringify({
+      monto: montoFijoValido,
+      llave: llaveVal,
+    });
 
     if (horaApertura !== undefined) {
       const hAper = String(horaApertura).trim().slice(0, 5);
@@ -751,7 +767,8 @@ app.patch('/api/spa/config', async (req: Request, res: Response) => {
         porcentajeAnticipo: finalMontoFijo,
         nequiNumero: data.nequi_numero || '321 961 0896',
         bancolombiaNumero: data.daviplata_numero || 'Ahorros 245-000123-88',
-        titularCuenta: data.titular_cuenta || 'JL Mímate Nails Spa',
+        llaveNumero: getLlaveNumero(data) || '',
+        titularCuenta: getTitularLimpio(data.titular_cuenta),
         horaApertura: data.hora_apertura ? data.hora_apertura.slice(0, 5) : '08:00',
         horaCierre: data.hora_cierre ? data.hora_cierre.slice(0, 5) : '19:00',
       },
@@ -1439,7 +1456,8 @@ app.get('/api/spa/info', async (req: Request, res: Response) => {
       porcentajeAnticipo: montoFijo,
       nequiNumero: complejo.nequi_numero || '321 961 0896',
       bancolombiaNumero: complejo.daviplata_numero || 'Ahorros 245-000123-88',
-      titularCuenta: complejo.titular_cuenta || 'JL Mímate Nails Spa',
+      llaveNumero: getLlaveNumero(complejo) || '',
+      titularCuenta: getTitularLimpio(complejo.titular_cuenta),
       horaApertura: complejo.hora_apertura ? complejo.hora_apertura.slice(0, 5) : '08:00',
       horaCierre: complejo.hora_cierre ? complejo.hora_cierre.slice(0, 5) : '19:00',
     };
@@ -1928,10 +1946,8 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
         `💳 *Anticipo a transferir:* *${anticipoFmt}*\n` +
         `🏠 *Saldo restante en el spa:* ${saldoRestanteFmt}\n\n` +
         `───────────────\n` +
-        `*CUENTAS PARA TRANSFERIR:*\n` +
-        `📲 *Nequi:* ${complejo.nequi_numero || '321 961 0896'}\n` +
-        `🏦 *Bancolombia:* ${complejo.daviplata_numero || 'Ahorros 245-000123-88'}\n` +
-        `👤 *Titular:* ${complejo.titular_cuenta || 'JL Mímate Nails Spa'}\n\n` +
+        `*CUENTAS OFICIALES PARA TRANSFERIR:*\n` +
+        `${formatearCuentasRecaudoMensaje(complejo)}\n\n` +
         `⏳ *TIEMPO LÍMITE (30 MINUTOS):*\n` +
         `Para asegurar tu cupo en temporada de diciembre, por favor transfiere el abono de *${anticipoFmt}* y *envía el comprobante por este chat* dentro de los próximos 30 minutos.\n\n` +
         `¡Quedamos atentas a tu comprobante reina! 💕🌸`;
@@ -1985,10 +2001,8 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
           : `💳 *Abono requerido:* *${anticipoFmt}*\n` +
             `🏠 *Saldo restante en el spa:* ${saldoRestanteFmt}\n\n`) +
         `───────────────\n` +
-        `*CUENTAS PARA TRANSFERIR:*\n` +
-        `📲 *Nequi:* ${complejo.nequi_numero || '321 961 0896'}\n` +
-        `🏦 *Bancolombia:* ${complejo.daviplata_numero || 'Ahorros 245-000123-88'}\n` +
-        `👤 *Titular:* ${complejo.titular_cuenta || 'JL Mímate Nails Spa'}\n\n` +
+        `*CUENTAS OFICIALES PARA TRANSFERIR:*\n` +
+        `${formatearCuentasRecaudoMensaje(complejo)}\n\n` +
         `⏳ *TIEMPO LÍMITE (30 MINUTOS):*\n` +
         `Para asegurar tu cupo definitivo, por favor transfiere ${saldoRestante === 0 ? `el valor total de *${anticipoFmt}*` : `el abono de *${anticipoFmt}*`} y *envía la foto del comprobante por este mismo chat* dentro de los próximos 30 minutos.\n\n` +
         `Pasado este tiempo, el espacio se liberará automáticamente para otra clienta.\n\n` +
