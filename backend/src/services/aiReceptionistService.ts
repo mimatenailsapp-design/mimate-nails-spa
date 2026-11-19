@@ -340,7 +340,7 @@ DATOS OFICIALES Y CONTEXTO DEL SPA:
 - Nombre oficial: ${complejo.nombre}
 - Dirección exacta: ${direccion} (${ciudad})
 - Ubicación en Google Maps: https://maps.app.goo.gl/KdSvqi1b2iAe5xgg8
-- Horario de atención: Lunes a Sábado de ${apertura} a ${cierre} (Domingos cerrado o según agenda habilitada).
+- Horario de atención: Lunes a Sábado de ${apertura} a ${cierre}. ATENCIÓN DE DOMINGOS: En temporada de Diciembre SÍ se trabaja y se atienden todos los domingos; el resto del año los domingos se descansa.
 - Parqueadero: ${info.parqueadero}
 - Instalaciones: Climatizadas, cómodas, esterilización de herramientas en autoclave y protocolos de bioseguridad.
 - Catálogo oficial completo de servicios, precios y duraciones exactas (siempre en minutos):
@@ -484,7 +484,8 @@ REGLAS ESTRICTAS DE SEGURIDAD Y CERO ALUCINACIÓN (PROHIBIDO INVENTAR):
     ) {
       return (
         `⏰ *Horario de Atención - ${complejo.nombre}:*\n\n` +
-        `Atendemos de *Lunes a Sábado de ${apertura} a ${cierre}* en *${direccion}* 🌸.\n\n` +
+        `Atendemos de *Lunes a Sábado de ${apertura} a ${cierre}* en *${direccion}* 🌸.\n` +
+        `✨ *Nota especial de Diciembre:* ¡En todos los diciembres los domingos sí están habilitados y trabajamos para consentirte! 💕\n\n` +
         `En nuestro enlace de agenda puedes ver en tiempo real qué turnos están libres hoy o en los próximos días con cada manicurista.` +
         pie
       );

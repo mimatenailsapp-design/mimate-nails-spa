@@ -517,7 +517,9 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
       const cur = new Date(base);
       cur.setDate(base.getDate() + i);
       const dayOfWeek = cur.getDay();
+      const esDiciembre = (cur.getMonth() + 1) === 12;
       const esDomingo = dayOfWeek === 0;
+      const esDomingoCerrado = esDomingo && !esDiciembre;
 
       const yStr = cur.getFullYear();
       const mStr = String(cur.getMonth() + 1).padStart(2, '0');
@@ -535,6 +537,8 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
         diaNum: cur.getDate(),
         diaSemana: diasCortos[dayOfWeek],
         esDomingo,
+        esDiciembre,
+        esDomingoCerrado,
       });
     }
     return lista;
@@ -768,8 +772,9 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
     setAvisoSlots(null);
 
     const dObj = new Date(`${f}T12:00:00-05:00`);
-    if (dObj.getDay() === 0) {
-      const aviso = `Los domingos estamos cerrados. Atendemos con amor de ${horarioTexto} 💕`;
+    const esDiciembre = f ? /^\d{4}-12-/.test(f.trim()) : false;
+    if (dObj.getDay() === 0 && !esDiciembre) {
+      const aviso = `Los domingos regulares estamos cerrados. Atendemos con amor de ${horarioTexto} (en Diciembre sí trabajamos domingos) 💕`;
       setSlots([]);
       setAvisoSlots(aviso);
       setCargandoSlots(false);
@@ -1239,7 +1244,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
               <IconClock className="w-3.5 h-3.5 text-[#C74B66] shrink-0" />
               {horarioTexto}
             </p>
-            <p className="text-[11px] text-[#7D6870]">Domingos cerrado</p>
+            <p className="text-[11px] text-[#7D6870]">Domingos cerrado (Diciembre abierto)</p>
           </div>
 
           <div className="bg-white border border-[#F2C4D2] rounded-2xl p-4 text-center shadow-xs space-y-1">
@@ -2002,7 +2007,9 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                                 const deshabilitado = esPasado || esFuturoBloqueado;
                                 const esSeleccionado = d.iso === fecha;
                                 const esHoy = d.iso === hoyStr;
+                                const esDiciembre = d.iso ? /^\d{4}-12-/.test(d.iso) : false;
                                 const esDomingo = d.dayOfWeek === 0;
+                                const esDomingoCerrado = esDomingo && !esDiciembre;
 
                                 return (
                                   <button
@@ -2020,7 +2027,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                                         ? 'bg-gradient-to-tr from-[#8C243B] to-[#C74B66] text-white font-extrabold shadow-sm scale-105 z-10'
                                         : deshabilitado
                                         ? 'text-gray-300 opacity-30 select-none'
-                                        : esDomingo
+                                        : esDomingoCerrado
                                         ? 'text-slate-400 hover:bg-slate-50 border border-dashed border-slate-200'
                                         : 'text-[#2D2529] hover:bg-[#FFF0F4] hover:text-[#8C243B] font-semibold'
                                     } ${
@@ -2033,16 +2040,21 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                                         ? 'Fecha pasada'
                                         : esFuturoBloqueado
                                         ? 'Solo disponible para el mes en curso y el siguiente'
-                                        : esDomingo
+                                        : esDomingoCerrado
                                         ? 'Domingo (Cerrado)'
+                                        : esDomingo && esDiciembre
+                                        ? 'Domingo (Habilitado temporada Diciembre)'
                                         : d.iso
                                     }
                                   >
                                     <span className="leading-none">{d.diaNum}</span>
-                                    {esDomingo && !esSeleccionado && !deshabilitado && (
+                                    {esDomingoCerrado && !esSeleccionado && !deshabilitado && (
                                       <span className="text-[7px] leading-none text-slate-400 mt-0.5">cerrado</span>
                                     )}
-                                    {esHoy && !esSeleccionado && !esDomingo && (
+                                    {esDomingo && esDiciembre && !esSeleccionado && !deshabilitado && (
+                                      <span className="text-[7px] leading-none text-amber-700 font-bold mt-0.5">abierto</span>
+                                    )}
+                                    {esHoy && !esSeleccionado && !esDomingoCerrado && (
                                       <span className="w-1 h-1 rounded-full bg-[#C74B66] mt-0.5" />
                                     )}
                                   </button>
@@ -2076,11 +2088,11 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                               className={`shrink-0 px-2.5 py-1.5 rounded-xl text-xs font-bold transition flex flex-col items-center justify-center min-w-[54px] cursor-pointer border ${
                                 activa
                                   ? 'bg-[#8C243B] text-white border-[#8C243B] shadow-xs'
-                                  : d.esDomingo
+                                  : d.esDomingoCerrado
                                   ? 'bg-slate-50 text-slate-400 border-slate-200 opacity-60'
                                   : 'bg-white text-[#2D2529] border-[#F2C4D2] hover:border-[#C74B66]'
                               }`}
-                              title={d.esDomingo ? 'Domingo cerrado' : d.label}
+                              title={d.esDomingoCerrado ? 'Domingo cerrado' : d.esDomingo && d.esDiciembre ? 'Domingo (Habilitado en Diciembre)' : d.label}
                             >
                               <span className="text-[10px] uppercase font-extrabold tracking-wider leading-none">
                                 {d.diaSemana}
@@ -2088,11 +2100,15 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                               <span className="text-sm font-bold leading-tight mt-0.5">
                                 {d.diaNum}
                               </span>
-                              {d.esDomingo && (
+                              {d.esDomingoCerrado ? (
                                 <span className="text-[8px] font-normal leading-none mt-0.5">
                                   Cerrado
                                 </span>
-                              )}
+                              ) : d.esDomingo && d.esDiciembre ? (
+                                <span className="text-[8px] font-bold text-amber-700 leading-none mt-0.5">
+                                  Abierto
+                                </span>
+                              ) : null}
                             </button>
                           );
                         })}

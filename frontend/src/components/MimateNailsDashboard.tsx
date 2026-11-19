@@ -919,7 +919,8 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   // Horas libres para el modal de Agendar Cita con cálculo dinámico por duración y fin de citas previas
   const horasDisponiblesAgendarAdmin = useMemo(() => {
     if (!agendarFecha || !agendarManicuristaId) return [];
-    if (new Date(`${agendarFecha}T12:00:00-05:00`).getDay() === 0) return [];
+    const esDiciembre = agendarFecha ? /^\d{4}-12-/.test(agendarFecha.trim()) : false;
+    if (new Date(`${agendarFecha}T12:00:00-05:00`).getDay() === 0 && !esDiciembre) return [];
 
     const aperturaStr = configAnticipo.horaApertura || '08:00';
     const cierreStr = configAnticipo.horaCierre || '19:00';

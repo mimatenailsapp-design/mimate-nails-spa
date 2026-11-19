@@ -142,6 +142,25 @@ export function esFechaDiciembre(fecha?: string | Date | null): boolean {
 }
 
 /**
+ * Determina si una fecha está cerrada por ser domingo regular.
+ * REGLA DE TEMPORADA: Todos los domingos del mes de DICIEMBRE sí se trabaja y están habilitados.
+ */
+export function esDiaCerradoPorDomingo(fecha?: string | Date | null): boolean {
+  if (!fecha) return false;
+  let d: Date;
+  if (typeof fecha === 'string') {
+    const isoDate = fecha.trim().slice(0, 10);
+    d = new Date(`${isoDate}T12:00:00-05:00`);
+  } else {
+    d = fecha;
+  }
+  if (isNaN(d.getTime())) return false;
+  const diaSemana = d.getDay();
+  if (diaSemana !== 0) return false; // No es domingo
+  return !esFechaDiciembre(fecha); // Es domingo y NO es diciembre (cerrado)
+}
+
+/**
  * Determina si se debe exigir anticipo para una reserva según la configuración del spa
  * o si la fecha de la cita es en diciembre (en diciembre siempre es obligatorio).
  */

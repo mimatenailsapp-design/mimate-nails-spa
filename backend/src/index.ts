@@ -17,6 +17,7 @@ import {
   getLlaveNumero,
   getTitularLimpio,
   formatearCuentasRecaudoMensaje,
+  esDiaCerradoPorDomingo,
 } from './services/bookingService.js';
 import { AIReceptionistService } from './services/aiReceptionistService.js';
 import { BotExclusionsService } from './services/botExclusionsService.js';
@@ -1502,14 +1503,11 @@ app.get('/api/spa/slots', async (req: Request, res: Response) => {
 
   try {
     const duracion = Math.max(15, Math.min(360, parseInt(String(duracion_minutos || 45), 10)));
-    const fechaObj = new Date(`${cleanDate}T12:00:00-05:00`);
-    const diaSemana = fechaObj.getDay(); // 0 = Domingo
-
-    if (diaSemana === 0) {
+    if (esDiaCerradoPorDomingo(cleanDate)) {
       return res.json({
         date: cleanDate,
         slots: [],
-        aviso: 'Los domingos estamos cerrados. Atendemos con amor de Lunes a Sábado de 9:30 am a 5:30 pm 💕',
+        aviso: 'Los domingos regulares estamos cerrados. Atendemos con amor de Lunes a Sábado de 9:30 am a 5:30 pm (en Diciembre sí trabajamos domingos) 💕',
       });
     }
 

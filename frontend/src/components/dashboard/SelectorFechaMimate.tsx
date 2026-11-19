@@ -200,7 +200,9 @@ export const SelectorFechaMimate: React.FC<SelectorFechaMimateProps> = ({
       const cur = new Date(base);
       cur.setDate(base.getDate() + i);
       const dayOfWeek = cur.getDay();
+      const esDiciembre = (cur.getMonth() + 1) === 12;
       const esDomingo = dayOfWeek === 0;
+      const esDomingoCerrado = esDomingo && !esDiciembre;
 
       const yStr = cur.getFullYear();
       const mStr = String(cur.getMonth() + 1).padStart(2, '0');
@@ -220,6 +222,8 @@ export const SelectorFechaMimate: React.FC<SelectorFechaMimateProps> = ({
         diaNum: cur.getDate(),
         diaSemana: diasCortos[dayOfWeek],
         esDomingo,
+        esDiciembre,
+        esDomingoCerrado,
       });
     }
     return lista;
@@ -372,7 +376,9 @@ export const SelectorFechaMimate: React.FC<SelectorFechaMimateProps> = ({
                 const esPasado = !permitirFechasPasadas && d.iso < hoyStr;
                 const esSeleccionado = d.iso === value;
                 const esHoy = d.iso === hoyStr;
+                const esDiciembre = d.iso ? /^\d{4}-12-/.test(d.iso) : false;
                 const esDomingo = d.dayOfWeek === 0;
+                const esDomingoCerrado = esDomingo && !esDiciembre;
 
                 return (
                   <button
@@ -388,7 +394,7 @@ export const SelectorFechaMimate: React.FC<SelectorFechaMimateProps> = ({
                         ? 'bg-gradient-to-tr from-[#8C243B] to-[#C74B66] text-white font-extrabold shadow-sm scale-105 z-10'
                         : esPasado
                         ? 'text-gray-300 cursor-not-allowed opacity-35'
-                        : esDomingo
+                        : esDomingoCerrado
                         ? 'text-slate-400 hover:bg-slate-50 border border-dashed border-slate-200'
                         : 'text-[#2D2529] hover:bg-[#FFF0F4] hover:text-[#8C243B] font-semibold'
                     } ${
@@ -396,13 +402,16 @@ export const SelectorFechaMimate: React.FC<SelectorFechaMimateProps> = ({
                         ? 'border border-[#C74B66] text-[#8C243B] bg-[#FFF5F7] font-bold'
                         : ''
                     }`}
-                    title={esDomingo ? 'Domingo (Cerrado)' : d.iso}
+                    title={esDomingoCerrado ? 'Domingo (Cerrado)' : esDomingo && esDiciembre ? 'Domingo (Habilitado temporada Diciembre)' : d.iso}
                   >
                     <span className="leading-none">{d.diaNum}</span>
-                    {esDomingo && !esSeleccionado && (
+                    {esDomingoCerrado && !esSeleccionado && (
                       <span className="text-[7px] leading-none text-slate-400 mt-0.5">cerrado</span>
                     )}
-                    {esHoy && !esSeleccionado && !esDomingo && (
+                    {esDomingo && esDiciembre && !esSeleccionado && (
+                      <span className="text-[7px] leading-none text-amber-700 font-bold mt-0.5">abierto</span>
+                    )}
+                    {esHoy && !esSeleccionado && !esDomingoCerrado && (
                       <span className="w-1 h-1 rounded-full bg-[#C74B66] mt-0.5" />
                     )}
                   </button>
@@ -414,9 +423,11 @@ export const SelectorFechaMimate: React.FC<SelectorFechaMimateProps> = ({
             <div className="pt-2 border-t border-[#FCE8EF] flex items-center justify-between text-[11px] text-[#7D6870]">
               <div className="flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-[#C74B66]" />
-                <span>Lun–Sáb disponible</span>
+                <span>{mesVisualizado === 11 ? '🎄 Lunes a Domingo disponible' : 'Lun–Sáb disponible'}</span>
               </div>
-              <span className="text-[10px] text-slate-400 italic">Domingos cerrado 💕</span>
+              <span className="text-[10px] text-slate-400 italic">
+                {mesVisualizado === 11 ? '🎄 Domingos de diciembre habilitados 💕' : 'Domingos cerrado 💕'}
+              </span>
             </div>
           </motion.div>
         )}
@@ -435,11 +446,11 @@ export const SelectorFechaMimate: React.FC<SelectorFechaMimateProps> = ({
                 className={`shrink-0 px-2.5 py-1.5 rounded-xl text-xs font-bold transition flex flex-col items-center justify-center min-w-[54px] cursor-pointer border ${
                   activa
                     ? 'bg-[#8C243B] text-white border-[#8C243B] shadow-xs'
-                    : d.esDomingo
+                    : d.esDomingoCerrado
                     ? 'bg-slate-50 text-slate-400 border-slate-200 opacity-60'
                     : 'bg-white text-[#2D2529] border-[#F2C4D2] hover:border-[#C74B66]'
                 }`}
-                title={d.esDomingo ? 'Domingo cerrado' : d.label}
+                title={d.esDomingoCerrado ? 'Domingo cerrado' : d.esDomingo && d.esDiciembre ? 'Domingo (Habilitado en Diciembre)' : d.label}
               >
                 <span className="text-[10px] uppercase font-extrabold tracking-wider leading-none">
                   {d.diaSemana}
@@ -447,11 +458,15 @@ export const SelectorFechaMimate: React.FC<SelectorFechaMimateProps> = ({
                 <span className="text-sm font-bold leading-tight mt-0.5">
                   {d.diaNum}
                 </span>
-                {d.esDomingo && (
+                {d.esDomingoCerrado ? (
                   <span className="text-[8px] font-normal leading-none mt-0.5">
                     Cerrado
                   </span>
-                )}
+                ) : d.esDomingo && d.esDiciembre ? (
+                  <span className="text-[8px] font-bold text-amber-700 leading-none mt-0.5">
+                    Abierto
+                  </span>
+                ) : null}
               </button>
             );
           })}
