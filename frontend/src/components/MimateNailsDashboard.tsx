@@ -1261,6 +1261,19 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     }
   }, [perfilesConIds]);
 
+  // Dirección de transición para animación suave (1 = hacia adelante / siguiente, -1 = hacia atrás / anterior)
+  const [direccionSlide, setDireccionSlide] = useState<number>(1);
+
+  // Formato corto para feedback flotante de cambio de día ("Lun 17 nov", "Hoy")
+  const obtenerEtiquetaCorta = (fechaIso: string) => {
+    if (fechaIso === hoyStr) return 'Hoy';
+    const [y, m, d] = fechaIso.split('-').map(Number);
+    const fechaObj = new Date(y, m - 1, d);
+    const dias = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+    const meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    return `${dias[fechaObj.getDay()]} ${fechaObj.getDate()} ${meses[fechaObj.getMonth()]}`;
+  };
+
   // Navegar días hacia atrás o adelante
   const cambiarDia = (offset: number) => {
     const [y, m, d] = fechaSeleccionada.split('-').map(Number);
@@ -1269,7 +1282,30 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     const nuevoY = fechaObj.getFullYear();
     const nuevoM = String(fechaObj.getMonth() + 1).padStart(2, '0');
     const nuevoD = String(fechaObj.getDate()).padStart(2, '0');
-    setFechaSeleccionada(`${nuevoY}-${nuevoM}-${nuevoD}`);
+    const nuevaIso = `${nuevoY}-${nuevoM}-${nuevoD}`;
+    setDireccionSlide(offset > 0 ? 1 : -1);
+    setFechaSeleccionada(nuevaIso);
+    return nuevaIso;
+  };
+
+  // Navegar semanas hacia atrás o adelante (desplaza 7 días)
+  const cambiarSemana = (offsetSemanas: number) => {
+    const [y, m, d] = fechaSeleccionada.split('-').map(Number);
+    const fechaObj = new Date(y, m - 1, d);
+    fechaObj.setDate(fechaObj.getDate() + offsetSemanas * 7);
+    const nuevoY = fechaObj.getFullYear();
+    const nuevoM = String(fechaObj.getMonth() + 1).padStart(2, '0');
+    const nuevoD = String(fechaObj.getDate()).padStart(2, '0');
+    const nuevaIso = `${nuevoY}-${nuevoM}-${nuevoD}`;
+    setDireccionSlide(offsetSemanas > 0 ? 1 : -1);
+    setFechaSeleccionada(nuevaIso);
+    return nuevaIso;
+  };
+
+  const irAFecha = (nuevaIso: string) => {
+    if (nuevaIso === fechaSeleccionada) return;
+    setDireccionSlide(nuevaIso > fechaSeleccionada ? 1 : -1);
+    setFechaSeleccionada(nuevaIso);
   };
 
   // ============================================================================
@@ -1316,12 +1352,12 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     if (duracionMs < 800 && Math.abs(deltaX) >= 50 && Math.abs(deltaX) > Math.abs(deltaY) * 1.4) {
       if (deltaX < 0) {
         // Desliza hacia la izquierda -> Siguiente día
-        cambiarDia(1);
-        mostrarFeedbackSwipe('Siguiente día →');
+        const nueva = cambiarDia(1);
+        mostrarFeedbackSwipe(`👉 Pasando a ${obtenerEtiquetaCorta(nueva)}`);
       } else {
         // Desliza hacia la derecha -> Día anterior
-        cambiarDia(-1);
-        mostrarFeedbackSwipe('← Día anterior');
+        const nueva = cambiarDia(-1);
+        mostrarFeedbackSwipe(`👈 Pasando a ${obtenerEtiquetaCorta(nueva)}`);
       }
     }
   };
@@ -1347,10 +1383,10 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     if (duracionMs < 800 && Math.abs(deltaX) >= 50 && Math.abs(deltaX) > Math.abs(deltaY) * 1.4) {
       if (deltaX < 0) {
         cambiarSemana(1);
-        mostrarFeedbackSwipe('Semana siguiente →');
+        mostrarFeedbackSwipe('👉 Semana siguiente');
       } else {
         cambiarSemana(-1);
-        mostrarFeedbackSwipe('← Semana anterior');
+        mostrarFeedbackSwipe('👈 Semana anterior');
       }
     }
   };
@@ -1386,10 +1422,10 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       if (maxScrollLeft <= 10) {
         if (deltaX < 0) {
           cambiarSemana(1);
-          mostrarFeedbackSwipe('Semana siguiente →');
+          mostrarFeedbackSwipe('👉 Semana siguiente');
         } else {
           cambiarSemana(-1);
-          mostrarFeedbackSwipe('← Semana anterior');
+          mostrarFeedbackSwipe('👈 Semana anterior');
         }
         return;
       }
@@ -1400,7 +1436,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       const estaEnTopeDerecho = container.scrollLeft >= maxScrollLeft - 20;
       if (deltaX < 0 && (estabaEnTopeDerecho || estaEnTopeDerecho)) {
         cambiarSemana(1);
-        mostrarFeedbackSwipe('Semana siguiente →');
+        mostrarFeedbackSwipe('👉 Semana siguiente');
         setTimeout(() => {
           if (scrollSemanalRef.current) scrollSemanalRef.current.scrollLeft = 0;
         }, 60);
@@ -1412,7 +1448,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       const estaEnTopeIzquierdo = container.scrollLeft <= 20;
       if (deltaX > 0 && (estabaEnTopeIzquierdo || estaEnTopeIzquierdo)) {
         cambiarSemana(-1);
-        mostrarFeedbackSwipe('← Semana anterior');
+        mostrarFeedbackSwipe('👈 Semana anterior');
         setTimeout(() => {
           if (scrollSemanalRef.current) scrollSemanalRef.current.scrollLeft = 0;
         }, 60);
@@ -1422,17 +1458,6 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       // En cualquier otro caso: el usuario estaba deslizándose por los días intermedios (Martes a Sábado)
       // El scroll nativo se encarga fluidamente y NO cambia la semana.
     }
-  };
-
-  // Navegar semanas hacia atrás o adelante (desplaza 7 días)
-  const cambiarSemana = (offsetSemanas: number) => {
-    const [y, m, d] = fechaSeleccionada.split('-').map(Number);
-    const fechaObj = new Date(y, m - 1, d);
-    fechaObj.setDate(fechaObj.getDate() + offsetSemanas * 7);
-    const nuevoY = fechaObj.getFullYear();
-    const nuevoM = String(fechaObj.getMonth() + 1).padStart(2, '0');
-    const nuevoD = String(fechaObj.getDate()).padStart(2, '0');
-    setFechaSeleccionada(`${nuevoY}-${nuevoM}-${nuevoD}`);
   };
 
   // Cálculo de los 7 días de la semana activa (Lunes a Domingo)
@@ -2866,7 +2891,13 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     const ahoraMs = ahora.getTime();
 
     return (
-      <div className="bg-white rounded-3xl border border-[#F2C4D2] shadow-xs overflow-hidden">
+      <motion.div
+        key={`semana-${diasDeLaSemana[0]?.fechaIso || fechaSeleccionada}`}
+        initial={{ x: direccionSlide * 60, opacity: 0.3 }}
+        animate={{ x: 0, opacity: 1 }}
+        transition={{ type: 'spring', stiffness: 360, damping: 28 }}
+        className="bg-white rounded-3xl border border-[#F2C4D2] shadow-xs overflow-hidden"
+      >
         {/* Cabecera del Timeline Semanal */}
         <div
           onTouchStart={handleTouchStartCabeceraSemanal}
@@ -3154,7 +3185,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
             </div>
           </div>
         </div>
-      </div>
+      </motion.div>
     );
   };
 
@@ -3569,7 +3600,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                   {/* ACCESO RÁPIDO: Volver a Hoy a la izquierda */}
                   {fechaSeleccionada !== hoyStr && (
                     <button
-                      onClick={() => setFechaSeleccionada(hoyStr)}
+                      onClick={() => irAFecha(hoyStr)}
                       className="px-2 py-1 rounded-lg text-xs font-semibold bg-white text-[#8C243B] hover:bg-[#FCE8EF] border border-[#F2C4D2] transition cursor-pointer shadow-2xs animate-in fade-in"
                       title="Volver a la fecha actual"
                     >
@@ -3587,11 +3618,19 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
                   {/* BOTÓN/ETIQUETA DINÁMICA: Hoy, Mañana, Ayer o Sáb, 10 oct */}
                   <button
-                    onClick={() => setFechaSeleccionada(hoyStr)}
+                    onClick={() => irAFecha(hoyStr)}
                     title={fechaSeleccionada === hoyStr ? 'Estás en el día de hoy' : 'Clic para volver al día de hoy'}
-                    className="px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer shadow-2xs bg-[#8C243B] text-white min-w-[65px] text-center hover:opacity-95 active:scale-95"
+                    className="px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer shadow-2xs bg-[#8C243B] text-white min-w-[65px] text-center hover:opacity-95 active:scale-95 overflow-hidden"
                   >
-                    {etiquetaFechaRelativa}
+                    <motion.span
+                      key={fechaSeleccionada}
+                      initial={{ y: direccionSlide * 6, opacity: 0 }}
+                      animate={{ y: 0, opacity: 1 }}
+                      transition={{ duration: 0.18 }}
+                      className="inline-block"
+                    >
+                      {etiquetaFechaRelativa}
+                    </motion.span>
                   </button>
 
                   <button
@@ -3609,7 +3648,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                       permitirFechasPasadas={true}
                       hoyStr={hoyStr}
                       value={fechaSeleccionada}
-                      onChange={(nuevaFecha) => setFechaSeleccionada(nuevaFecha)}
+                      onChange={(nuevaFecha) => irAFecha(nuevaFecha)}
                       title="Seleccionar fecha en el calendario"
                     />
                   </div>
@@ -3619,7 +3658,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                   {/* ACCESO RÁPIDO: Volver a la Semana Actual */}
                   {!diasDeLaSemana.some((d) => d.esHoy) && (
                     <button
-                      onClick={() => setFechaSeleccionada(hoyStr)}
+                      onClick={() => irAFecha(hoyStr)}
                       className="px-2 py-1 rounded-lg text-xs font-semibold bg-white text-[#8C243B] hover:bg-[#FCE8EF] border border-[#F2C4D2] transition cursor-pointer shadow-2xs animate-in fade-in"
                       title="Volver a la semana actual"
                     >
@@ -3636,13 +3675,21 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                   </button>
 
                   <button
-                    onClick={() => setFechaSeleccionada(hoyStr)}
+                    onClick={() => irAFecha(hoyStr)}
                     title="Semana activa. Clic para volver a la actual"
-                    className="px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer shadow-2xs bg-[#8C243B] text-white min-w-[90px] text-center hover:opacity-95 active:scale-95"
+                    className="px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer shadow-2xs bg-[#8C243B] text-white min-w-[90px] text-center hover:opacity-95 active:scale-95 overflow-hidden"
                   >
-                    {diasDeLaSemana.some((d) => d.esHoy)
-                      ? 'Esta Semana'
-                      : `Semana ${diasDeLaSemana[0]?.diaNum} - ${diasDeLaSemana[6]?.diaNum}`}
+                    <motion.span
+                      key={diasDeLaSemana[0]?.fechaIso || fechaSeleccionada}
+                      initial={{ y: direccionSlide * 6, opacity: 0 }}
+                      animate={{ y: 0, opacity: 1 }}
+                      transition={{ duration: 0.18 }}
+                      className="inline-block"
+                    >
+                      {diasDeLaSemana.some((d) => d.esHoy)
+                        ? 'Esta Semana'
+                        : `Semana ${diasDeLaSemana[0]?.diaNum} - ${diasDeLaSemana[6]?.diaNum}`}
+                    </motion.span>
                   </button>
 
                   <button
@@ -3660,7 +3707,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                       permitirFechasPasadas={true}
                       hoyStr={hoyStr}
                       value={fechaSeleccionada}
-                      onChange={(nuevaFecha) => setFechaSeleccionada(nuevaFecha)}
+                      onChange={(nuevaFecha) => irAFecha(nuevaFecha)}
                       title="Selecciona cualquier fecha para ver su semana"
                     />
                   </div>
@@ -3740,7 +3787,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
               <div
                 onTouchStart={handleTouchStartDia}
                 onTouchEnd={handleTouchEndDia}
-                className="touch-pan-y"
+                className="touch-pan-y overflow-hidden"
               >
                 {/* Indicador táctil para celular */}
                 <div className="sm:hidden mb-2 px-3 py-1 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl text-[10px] text-[#8C243B] font-medium flex items-center justify-center gap-1.5 select-none">
@@ -3748,7 +3795,13 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                   <span>Desliza a la izquierda o derecha para cambiar de día</span>
                 </div>
 
-                {especialistaSeleccionadaId !== 'todas' ? (
+                <motion.div
+                  key={`admin-dia-${fechaSeleccionada}-${especialistaSeleccionadaId}`}
+                  initial={{ x: direccionSlide * 60, opacity: 0.3 }}
+                  animate={{ x: 0, opacity: 1 }}
+                  transition={{ type: 'spring', stiffness: 360, damping: 28 }}
+                >
+                  {especialistaSeleccionadaId !== 'todas' ? (
                   (() => {
                     const targetCancha = canchas.find((c) => c.id === especialistaSeleccionadaId);
                     const citasTarget = reservasDelDia.filter((r) => r.cancha_id === especialistaSeleccionadaId && r.estado !== 'cancelada');
@@ -3979,10 +4032,11 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
               })}
             </div>
           )}
-        </div>
-      )}
-    </div>
-  )}
+        </motion.div>
+      </div>
+    )}
+  </div>
+)}
 
         {/* ==================================================================== */}
         {/* CASO B: VISTA DE LA ADMINISTRADORA - PESTAÑA MÉTRICAS                 */}
@@ -4064,7 +4118,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                   <div className="flex items-center gap-1 bg-[#FFF5F7] p-1 rounded-2xl border border-[#F2C4D2]">
                     {fechaSeleccionada !== hoyStr && (
                       <button
-                        onClick={() => setFechaSeleccionada(hoyStr)}
+                        onClick={() => irAFecha(hoyStr)}
                         className="px-2 py-1 rounded-xl text-xs font-semibold bg-white text-[#8C243B] hover:bg-[#FCE8EF] border border-[#F2C4D2] transition cursor-pointer shadow-2xs"
                         title="Volver a la fecha actual"
                       >
@@ -4079,7 +4133,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                       <IconChevronLeft className="w-3.5 h-3.5 stroke-[2.5]" />
                     </button>
                     <button
-                      onClick={() => setFechaSeleccionada(hoyStr)}
+                      onClick={() => irAFecha(hoyStr)}
                       className="px-2.5 py-1 rounded-xl text-xs font-bold bg-[#8C243B] text-white shadow-2xs cursor-pointer min-w-[65px] text-center"
                     >
                       {etiquetaFechaRelativa}
@@ -4097,7 +4151,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                       permitirFechasPasadas={true}
                       hoyStr={hoyStr}
                       value={fechaSeleccionada}
-                      onChange={(nuevaFecha) => setFechaSeleccionada(nuevaFecha)}
+                      onChange={(nuevaFecha) => irAFecha(nuevaFecha)}
                       title="Seleccionar fecha de métricas"
                     />
                   </div>
@@ -4114,7 +4168,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                       <IconChevronLeft className="w-3.5 h-3.5 stroke-[2.5]" />
                     </button>
                     <button
-                      onClick={() => setFechaSeleccionada(hoyStr)}
+                      onClick={() => irAFecha(hoyStr)}
                       className="px-2.5 py-1 rounded-xl text-xs font-bold bg-[#8C243B] text-white shadow-2xs cursor-pointer min-w-[75px] text-center"
                       title="Semana activa. Clic para volver a la actual"
                     >
@@ -4135,7 +4189,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                       permitirFechasPasadas={true}
                       hoyStr={hoyStr}
                       value={fechaSeleccionada}
-                      onChange={(nuevaFecha) => setFechaSeleccionada(nuevaFecha)}
+                      onChange={(nuevaFecha) => irAFecha(nuevaFecha)}
                       title="Seleccionar fecha de la semana"
                     />
                   </div>
@@ -4495,7 +4549,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
               <div
                 onTouchStart={handleTouchStartDia}
                 onTouchEnd={handleTouchEndDia}
-                className="touch-pan-y space-y-2"
+                className="touch-pan-y space-y-2 overflow-hidden"
               >
                 {/* Indicador táctil para celular */}
                 <div className="sm:hidden px-3 py-1 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl text-[10px] text-[#8C243B] font-medium flex items-center justify-center gap-1.5 select-none">
@@ -4503,19 +4557,26 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                   <span>Desliza a la izquierda o derecha para cambiar de día</span>
                 </div>
 
-                {/* TIMELINE DIARIO CRONOLÓGICO DE LA MANICURISTA CON LÍNEA ROJA EN TIEMPO REAL */}
-                {(() => {
-                  const misCitas = reservasDelDia.filter(
-                    (r) => r.cancha_id === perfilActual.canchaId && r.estado !== 'cancelada'
-                  );
+                <motion.div
+                  key={`esp-dia-${fechaSeleccionada}`}
+                  initial={{ x: direccionSlide * 60, opacity: 0.3 }}
+                  animate={{ x: 0, opacity: 1 }}
+                  transition={{ type: 'spring', stiffness: 360, damping: 28 }}
+                >
+                  {/* TIMELINE DIARIO CRONOLÓGICO DE LA MANICURISTA CON LÍNEA ROJA EN TIEMPO REAL */}
+                  {(() => {
+                    const misCitas = reservasDelDia.filter(
+                      (r) => r.cancha_id === perfilActual.canchaId && r.estado !== 'cancelada'
+                    );
 
-                  return renderTimelineManicurista(
-                    misCitas,
-                    perfilActual.nombre,
-                    perfilActual.canchaId,
-                    false
-                  );
-                })()}
+                    return renderTimelineManicurista(
+                      misCitas,
+                      perfilActual.nombre,
+                      perfilActual.canchaId,
+                      false
+                    );
+                  })()}
+                </motion.div>
               </div>
             )}
 
