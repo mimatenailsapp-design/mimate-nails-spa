@@ -3603,58 +3603,67 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
         initial={{ opacity: 0.35 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.2 }}
-        className="bg-white rounded-3xl border border-[#F2C4D2] shadow-xs"
+        className="bg-white rounded-3xl border border-[#F2C4D2] shadow-xs overflow-hidden"
       >
-        {/* Cabecera del Timeline Semanal */}
-        <div
-          onTouchStart={handleTouchStartCabeceraSemanal}
-          onTouchEnd={handleTouchEndCabeceraSemanal}
-          className="p-4 bg-gradient-to-r from-[#FFF5F7] to-[#FCE8EF] border-b border-[#F2C4D2] rounded-t-3xl flex flex-wrap items-center justify-between gap-3 touch-pan-y select-none"
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-white border border-[#F2C4D2] flex items-center justify-center font-bold text-base text-[#8C243B] shadow-2xs">
-              {icono}
-            </div>
-            <div>
-              <h3 className="font-bold text-sm sm:text-base text-[#2D2529] font-serif">
-                {nombreTarget}
-              </h3>
-              <p className="text-xs text-[#7D6870]">
-                {etiquetaSemana} · <strong className="text-[#8C243B]">{citasFiltradas.filter((r) => r.estado !== 'cancelada').length} citas</strong> agendadas
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] text-[#7D6870] hidden sm:inline">
-              Horario: {configAnticipo.horaApertura || '08:00'} a {configAnticipo.horaCierre || '19:00'}
-            </span>
-            {esSemanaActual && estaEnHorario && (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-red-50 text-red-600 border border-red-200 shadow-2xs">
-                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                Ahora: {horaMinutosActualStr}
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Indicador táctil para celular */}
-        <div className="sm:hidden px-3 py-1.5 bg-[#FFF0F4] border-b border-[#F2C4D2] text-[10px] text-[#8C243B] font-medium flex items-center justify-center gap-1.5 select-none">
-          <span>↔️</span>
-          <span>Desliza para ver días · En los topes cambia de semana</span>
-        </div>
-
         {/* Grilla Semanal dividida en 7 días y con horas de apertura a cierre */}
         <div
           ref={scrollSemanalRef}
           onTouchStart={handleTouchStartSemanalBody}
           onTouchEnd={handleTouchEndSemanalBody}
-          className="relative max-h-[70vh] sm:max-h-[76vh] overflow-auto touch-pan-x touch-pan-y rounded-b-3xl bg-white"
+          className="relative max-h-[calc(100dvh-68px)] sm:max-h-[78vh] overflow-auto touch-pan-x touch-pan-y rounded-3xl bg-white"
         >
-          <div className="min-w-[980px] sm:min-w-[1050px] w-full p-2.5 sm:p-5 pr-4 sm:pr-6">
+          {/* Cabecera e indicador móvil dentro del contenedor de scroll: se esconden al deslizar hacia abajo dejando fijo solo el día y fecha */}
+          <div className="sticky left-0 z-20 w-full">
+            {/* Cabecera del Timeline Semanal */}
+            <div
+              onTouchStart={(e) => {
+                e.stopPropagation();
+                handleTouchStartCabeceraSemanal(e);
+              }}
+              onTouchEnd={(e) => {
+                e.stopPropagation();
+                handleTouchEndCabeceraSemanal(e);
+              }}
+              className="p-3.5 sm:p-4 bg-gradient-to-r from-[#FFF5F7] to-[#FCE8EF] border-b border-[#F2C4D2] flex flex-wrap items-center justify-between gap-2.5 sm:gap-3 touch-pan-y select-none"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-white border border-[#F2C4D2] flex items-center justify-center font-bold text-base text-[#8C243B] shadow-2xs">
+                  {icono}
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm sm:text-base text-[#2D2529] font-serif">
+                    {nombreTarget}
+                  </h3>
+                  <p className="text-xs text-[#7D6870]">
+                    {etiquetaSemana} · <strong className="text-[#8C243B]">{citasFiltradas.filter((r) => r.estado !== 'cancelada').length} citas</strong> agendadas
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-[#7D6870] hidden sm:inline">
+                  Horario: {configAnticipo.horaApertura || '08:00'} a {configAnticipo.horaCierre || '19:00'}
+                </span>
+                {esSemanaActual && estaEnHorario && (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-red-50 text-red-600 border border-red-200 shadow-2xs">
+                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                    Ahora: {horaMinutosActualStr}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Indicador táctil para celular */}
+            <div className="sm:hidden px-3 py-1.5 bg-[#FFF0F4] border-b border-[#F2C4D2] text-[10px] text-[#8C243B] font-medium flex items-center justify-center gap-1.5 select-none">
+              <span>↔️</span>
+              <span>Desliza para ver días · En los topes cambia de semana</span>
+            </div>
+          </div>
+
+          <div className="min-w-[980px] sm:min-w-[1050px] w-full px-2.5 pb-2.5 sm:px-5 sm:pb-5 pr-4 sm:pr-6">
             {/* ENCABEZADOS DE LOS 7 DÍAS (ANCLADOS/STICKY ARRIBA AL HACER SCROLL VERTICAL) */}
             <div
-              className="sticky top-0 z-30 bg-white/95 backdrop-blur-md pt-1.5 pb-2.5 mb-1 border-b border-[#F2C4D2] shadow-xs"
+              className="sticky top-0 z-30 bg-white/95 backdrop-blur-md pt-2 pb-2.5 mb-1 border-b border-[#F2C4D2] shadow-xs"
             >
               <div className="flex items-center">
                 <div className="w-16 sm:w-24 pr-3 flex-shrink-0 text-right select-none sticky left-0 z-30 bg-white/95 backdrop-blur-xs">
