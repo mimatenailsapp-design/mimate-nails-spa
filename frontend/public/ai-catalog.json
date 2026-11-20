@@ -1,0 +1,23 @@
+{
+  "specVersion": "1.0",
+  "host": {
+    "displayName": "JL Mímate Nails Spa",
+    "identifier": "mimate-nails-spa.vercel.app"
+  },
+  "entries": [
+    {
+      "identifier": "https://mimate-nails-spa.vercel.app/#business",
+      "displayName": "JL Mímate Nails Spa - Reserva de citas",
+      "description": "Spa de uñas en Pereira (Cuba), Colombia. Consulta de servicios, precios y reserva de citas en línea.",
+      "mediaType": "text/html",
+      "url": "https://mimate-nails-spa.vercel.app/"
+    },
+    {
+      "identifier": "https://mimate-nails-spa.vercel.app/llms.txt",
+      "displayName": "llms.txt",
+      "description": "Resumen del sitio en Markdown para modelos de lenguaje.",
+      "mediaType": "text/markdown",
+      "url": "https://mimate-nails-spa.vercel.app/llms.txt"
+    }
+  ]
+}

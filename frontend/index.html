@@ -2,7 +2,7 @@
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="X-Content-Type-Options" content="nosniff" />
     <meta name="referrer" content="strict-origin-when-cross-origin" />
     <meta http-equiv="X-XSS-Protection" content="1; mode=block" />
@@ -42,8 +42,8 @@
     <meta property="og:description" content="El mejor spa de uñas en Pereira (Cuba). Especialistas en acrílico esculpido, base rubber, semipermanente, dipping y pedicure spa. Reserva tu cita online en segundos." />
     <meta property="og:url" content="https://mimate-nails-spa.vercel.app/" />
     <meta property="og:site_name" content="Mimate Nails" />
-    <meta property="og:image" content="https://mimate-nails-spa.vercel.app/mimate-nails-logo.png" />
-    <meta property="og:image:secure_url" content="https://mimate-nails-spa.vercel.app/mimate-nails-logo.png" />
+    <meta property="og:image" content="https://mimate-nails-spa.vercel.app/mimate-nails-logo-og.png" />
+    <meta property="og:image:secure_url" content="https://mimate-nails-spa.vercel.app/mimate-nails-logo-og.png" />
     <meta property="og:image:width" content="600" />
     <meta property="og:image:height" content="600" />
     <meta property="og:image:type" content="image/png" />
@@ -53,13 +53,15 @@
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Spa de Uñas en Pereira | JL Mímate Nails" />
     <meta name="twitter:description" content="Spa de uñas en Pereira (Cuba). Uñas acrílicas, base rubber y semipermanente. Agenda tu turno online." />
-    <meta name="twitter:image" content="https://mimate-nails-spa.vercel.app/mimate-nails-logo.png" />
+    <meta name="twitter:image" content="https://mimate-nails-spa.vercel.app/mimate-nails-logo-og.png" />
     <meta name="twitter:image:alt" content="JL Mímate Nails Spa de Uñas" />
 
     <!-- Fuentes Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="preload" as="image" href="/mimate-nails-logo.webp" type="image/webp" fetchpriority="high">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" media="print" onload="this.media='all'">
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap"></noscript>
 
     <!-- Schema.org Datos Estructurados JSON-LD: Nombre Oficial del Sitio en Google (Site Name) -->
     <script type="application/ld+json">
@@ -85,8 +87,8 @@
       "@id": "https://mimate-nails-spa.vercel.app/#business",
       "name": "JL Mímate Nails Spa",
       "alternateName": "Mímate Nails Pereira",
-      "image": "https://mimate-nails-spa.vercel.app/mimate-nails-logo.png",
-      "logo": "https://mimate-nails-spa.vercel.app/mimate-nails-logo.png",
+      "image": "https://mimate-nails-spa.vercel.app/mimate-nails-logo-og.png",
+      "logo": "https://mimate-nails-spa.vercel.app/mimate-nails-logo-og.png",
       "url": "https://mimate-nails-spa.vercel.app/",
       "telephone": "+573219610896",
       "priceRange": "$$",

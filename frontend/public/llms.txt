@@ -1,0 +1,14 @@
+# JL Mímate Nails Spa
+
+> Spa de uñas en Pereira (sector Cuba), Risaralda, Colombia. Uñas acrílicas esculpidas, base rubber, semipermanente, dipping, press on, manicure y pedicure spa para dama y caballero. Agenda online de citas.
+
+Dirección: Calle 66 bis #26-57, Cuba, Pereira. Horario: lunes a sábado, 9:30 am a 5:30 pm, con reserva previa. WhatsApp: +57 321 961 0896.
+
+## Páginas principales
+
+- [Agenda y reserva de citas](https://mimate-nails-spa.vercel.app/): catálogo de servicios con precios, especialistas y reserva en línea.
+- [Mapa del sitio](https://mimate-nails-spa.vercel.app/sitemap.xml): listado de URLs públicas.
+
+## Información útil
+
+- [Catálogo para agentes](https://mimate-nails-spa.vercel.app/.well-known/ai-catalog.json): descripción máquina-legible del sitio y sus recursos.

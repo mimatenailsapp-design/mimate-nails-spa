@@ -1139,7 +1139,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
       {onIrAlAdmin && (
         <button
           onClick={onIrAlAdmin}
-          className="absolute top-3 right-3 z-20 text-[10px] font-medium tracking-wide text-[#7D6870] hover:text-[#8C243B] bg-white/75 hover:bg-white border border-[#F2C4D2]/80 hover:border-[#F2C4D2] px-3 py-1.5 rounded-full shadow-2xs backdrop-blur-md transition cursor-pointer flex items-center gap-1 opacity-70 hover:opacity-100"
+          className="absolute top-3 right-3 z-20 text-[10px] font-medium tracking-wide text-[#665158] hover:text-[#8C243B] bg-white/75 hover:bg-white border border-[#F2C4D2]/80 hover:border-[#F2C4D2] px-3 py-1.5 rounded-full shadow-2xs backdrop-blur-md transition cursor-pointer flex items-center gap-1 opacity-70 hover:opacity-100"
           title="Acceso exclusivo al panel de turnos del equipo"
         >
           <span>Portal del Equipo & Admin</span>
@@ -1154,8 +1154,12 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
           {/* LOGOTIPO OFICIAL EXTRAÍDO DE LA PÁGINA 1 DEL PDF */}
           <div className="relative w-44 h-44 sm:w-52 sm:h-52 mx-auto rounded-3xl overflow-hidden shadow-lg border-2 border-[#F2C4D2] bg-[#F9D2D9] transition-transform hover:scale-105 duration-300">
             <img
-              src="/mimate-nails-logo.png"
+              src="/mimate-nails-logo.webp"
               alt="JL Mímate Nails - Spa de Uñas en Pereira Cuba"
+              width={640}
+              height={640}
+              decoding="async"
+              fetchPriority="high"
               className="w-full h-full object-cover"
             />
           </div>
@@ -1166,14 +1170,14 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
               Spa de Uñas en Pereira
             </span>
           </h1>
-          <p className="text-sm sm:text-base text-[#7D6870] max-w-md mx-auto italic font-medium leading-relaxed">
+          <p className="text-sm sm:text-base text-[#665158] max-w-md mx-auto italic font-medium leading-relaxed">
             "Mímate como te lo mereces. ¡Uñas acrílicas, semipermanente y rubber siempre perfectas!"
           </p>
 
           <div className="flex items-center justify-center gap-2.5 pt-1 text-xs sm:text-sm font-semibold text-[#8C243B] tracking-wide">
             <span className="w-8 sm:w-12 h-px bg-[#F2C4D2]" />
             <span className="flex items-center gap-1.5">
-              <IconSparkles className="w-3.5 h-3.5 text-[#C74B66]" />
+              <IconSparkles className="w-3.5 h-3.5 text-[#A8324F]" />
               <span>Reserva tu cita en segundos</span>
             </span>
             <span className="w-8 sm:w-12 h-px bg-[#F2C4D2]" />
@@ -1223,11 +1227,11 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
             className="bg-white border border-[#F2C4D2] hover:border-[#8C243B] rounded-2xl p-4 text-center shadow-xs space-y-1 block transition group cursor-pointer hover:shadow-sm"
             title="Toca para abrir la ubicación en Google Maps o Apple Maps"
           >
-            <span className="text-[10px] uppercase font-bold tracking-widest text-[#C74B66] block">
+            <span className="text-[10px] uppercase font-bold tracking-widest text-[#A8324F] block">
               Dónde
             </span>
             <p className="text-xs font-bold text-[#2D2529] group-hover:text-[#8C243B] flex items-center justify-center gap-1 transition">
-              <IconMapPin className="w-3.5 h-3.5 text-[#C74B66] group-hover:scale-110 transition shrink-0" />
+              <IconMapPin className="w-3.5 h-3.5 text-[#A8324F] group-hover:scale-110 transition shrink-0" />
               Pereira, Cuba (Cl. 66 #26-57)
             </p>
             <p className="text-[11px] text-[#8C243B] font-semibold flex items-center justify-center gap-1 group-hover:underline">
@@ -1237,30 +1241,30 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
           </a>
 
           <div className="bg-white border border-[#F2C4D2] rounded-2xl p-4 text-center shadow-xs space-y-1">
-            <span className="text-[10px] uppercase font-bold tracking-widest text-[#C74B66] block">
+            <span className="text-[10px] uppercase font-bold tracking-widest text-[#A8324F] block">
               Horarios
             </span>
             <p className="text-xs font-bold text-[#2D2529] flex items-center justify-center gap-1">
-              <IconClock className="w-3.5 h-3.5 text-[#C74B66] shrink-0" />
+              <IconClock className="w-3.5 h-3.5 text-[#A8324F] shrink-0" />
               {horarioTexto}
             </p>
-            <p className="text-[11px] text-[#7D6870]">Domingos cerrado (Diciembre abierto)</p>
+            <p className="text-[11px] text-[#665158]">Domingos cerrado (Diciembre abierto)</p>
           </div>
 
           <div className="bg-white border border-[#F2C4D2] rounded-2xl p-4 text-center shadow-xs space-y-1">
-            <span className="text-[10px] uppercase font-bold tracking-widest text-[#C74B66] block">
+            <span className="text-[10px] uppercase font-bold tracking-widest text-[#A8324F] block">
               WhatsApp
             </span>
             <a
               href="https://wa.me/573219610896"
               target="_blank"
               rel="noreferrer"
-              className="text-xs font-bold text-[#8C243B] hover:text-[#C74B66] flex items-center justify-center gap-1 transition"
+              className="text-xs font-bold text-[#8C243B] hover:text-[#A8324F] flex items-center justify-center gap-1 transition"
             >
               <IconBrandWhatsapp className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
               321 961 0896 💬
             </a>
-            <p className="text-[11px] text-[#7D6870]">Atención y dudas</p>
+            <p className="text-[11px] text-[#665158]">Atención y dudas</p>
           </div>
         </div>
 
@@ -1269,9 +1273,9 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
           <div className="text-center space-y-1">
             <h2 className="text-xl sm:text-2xl font-bold text-[#2D2529] flex items-center justify-center gap-2 font-serif">
               <span>Nuestro</span>
-              <span className="italic text-[#C74B66] font-serif font-bold">equipo de especialistas</span>
+              <span className="italic text-[#A8324F] font-serif font-bold">equipo de especialistas</span>
             </h2>
-            <p className="text-xs text-[#7D6870]">
+            <p className="text-xs text-[#665158]">
               Profesionales dedicadas listas para consentirte y transformar tus uñas 💕
             </p>
           </div>
@@ -1298,14 +1302,18 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                     <div className="w-full h-full bg-white rounded-full overflow-hidden flex items-center justify-center border-2 border-white aspect-square">
                       {foto ? (
                         <img
-                          src={foto}
+                          src={foto.replace(/\.jpe?g$/i, '.webp')}
                           alt={emp.nombre}
+                          width={180}
+                          height={180}
+                          loading="lazy"
+                          decoding="async"
                           className="w-full h-full object-cover object-center aspect-square group-hover:scale-105 transition duration-300"
                         />
                       ) : (
                         <div className="w-full h-full bg-[#FFF5F7] flex flex-col items-center justify-center text-[#8C243B] font-bold aspect-square">
                           <span className="text-xl">💅</span>
-                          <span className="text-[10px] text-[#7D6870] font-semibold">{emp.nombre}</span>
+                          <span className="text-[10px] text-[#665158] font-semibold">{emp.nombre}</span>
                         </div>
                       )}
                     </div>
@@ -1332,7 +1340,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
         <section className="space-y-4">
           <h2 className="text-lg font-bold text-[#2D2529] flex items-center justify-center gap-1.5">
             <span>Elige tu</span>
-            <span className="italic text-[#C74B66] font-serif font-bold">servicio</span>
+            <span className="italic text-[#A8324F] font-serif font-bold">servicio</span>
           </h2>
 
           {/* Chips de Categorías con Scroll Horizontal */}
@@ -1344,7 +1352,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                 className={`px-4 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition cursor-pointer ${
                   categoriaActiva === cat
                     ? 'bg-[#8C243B] text-white shadow-xs'
-                    : 'bg-white border border-[#F2C4D2] text-[#7D6870] hover:border-[#C74B66]'
+                    : 'bg-white border border-[#F2C4D2] text-[#665158] hover:border-[#C74B66]'
                 }`}
               >
                 {cat}
@@ -1368,7 +1376,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                       {formatearDuracion(s.duracion)}
                     </span>
                   </div>
-                  <p className="text-xs text-[#7D6870] max-w-md leading-relaxed">
+                  <p className="text-xs text-[#665158] max-w-md leading-relaxed">
                     {s.descripcion}
                   </p>
                 </div>
@@ -1395,7 +1403,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
             <h2 className="text-xl sm:text-2xl font-extrabold text-[#2D2529]">
               El Mejor Spa de Uñas en Pereira (Cuba)
             </h2>
-            <p className="text-xs sm:text-sm text-[#7D6870] max-w-xl mx-auto">
+            <p className="text-xs sm:text-sm text-[#665158] max-w-xl mx-auto">
               En <strong className="text-[#8C243B]">JL Mímate Nails</strong> cuidamos la salud y estética de tus manos y pies con productos de alta gama y técnicas avanzadas en el corazón de Cuba, Pereira.
             </p>
           </div>
@@ -1404,10 +1412,10 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
             <div className="p-4 rounded-2xl bg-white/80 border border-[#F2C4D2] shadow-xs space-y-1.5">
               <div className="flex items-center gap-2 text-[#8C243B] font-bold text-sm">
-                <IconSparkles className="w-4 h-4 text-[#C74B66]" />
+                <IconSparkles className="w-4 h-4 text-[#A8324F]" />
                 <h3>Especialistas en Acrílico y Rubber</h3>
               </div>
-              <p className="text-xs text-[#7D6870] leading-relaxed">
+              <p className="text-xs text-[#665158] leading-relaxed">
                 Técnicas modernas en acrílico esculpido, nivelación base rubber, dipping y press on con acabado natural y máxima durabilidad.
               </p>
             </div>
@@ -1417,7 +1425,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                 <IconCheck className="w-4 h-4 text-emerald-600" />
                 <h3>Bioseguridad y Esterilización 100%</h3>
               </div>
-              <p className="text-xs text-[#7D6870] leading-relaxed">
+              <p className="text-xs text-[#665158] leading-relaxed">
                 Herramientas desinfectadas y esterilizadas rigurosamente bajo protocolos de grado hospitalario para garantizar tu seguridad y bienestar.
               </p>
             </div>
@@ -1427,17 +1435,17 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                 <IconCalendar className="w-4 h-4 text-[#8C243B]" />
                 <h3>Citas Online Inmediatas</h3>
               </div>
-              <p className="text-xs text-[#7D6870] leading-relaxed">
+              <p className="text-xs text-[#665158] leading-relaxed">
                 Agenda tu cita 24/7 en segundos sin esperas. Elige tu especialista, el servicio exacto y el horario que mejor se adapte a tu día.
               </p>
             </div>
 
             <div className="p-4 rounded-2xl bg-white/80 border border-[#F2C4D2] shadow-xs space-y-1.5">
               <div className="flex items-center gap-2 text-[#8C243B] font-bold text-sm">
-                <IconMapPin className="w-4 h-4 text-[#C74B66]" />
+                <IconMapPin className="w-4 h-4 text-[#A8324F]" />
                 <h3>Ubicación Fácil y Accesible</h3>
               </div>
-              <p className="text-xs text-[#7D6870] leading-relaxed">
+              <p className="text-xs text-[#665158] leading-relaxed">
                 Calle 66 bis #26-57, Cuba, Pereira, Risaralda. Sector central, cómodo y de fácil acceso en transporte público o vehículo particular.
               </p>
             </div>
@@ -1488,7 +1496,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                   <p
                     className={
                       faqAbierto === faq.id
-                        ? 'mt-2 text-xs text-[#7D6870] leading-relaxed pl-1 border-l-2 border-[#8C243B]'
+                        ? 'mt-2 text-xs text-[#665158] leading-relaxed pl-1 border-l-2 border-[#8C243B]'
                         : 'hidden'
                     }
                   >
@@ -1499,7 +1507,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
             </div>
 
             {/* CAJA MAPS & CONTACTO */}
-            <div className="pt-3 border-t border-[#FCE8EF] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-[#7D6870]">
+            <div className="pt-3 border-t border-[#FCE8EF] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-[#665158]">
               <div className="flex items-center gap-1.5">
                 <IconMapPin className="w-4 h-4 text-[#8C243B] shrink-0" />
                 <span>Calle 66 bis #26-57, Cuba, Pereira</span>
@@ -1529,7 +1537,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                   className="font-bold text-[#8C243B] hover:underline flex items-center gap-1"
                   title="Instagram @mimate.nais"
                 >
-                  <IconBrandInstagram className="w-3.5 h-3.5 text-[#C74B66]" />
+                  <IconBrandInstagram className="w-3.5 h-3.5 text-[#A8324F]" />
                   <span>@mimate.nais</span>
                 </a>
               </div>
@@ -1539,13 +1547,13 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
       </main>
 
       {/* FOOTER */}
-      <footer className="text-center py-8 px-4 text-xs text-[#7D6870] border-t border-[#F2C4D2]/60 space-y-3 bg-white/40">
+      <footer className="text-center py-8 px-4 text-xs text-[#665158] border-t border-[#F2C4D2]/60 space-y-3 bg-white/40">
         <p className="font-semibold text-[#8C243B] text-sm tracking-wide">
           JL Mímate Nails Spa ✦
         </p>
 
         {/* Enlaces Legales Discretos */}
-        <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-[#7D6870]">
+        <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-[#665158]">
           <button
             type="button"
             onClick={() => setModalLegalTab('datos')}
@@ -1584,27 +1592,27 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
             href="https://www.instagram.com/mimate.nais/"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white border border-[#F2C4D2] hover:border-[#C74B66] text-[#8C243B] hover:text-[#C74B66] font-semibold text-xs transition-all shadow-xs hover:shadow-sm group cursor-pointer"
+            className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white border border-[#F2C4D2] hover:border-[#C74B66] text-[#8C243B] hover:text-[#A8324F] font-semibold text-xs transition-all shadow-xs hover:shadow-sm group cursor-pointer"
             title="Síguenos en Instagram @mimate.nais"
           >
-            <IconBrandInstagram className="w-4 h-4 text-[#C74B66] group-hover:scale-110 transition-transform" />
+            <IconBrandInstagram className="w-4 h-4 text-[#A8324F] group-hover:scale-110 transition-transform" />
             <span>@mimate.nais</span>
-            <span className="text-[10px] text-[#7D6870] group-hover:text-[#C74B66] transition-colors">↗</span>
+            <span className="text-[10px] text-[#665158] group-hover:text-[#A8324F] transition-colors">↗</span>
           </a>
         </div>
 
-        <p className="text-[11px] opacity-80">
+        <p className="text-[11px]">
           Calle 66 bis #26-57, Sector Cuba · Pereira, Risaralda · Colombia · {horarioTexto}
         </p>
 
         {/* Reconocimiento Devmake */}
-        <div className="pt-2 border-t border-[#F2C4D2]/40 text-[11px] text-[#7D6870] flex items-center justify-center gap-1">
+        <div className="pt-2 border-t border-[#F2C4D2]/40 text-[11px] text-[#665158] flex items-center justify-center gap-1">
           <span>Desarrollado y gestionado por</span>
           <a
             href="https://devmake.vercel.app/"
             target="_blank"
             rel="noopener noreferrer"
-            className="font-bold text-[#8C243B] hover:text-[#C74B66] underline transition-colors"
+            className="font-bold text-[#8C243B] hover:text-[#A8324F] underline transition-colors"
           >
             Devmake (Developers Maven Kernel)
           </a>
@@ -1624,7 +1632,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
               {/* Header Modal */}
               <div className="p-4 sm:p-5 border-b border-[#F2C4D2] bg-white flex items-center justify-between">
                 <div>
-                  <span className="text-[10px] font-extrabold tracking-widest uppercase text-[#C74B66] block">
+                  <span className="text-[10px] font-extrabold tracking-widest uppercase text-[#A8324F] block">
                     {paso === 3 ? '¡Listo!' : `Paso ${paso} de 2`}
                   </span>
                   <h3 className="font-bold text-sm sm:text-base text-[#2D2529]">
@@ -1647,9 +1655,9 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                     <div>
                       <h2 className="text-lg font-bold text-[#2D2529] flex items-center gap-1.5">
                         <span>¿Cuándo te</span>
-                        <span className="italic text-[#C74B66] font-serif font-bold">esperamos?</span>
+                        <span className="italic text-[#A8324F] font-serif font-bold">esperamos?</span>
                       </h2>
-                      <p className="text-xs text-[#7D6870]">
+                      <p className="text-xs text-[#665158]">
                         Elige tu especialista, servicios adicionales y fecha deseada 💕
                       </p>
                     </div>
@@ -1672,9 +1680,9 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                         <div className="flex flex-wrap gap-2 pt-1">
                           {/* Principal */}
                           <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-[#F2C4D2] text-[#2D2529] rounded-xl text-xs sm:text-sm font-semibold shadow-xs">
-                            <span className="text-[#C74B66]">✨</span>
+                            <span className="text-[#A8324F]">✨</span>
                             <span className="font-bold">{servicioSeleccionado?.nombre}</span>
-                            <span className="text-xs text-[#7D6870] font-medium bg-[#FFF5F7] px-2 py-0.5 rounded-md border border-[#F2C4D2]/60">
+                            <span className="text-xs text-[#665158] font-medium bg-[#FFF5F7] px-2 py-0.5 rounded-md border border-[#F2C4D2]/60">
                               {formatearDuracion(servicioSeleccionado?.duracion || 60)} · ${servicioSeleccionado?.precio.toLocaleString('es-CO')}
                             </span>
                           </div>
@@ -1731,7 +1739,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                             exit={{ opacity: 0, height: 0 }}
                             className="bg-white border-2 border-[#F2C4D2] rounded-2xl p-2.5 max-h-60 overflow-y-auto space-y-2 shadow-md"
                           >
-                            <p className="text-xs font-bold text-[#7D6870] px-2 py-1">
+                            <p className="text-xs font-bold text-[#665158] px-2 py-1">
                               Toca para agregar o quitar servicios adicionales a tu cita:
                             </p>
                             {servicios
@@ -1750,7 +1758,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                                   >
                                     <div>
                                       <p className="font-bold text-sm sm:text-base text-[#2D2529]">{s.nombre}</p>
-                                      <p className="text-xs text-[#7D6870]">
+                                      <p className="text-xs text-[#665158]">
                                         {s.categoria} · {s.duracion} min
                                       </p>
                                     </div>
@@ -1762,7 +1770,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                                         className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-sm transition ${
                                           yaAgregado
                                             ? 'bg-[#8C243B] text-white shadow-xs'
-                                            : 'bg-white border-2 border-[#F2C4D2] text-[#7D6870]'
+                                            : 'bg-white border-2 border-[#F2C4D2] text-[#665158]'
                                         }`}
                                       >
                                         {yaAgregado ? '✓' : '+'}
@@ -1777,12 +1785,12 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
 
                       {/* Barra de Total en Vivo */}
                       <div className="pt-3 border-t border-[#F2C4D2] flex items-center justify-between text-xs sm:text-sm">
-                        <span className="text-[#7D6870] font-bold text-xs sm:text-sm">
+                        <span className="text-[#665158] font-bold text-xs sm:text-sm">
                           Total estimado de tu cita:
                         </span>
                         <div className="flex items-center gap-3 sm:gap-4 font-bold">
                           <span className="text-[#2D2529] flex items-center gap-1.5 font-mono text-xs sm:text-sm bg-white px-2.5 py-1 rounded-lg border border-[#F2C4D2]">
-                            <IconClock className="w-4 h-4 text-[#C74B66]" />
+                            <IconClock className="w-4 h-4 text-[#A8324F]" />
                             {formatearDuracion(duracionTotal)}
                           </span>
                           <span className="text-[#8C243B] font-mono text-base sm:text-lg font-black">
@@ -1793,7 +1801,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                     </div>
 
                     <div className="space-y-1.5 relative">
-                      <label className="text-[11px] font-bold uppercase tracking-wider text-[#7D6870] block">
+                      <label className="text-[11px] font-bold uppercase tracking-wider text-[#665158] block">
                         Especialista de uñas
                       </label>
                       <button
@@ -1819,7 +1827,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                           })()}
                         </span>
                         <IconChevronDown
-                          className={`w-4 h-4 text-[#C74B66] shrink-0 transition-transform duration-200 ${
+                          className={`w-4 h-4 text-[#A8324F] shrink-0 transition-transform duration-200 ${
                             menuEspecialistaAbierto ? 'rotate-180' : ''
                           }`}
                         />
@@ -1884,10 +1892,10 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                     {/* Selector de fecha responsive con atajos y calendario nativo */}
                     <div className="space-y-2 relative" ref={contenedorCalendarioRef}>
                       <div className="flex items-center justify-between">
-                        <label className="text-[11px] font-bold uppercase tracking-wider text-[#7D6870] block">
+                        <label className="text-[11px] font-bold uppercase tracking-wider text-[#665158] block">
                           Fecha
                         </label>
-                        <span className="text-[10px] text-[#C74B66] font-medium hidden sm:inline">
+                        <span className="text-[10px] text-[#A8324F] font-medium hidden sm:inline">
                           Toca para cambiar de día
                         </span>
                       </div>
@@ -1905,13 +1913,13 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                         aria-expanded={calendarioAbierto}
                       >
                         <div className="flex items-center gap-2.5 truncate">
-                          <IconCalendar className="w-4 h-4 text-[#C74B66] shrink-0" />
+                          <IconCalendar className="w-4 h-4 text-[#A8324F] shrink-0" />
                           <span className="font-bold text-[#2D2529] truncate capitalize">
                             {formatearFechaElegante(fecha)}
                           </span>
                         </div>
                         <IconChevronDown
-                          className={`w-4 h-4 text-[#7D6870] shrink-0 transition-transform duration-200 ${
+                          className={`w-4 h-4 text-[#665158] shrink-0 transition-transform duration-200 ${
                             calendarioAbierto ? 'rotate-180 text-[#8C243B]' : ''
                           }`}
                         />
@@ -1931,7 +1939,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                             <div className="flex items-center justify-between pb-2 border-b border-[#FCE8EF]">
                               <div className="flex items-center gap-2">
                                 <div className="w-7 h-7 rounded-lg bg-[#FFF0F4] text-[#8C243B] flex items-center justify-center">
-                                  <IconCalendar className="w-4 h-4 text-[#C74B66]" />
+                                  <IconCalendar className="w-4 h-4 text-[#A8324F]" />
                                 </div>
                                 <span className="font-serif font-bold text-sm text-[#2D2529] capitalize">
                                   {nombreMesAño}
@@ -1977,11 +1985,11 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                             </div>
 
                             {/* Días de la semana */}
-                            <div className="grid grid-cols-7 text-center text-[10px] font-extrabold uppercase tracking-wider text-[#7D6870]">
+                            <div className="grid grid-cols-7 text-center text-[10px] font-extrabold uppercase tracking-wider text-[#665158]">
                               {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((d, idx) => (
                                 <div
                                   key={d}
-                                  className={`py-1 ${idx === 6 ? 'text-[#C74B66]' : ''}`}
+                                  className={`py-1 ${idx === 6 ? 'text-[#A8324F]' : ''}`}
                                 >
                                   {d}
                                 </div>
@@ -2063,7 +2071,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                             </div>
 
                             {/* Pie de leyenda */}
-                            <div className="pt-2 border-t border-[#FCE8EF] flex items-center justify-between text-[11px] text-[#7D6870]">
+                            <div className="pt-2 border-t border-[#FCE8EF] flex items-center justify-between text-[11px] text-[#665158]">
                               <div className="flex items-center gap-1.5">
                                 <span className="w-2 h-2 rounded-full bg-[#C74B66]" />
                                 <span>Lun–Sáb disponible</span>
@@ -2117,13 +2125,13 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
 
                     {/* Grid de Horarios */}
                     <div className="space-y-2">
-                      <label className="text-[11px] font-bold uppercase tracking-wider text-[#7D6870] block">
+                      <label className="text-[11px] font-bold uppercase tracking-wider text-[#665158] block">
                         Horarios Disponibles ({horarioTexto})
                       </label>
 
                       {cargandoSlots ? (
-                        <div className="py-8 text-center text-xs text-[#7D6870] flex items-center justify-center gap-2">
-                          <IconLoader2 className="w-4 h-4 animate-spin text-[#C74B66]" />
+                        <div className="py-8 text-center text-xs text-[#665158] flex items-center justify-center gap-2">
+                          <IconLoader2 className="w-4 h-4 animate-spin text-[#A8324F]" />
                           <span>Consultando horarios libres...</span>
                         </div>
                       ) : avisoSlots ? (
@@ -2131,7 +2139,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                           {avisoSlots}
                         </div>
                       ) : slots.length === 0 ? (
-                        <div className="p-4 bg-white border border-[#F2C4D2] rounded-xl text-center text-xs text-[#7D6870]">
+                        <div className="p-4 bg-white border border-[#F2C4D2] rounded-xl text-center text-xs text-[#665158]">
                           No hay turnos disponibles para esta fecha.
                         </div>
                       ) : (
@@ -2172,9 +2180,9 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                     <div>
                       <h2 className="text-lg font-bold text-[#2D2529] flex items-center gap-1.5">
                         <span>Tus</span>
-                        <span className="italic text-[#C74B66] font-serif font-bold">datos</span>
+                        <span className="italic text-[#A8324F] font-serif font-bold">datos</span>
                       </h2>
-                      <p className="text-xs text-[#7D6870]">
+                      <p className="text-xs text-[#665158]">
                         {nombreServiciosCombinados} · {formatearDuracion(duracionTotal)} · {fecha} · {horaSeleccionada}
                       </p>
                     </div>
@@ -2198,7 +2206,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
 
                     <div className="space-y-3">
                       <div className="space-y-1">
-                        <label className="text-[11px] font-bold uppercase tracking-wider text-[#7D6870] block">
+                        <label className="text-[11px] font-bold uppercase tracking-wider text-[#665158] block">
                           WhatsApp de contacto
                         </label>
                         <input
@@ -2213,7 +2221,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                       </div>
 
                       <div className="space-y-1">
-                        <label className="text-[11px] font-bold uppercase tracking-wider text-[#7D6870] block">
+                        <label className="text-[11px] font-bold uppercase tracking-wider text-[#665158] block">
                           Nombre completo
                         </label>
                         <input
@@ -2266,7 +2274,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
 
                                 <div className="grid grid-cols-3 gap-2 text-center font-medium">
                                   <div className="bg-white p-2 rounded-xl border border-[#F2C4D2]">
-                                    <span className="text-[10px] text-[#7D6870] uppercase font-bold tracking-wider block">
+                                    <span className="text-[10px] text-[#665158] uppercase font-bold tracking-wider block">
                                       Servicio
                                     </span>
                                     <span className="font-extrabold text-[#2D2529] text-xs font-mono">
@@ -2282,10 +2290,10 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                                     </span>
                                   </div>
                                   <div className="bg-white p-2 rounded-xl border border-[#F2C4D2]">
-                                    <span className="text-[10px] text-[#7D6870] uppercase font-bold tracking-wider block">
+                                    <span className="text-[10px] text-[#665158] uppercase font-bold tracking-wider block">
                                       En el Spa
                                     </span>
-                                    <span className="font-extrabold text-[#7D6870] text-xs font-mono">
+                                    <span className="font-extrabold text-[#665158] text-xs font-mono">
                                       ${saldo.toLocaleString('es-CO')}
                                     </span>
                                   </div>
@@ -2301,15 +2309,15 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                                   </div>
                                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] font-mono">
                                     <div className="p-2 bg-[#FFF5F7] rounded-lg border border-[#F2C4D2] flex justify-between items-center">
-                                      <span className="text-[#7D6870]">📲 Nequi:</span>
+                                      <span className="text-[#665158]">📲 Nequi:</span>
                                       <strong className="text-[#2D2529] select-all">{spaConfig.nequiNumero || '321 961 0896'}</strong>
                                     </div>
                                     <div className="p-2 bg-[#FFF5F7] rounded-lg border border-[#F2C4D2] flex justify-between items-center">
-                                      <span className="text-[#7D6870]">🏦 Bancolombia:</span>
+                                      <span className="text-[#665158]">🏦 Bancolombia:</span>
                                       <strong className="text-[#2D2529] select-all">{spaConfig.bancolombiaNumero || 'Ahorros 245-000123-88'}</strong>
                                     </div>
                                   </div>
-                                  <p className="text-[10px] text-[#7D6870] italic">
+                                  <p className="text-[10px] text-[#665158] italic">
                                     Titular: <strong>{spaConfig.titularCuenta || 'JL Mímate Nails Spa'}</strong> · Tu nuevo turno se apartará por 30 min mientras envías el comprobante por WhatsApp.
                                   </p>
                                 </div>
@@ -2321,7 +2329,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                             <div className="space-y-2">
                               <div className="grid grid-cols-3 gap-2 text-center font-medium">
                                 <div className="bg-white p-2 rounded-xl border border-[#F2C4D2]">
-                                  <span className="text-[10px] text-[#7D6870] uppercase font-bold tracking-wider block">
+                                  <span className="text-[10px] text-[#665158] uppercase font-bold tracking-wider block">
                                     Nuevo Servicio
                                   </span>
                                   <span className="font-extrabold text-[#2D2529] text-xs font-mono">
@@ -2337,7 +2345,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                                   </span>
                                 </div>
                                 <div className="bg-white p-2 rounded-xl border border-[#F2C4D2]">
-                                  <span className="text-[10px] text-[#7D6870] uppercase font-bold tracking-wider block">
+                                  <span className="text-[10px] text-[#665158] uppercase font-bold tracking-wider block">
                                     Excedente en Spa
                                   </span>
                                   <span className="font-extrabold text-[#8C243B] text-xs font-mono">
@@ -2346,7 +2354,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                                 </div>
                               </div>
 
-                              <div className="p-2.5 bg-white rounded-xl border border-[#F2C4D2] text-[11px] text-[#7D6870] leading-snug">
+                              <div className="p-2.5 bg-white rounded-xl border border-[#F2C4D2] text-[11px] text-[#665158] leading-snug">
                                 {abono > 0 ? (
                                   mismoServicio ? (
                                     <p>🌸 Mantienes el mismo servicio (<strong>{servicioSeleccionado?.nombre}</strong>). Se transfiere tu abono de ${abono.toLocaleString('es-CO')} y el excedente a pagar en el spa se mantiene igual.</p>
@@ -2381,7 +2389,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                                 </div>
                               )}
                               <div className="flex items-center gap-1.5 text-[#8C243B] font-bold">
-                                <IconSparkles className="w-4 h-4 text-[#C74B66] shrink-0" />
+                                <IconSparkles className="w-4 h-4 text-[#A8324F] shrink-0" />
                                 <span>
                                   {cubreTotal
                                     ? 'Valor a transferir para confirmar cupo:'
@@ -2391,7 +2399,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
 
                               <div className="grid grid-cols-2 gap-2 text-center font-medium">
                                 <div className="bg-white p-2.5 rounded-xl border border-[#F2C4D2]">
-                                  <span className="text-[10px] text-[#7D6870] uppercase font-bold tracking-wider block">
+                                  <span className="text-[10px] text-[#665158] uppercase font-bold tracking-wider block">
                                     {cubreTotal ? 'Total a transferir (100%)' : 'Abono fijo requerido'}
                                   </span>
                                   <span className="font-extrabold text-[#8C243B] text-sm font-mono">
@@ -2399,7 +2407,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                                   </span>
                                 </div>
                                 <div className="bg-white p-2.5 rounded-xl border border-[#F2C4D2]">
-                                  <span className="text-[10px] text-[#7D6870] uppercase font-bold tracking-wider block">
+                                  <span className="text-[10px] text-[#665158] uppercase font-bold tracking-wider block">
                                     Saldo en el spa
                                   </span>
                                   <span className="font-extrabold text-[#2D2529] text-sm font-mono">
@@ -2417,13 +2425,13 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                           );
                         })()}
 
-                        <p className="text-[11px] text-[#7D6870] leading-snug">
+                        <p className="text-[11px] text-[#665158] leading-snug">
                           🔒 Tu turno quedará <strong>pre-apartado por 30 minutos</strong> mientras realizas la transferencia y envías el comprobante a nuestro WhatsApp.
                         </p>
                       </div>
                     ) : (
-                      <div className="bg-white border border-[#F2C4D2] rounded-xl p-3 flex items-start gap-2 text-xs text-[#7D6870]">
-                        <IconHeart className="w-4 h-4 text-[#C74B66] shrink-0 mt-0.5" />
+                      <div className="bg-white border border-[#F2C4D2] rounded-xl p-3 flex items-start gap-2 text-xs text-[#665158]">
+                        <IconHeart className="w-4 h-4 text-[#A8324F] shrink-0 mt-0.5" />
                         <p className="leading-snug">
                           <strong>Sin cobro anticipado:</strong> Cancelas el valor de tu servicio (${servicioSeleccionado?.precio.toLocaleString('es-CO')} COP) el día de tu cita directamente en el spa.
                         </p>
@@ -2431,13 +2439,13 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                     )}
 
                     {/* Indicación de Precios Claros (Ley 1480 de 2011) */}
-                    <div className="flex items-center justify-between text-[11px] text-[#7D6870] px-1 pt-0.5">
+                    <div className="flex items-center justify-between text-[11px] text-[#665158] px-1 pt-0.5">
                       <span>Tarifas en pesos colombianos (COP)</span>
                       <span className="font-semibold text-[#8C243B]">Precio final · Exento de IVA</span>
                     </div>
 
                     {/* Checkbox de Autorización de Datos y Términos (Ley 1581 / Dcto 1377 / Ley 1480) */}
-                    <label className="flex items-start gap-2.5 p-3 rounded-xl bg-white border border-[#F2C4D2] cursor-pointer hover:border-[#8C243B] transition-colors text-xs text-[#7D6870] shadow-2xs">
+                    <label className="flex items-start gap-2.5 p-3 rounded-xl bg-white border border-[#F2C4D2] cursor-pointer hover:border-[#8C243B] transition-colors text-xs text-[#665158] shadow-2xs">
                       <input
                         type="checkbox"
                         checked={aceptaPoliticas}
@@ -2453,7 +2461,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                             e.stopPropagation();
                             setModalLegalTab('datos');
                           }}
-                          className="font-bold text-[#8C243B] hover:text-[#C74B66] underline inline cursor-pointer"
+                          className="font-bold text-[#8C243B] hover:text-[#A8324F] underline inline cursor-pointer"
                         >
                           Tratamiento de mis Datos Personales
                         </button>{' '}
@@ -2465,7 +2473,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                             e.stopPropagation();
                             setModalLegalTab('terminos');
                           }}
-                          className="font-bold text-[#8C243B] hover:text-[#C74B66] underline inline cursor-pointer"
+                          className="font-bold text-[#8C243B] hover:text-[#A8324F] underline inline cursor-pointer"
                         >
                           Términos y Cancelaciones
                         </button>{' '}
@@ -2474,7 +2482,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                     </label>
 
                     {!aceptaPoliticas && telefono.trim() && nombre.trim() && (
-                      <p className="text-[11px] text-[#C74B66] text-center font-medium animate-in fade-in duration-150">
+                      <p className="text-[11px] text-[#A8324F] text-center font-medium animate-in fade-in duration-150">
                         Por favor autoriza el tratamiento de datos para confirmar tu cita.
                       </p>
                     )}
@@ -2483,7 +2491,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                     <div className="flex items-center gap-2 pt-1">
                       <button
                         onClick={() => setPaso(1)}
-                        className="p-3 bg-white border border-[#F2C4D2] text-[#7D6870] hover:text-[#2D2529] rounded-xl transition cursor-pointer"
+                        className="p-3 bg-white border border-[#F2C4D2] text-[#665158] hover:text-[#2D2529] rounded-xl transition cursor-pointer"
                         title="Volver"
                       >
                         <IconArrowLeft className="w-4 h-4" />
@@ -2569,7 +2577,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                             : 'confirmada!'}
                         </span>
                       </h2>
-                      <p className="text-xs text-[#7D6870] max-w-sm mx-auto leading-relaxed pt-1">
+                      <p className="text-xs text-[#665158] max-w-sm mx-auto leading-relaxed pt-1">
                         {reservaConfirmada.esPreReserva ? (
                           <>
                             ¡Listo, reina! Enviamos los datos y cuentas de transferencia a tu WhatsApp{' '}
@@ -2599,7 +2607,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                         <div className="bg-white p-3 rounded-xl border border-[#F2C4D2] space-y-1.5 font-mono text-[11px]">
                           {(reservaConfirmada.nequi || spaConfig.nequiNumero) && (
                             <div className="flex justify-between items-center">
-                              <span className="text-[#7D6870]">📲 Número Nequi / Daviplata:</span>
+                              <span className="text-[#665158]">📲 Número Nequi / Daviplata:</span>
                               <span className="font-bold text-[#2D2529] select-all">
                                 {reservaConfirmada.nequi || spaConfig.nequiNumero}
                               </span>
@@ -2607,7 +2615,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                           )}
                           {(reservaConfirmada.bancolombia || spaConfig.bancolombiaNumero) && (
                             <div className="flex justify-between items-center">
-                              <span className="text-[#7D6870]">🏦 Cuenta Bancolombia:</span>
+                              <span className="text-[#665158]">🏦 Cuenta Bancolombia:</span>
                               <span className="font-bold text-[#2D2529] select-all">
                                 {reservaConfirmada.bancolombia || spaConfig.bancolombiaNumero}
                               </span>
@@ -2615,21 +2623,21 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                           )}
                           {(reservaConfirmada.llave || spaConfig.llaveNumero) && (
                             <div className="flex justify-between items-center">
-                              <span className="text-[#7D6870]">🔑 Llave:</span>
+                              <span className="text-[#665158]">🔑 Llave:</span>
                               <span className="font-bold text-[#2D2529] select-all">
                                 {reservaConfirmada.llave || spaConfig.llaveNumero}
                               </span>
                             </div>
                           )}
                           <div className="flex justify-between items-center border-t border-[#FCE8EF] pt-1.5">
-                            <span className="text-[#7D6870]">Titular de la cuenta:</span>
+                            <span className="text-[#665158]">Titular de la cuenta:</span>
                             <span className="font-bold text-[#8C243B]">
                               {reservaConfirmada.titular || spaConfig.titularCuenta || 'JL Mímate Nails Spa'}
                             </span>
                           </div>
                         </div>
 
-                        <p className="text-[11px] text-[#7D6870] leading-snug">
+                        <p className="text-[11px] text-[#665158] leading-snug">
                           📸 <strong>Paso final:</strong> Envía la foto o captura del comprobante al chat de WhatsApp. Nuestro sistema lo verificará para proteger tu turno. Si no se envía en 30 minutos, el espacio se liberará.
                         </p>
                       </div>
@@ -2662,7 +2670,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                       <IconBrandWhatsapp className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
                       <div className="space-y-0.5">
                         <p className="font-bold text-[#8C243B]">Recordatorio automático</p>
-                        <p className="text-[11px] text-[#7D6870] leading-relaxed">
+                        <p className="text-[11px] text-[#665158] leading-relaxed">
                           Te enviaremos un mensaje de recordatorio a tu WhatsApp <strong>1 día antes</strong> de tu cita.
                         </p>
                       </div>
@@ -2671,23 +2679,23 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                     {/* Resumen */}
                     <div className="bg-white border border-[#F2C4D2] rounded-2xl p-4 text-xs text-left space-y-2 shadow-xs">
                       <div className="flex justify-between border-b border-[#FCE8EF] pb-1.5">
-                        <span className="text-[#7D6870]">Servicio:</span>
+                        <span className="text-[#665158]">Servicio:</span>
                         <span className="font-bold text-[#2D2529]">{reservaConfirmada.servicio}</span>
                       </div>
                       <div className="flex justify-between border-b border-[#FCE8EF] pb-1.5">
-                        <span className="text-[#7D6870]">Especialista:</span>
+                        <span className="text-[#665158]">Especialista:</span>
                         <span className="font-bold text-[#2D2529]">{reservaConfirmada.empleada}</span>
                       </div>
                       <div className="flex justify-between border-b border-[#FCE8EF] pb-1.5">
-                        <span className="text-[#7D6870]">Fecha:</span>
+                        <span className="text-[#665158]">Fecha:</span>
                         <span className="font-bold text-[#2D2529]">{reservaConfirmada.fecha}</span>
                       </div>
                       <div className="flex justify-between border-b border-[#FCE8EF] pb-1.5">
-                        <span className="text-[#7D6870]">Hora:</span>
+                        <span className="text-[#665158]">Hora:</span>
                         <span className="font-bold text-[#2D2529]">{reservaConfirmada.hora}</span>
                       </div>
                       <div className="flex justify-between items-center border-b border-[#FCE8EF] pb-1.5 gap-2">
-                        <span className="text-[#7D6870] shrink-0">Lugar:</span>
+                        <span className="text-[#665158] shrink-0">Lugar:</span>
                         <a
                           href={obtenerUrlMapaSpa()}
                           target="_blank"
@@ -2705,7 +2713,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                       {reservaConfirmada.esPreReserva ? (
                         <>
                           <div className="flex justify-between border-b border-[#FCE8EF] pb-1.5 pt-0.5">
-                            <span className="text-[#7D6870]">Precio del servicio:</span>
+                            <span className="text-[#665158]">Precio del servicio:</span>
                             <span className="font-semibold text-[#2D2529] font-mono text-xs">
                               ${reservaConfirmada.precio.toLocaleString('es-CO')}
                             </span>
@@ -2727,7 +2735,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                             </span>
                           </div>
                           <div className="flex justify-between pt-1">
-                            <span className="text-[#7D6870] font-bold">Restante a pagar en el spa:</span>
+                            <span className="text-[#665158] font-bold">Restante a pagar en el spa:</span>
                             <span className="font-extrabold text-[#2D2529] font-mono text-sm">
                               {(reservaConfirmada.saldoRestante || 0) === 0 ? '$0 (Servicio cubierto)' : `$${(reservaConfirmada.saldoRestante || 0).toLocaleString('es-CO')}`}
                             </span>
@@ -2736,7 +2744,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                       ) : reservaConfirmada.esReagendamiento ? (
                         <>
                           <div className="flex justify-between border-b border-[#FCE8EF] pb-1.5 pt-0.5">
-                            <span className="text-[#7D6870]">Precio del servicio:</span>
+                            <span className="text-[#665158]">Precio del servicio:</span>
                             <span className="font-semibold text-[#2D2529] font-mono text-xs">
                               ${reservaConfirmada.precio.toLocaleString('es-CO')}
                             </span>
@@ -2750,7 +2758,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                                 </span>
                               </div>
                               <div className="flex justify-between pt-1">
-                                <span className="text-[#7D6870] font-bold">Excedente a pagar en el spa:</span>
+                                <span className="text-[#665158] font-bold">Excedente a pagar en el spa:</span>
                                 <span className="font-extrabold text-[#8C243B] font-mono text-sm">
                                   ${(reservaConfirmada.saldoRestante ?? Math.max(0, reservaConfirmada.precio - (reservaConfirmada.abonoPrevioReconocido || 0))).toLocaleString('es-CO')}
                                 </span>
@@ -2758,7 +2766,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                             </>
                           ) : (
                             <div className="flex justify-between pt-1">
-                              <span className="text-[#7D6870] font-bold">Total a pagar en el spa:</span>
+                              <span className="text-[#665158] font-bold">Total a pagar en el spa:</span>
                               <span className="font-extrabold text-[#8C243B] font-mono text-sm">
                                 ${(reservaConfirmada.saldoRestante ?? reservaConfirmada.precio).toLocaleString('es-CO')}
                               </span>
@@ -2767,7 +2775,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                         </>
                       ) : (
                         <div className="flex justify-between pt-1">
-                          <span className="text-[#7D6870] font-bold">Total a pagar en el spa:</span>
+                          <span className="text-[#665158] font-bold">Total a pagar en el spa:</span>
                           <span className="font-extrabold text-[#8C243B] font-mono text-sm">
                             ${reservaConfirmada.precio.toLocaleString('es-CO')}
                           </span>
