@@ -43,6 +43,27 @@ const FOTOS_EQUIPO_MIMATE: Record<string, string> = {
   'manicurista 3': '/equipo/manuela.jpg',
 };
 
+const REGEX_HORARIO_REAL = /\[HORARIO_REAL:([^|\]]+)\|([^\]]+)\]/i;
+
+function hidratarHorarioRealReserva<T extends { fecha_inicio?: string; fecha_fin?: string; notas?: string | null }>(
+  r: T
+): T {
+  if (!r) return r;
+  const match = (r.notas || '').match(REGEX_HORARIO_REAL);
+  if (match && match[1] && match[2]) {
+    const iniMs = new Date(match[1].trim()).getTime();
+    const finMs = new Date(match[2].trim()).getTime();
+    if (!isNaN(iniMs) && !isNaN(finMs) && finMs > iniMs) {
+      return {
+        ...r,
+        fecha_inicio: new Date(iniMs).toISOString(),
+        fecha_fin: new Date(finMs).toISOString(),
+      };
+    }
+  }
+  return r;
+}
+
 function normalizarNombreYFotoEmpleada(emp: { id: string; nombre: string; foto?: string | null }): Empleada {
   let nombre = emp.nombre;
   const nLower = nombre.trim().toLowerCase();
@@ -845,15 +866,15 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
 
       const { data: reservasOcupadas } = await supabase
         .from('reservas')
-        .select('id, cancha_id, fecha_inicio, fecha_fin, estado')
+        .select('id, cancha_id, fecha_inicio, fecha_fin, estado, notas')
         .neq('estado', 'cancelada')
         .gte('fecha_inicio', inicioBuffer)
         .lte('fecha_inicio', finBuffer);
 
-      // Excluir la reserva previa a reprogramar para no autobloquearse
-      const ocupadas = (reservasOcupadas || []).filter(
-        (r) => !reagendarId || r.id !== reagendarId
-      );
+      // Excluir la reserva previa a reprogramar e hidratar horarios reales de citas traslapadas
+      const ocupadas = (reservasOcupadas || [])
+        .filter((r) => !reagendarId || r.id !== reagendarId)
+        .map(hidratarHorarioRealReserva);
 
       // Candidatos dinámicos: horas base + puntos exactos de fin de citas previas
       const candidatosSet = new Set<string>(horasBase);
@@ -1067,9 +1088,47 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
           if (clienteCreado) clienteId = clienteCreado.id;
         }
 
-        const empAsignada = empleadas.find((e) => e.id === empleadaId) || empleadas[0];
         const dInicio = new Date(`${fecha}T${horaSeleccionada}:00-05:00`);
         const dFin = new Date(dInicio.getTime() + (Number(duracionTotal) || 60) * 60 * 1000);
+        const slotStartMs = dInicio.getTime();
+        const slotEndMs = dFin.getTime();
+
+        // Validar estrictamente que clientas no puedan traslapar citas ni en modo respaldo
+        const winStart = new Date(slotStartMs - 12 * 60 * 60 * 1000).toISOString();
+        const winEnd = new Date(slotEndMs + 12 * 60 * 60 * 1000).toISOString();
+        const { data: reservasDiaFallback } = await supabase
+          .from('reservas')
+          .select('id, cancha_id, fecha_inicio, fecha_fin, notas')
+          .neq('estado', 'cancelada')
+          .gte('fecha_inicio', winStart)
+          .lte('fecha_inicio', winEnd);
+
+        const ocupadasIdsFallback = (reservasDiaFallback || [])
+          .filter((r) => !reagendarId || r.id !== reagendarId)
+          .map(hidratarHorarioRealReserva)
+          .filter((r) => {
+            const rStart = new Date(r.fecha_inicio).getTime();
+            const rEnd = r.fecha_fin ? new Date(r.fecha_fin).getTime() : rStart + 45 * 60000;
+            return rStart < slotEndMs && rEnd > slotStartMs;
+          })
+          .map((r) => r.cancha_id);
+
+        let empAsignada: Empleada | undefined;
+        if (empleadaId) {
+          if (ocupadasIdsFallback.includes(empleadaId)) {
+            alert('La manicurista seleccionada ya tiene una cita agendada en este horario. Por favor elige otra hora o especialista.');
+            cargarSlots(fecha, empleadaId, duracionTotal);
+            return;
+          }
+          empAsignada = empleadas.find((e) => e.id === empleadaId);
+        } else {
+          empAsignada = empleadas.find((e) => !ocupadasIdsFallback.includes(e.id));
+          if (!empAsignada) {
+            alert('Lo sentimos, todos los turnos para este horario ya fueron reservados. Por favor selecciona otro horario.');
+            cargarSlots(fecha, empleadaId, duracionTotal);
+            return;
+          }
+        }
 
         const esReag = Boolean(reagendarId);
         const abonoPrev = Number(citaPreviaInfo?.abonoPrevio || 0);
@@ -1080,7 +1139,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
         const salRest = Math.max(0, precioTotal - abonoPrev - antReqFallback);
 
         if (empAsignada && clienteId) {
-          await supabase.from('reservas').insert({
+          const { error: insertErr } = await supabase.from('reservas').insert({
             cancha_id: empAsignada.id,
             cliente_id: clienteId,
             fecha_inicio: dInicio.toISOString(),
@@ -1091,6 +1150,15 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
             expiracion_reserva: esPreFallback ? new Date(Date.now() + 60 * 60 * 1000).toISOString() : null,
             notas: `💅 Servicio: ${nombreServiciosCombinados} | Duración: ${duracionTotal} min | Clienta: ${nombre.trim()} | ${esReag ? (esPreFallback ? '[CITA_REAGENDADA_PENDIENTE_ANTICIPO]' : '[CITA_REAGENDADA_CONFIRMADA]') : 'Reserva Web JL Mímate Nails'}`,
           });
+
+          if (insertErr) {
+            if (insertErr.code === '23P01') {
+              alert('Lo sentimos, este horario ya está ocupado. Por favor elige otro turno.');
+              cargarSlots(fecha, empleadaId, duracionTotal);
+              return;
+            }
+            throw insertErr;
+          }
 
           if (reagendarId) {
             await supabase.from('reservas').delete().eq('id', reagendarId);

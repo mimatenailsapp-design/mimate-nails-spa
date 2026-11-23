@@ -824,6 +824,166 @@ app.get('/api/canchas', async (req: Request, res: Response) => {
   }
 });
 
+const REGEX_HORARIO_REAL = /\[HORARIO_REAL:([^|\]]+)\|([^\]]+)\]/i;
+const REGEX_HORARIO_REAL_CLEAN = /\s*\|?\s*\[HORARIO_REAL:[^\]]+\]/gi;
+const MIN_NO_TRASLAPE_MS = 15 * 60 * 1000;
+const ESTADOS_EXCLUSION_DB = new Set(['pendiente_pago', 'pendiente_anticipo', 'confirmada', 'bloqueada']);
+
+function hidratarHorarioRealReserva<T extends { fecha_inicio?: string; fecha_fin?: string; notas?: string | null }>(
+  r: T
+): T & { db_fecha_inicio?: string; db_fecha_fin?: string } {
+  if (!r) return r;
+  const base = {
+    ...r,
+    db_fecha_inicio: r.fecha_inicio,
+    db_fecha_fin: r.fecha_fin,
+  };
+  const match = (r.notas || '').match(REGEX_HORARIO_REAL);
+  if (match && match[1] && match[2]) {
+    const iniMs = new Date(match[1].trim()).getTime();
+    const finMs = new Date(match[2].trim()).getTime();
+    if (!isNaN(iniMs) && !isNaN(finMs) && finMs > iniMs) {
+      return {
+        ...base,
+        fecha_inicio: new Date(iniMs).toISOString(),
+        fecha_fin: new Date(finMs).toISOString(),
+      };
+    }
+  }
+  return base;
+}
+
+function validarYCalcularPersistenciaTraslape(params: {
+  idReserva: string;
+  dInicio: Date;
+  dFin: Date;
+  notasActuales?: string | null;
+  otrasReservas: any[];
+}):
+  | { valido: true; dbFechaInicio: string; dbFechaFin: string; notasFinal: string; esTraslapeParcial: boolean }
+  | { valido: false; error: string } {
+  const { idReserva, dInicio, dFin, notasActuales, otrasReservas } = params;
+  const slotStart = dInicio.getTime();
+  const slotEnd = dFin.getTime();
+
+  const hidratadas = (otrasReservas || [])
+    .filter((o) => o && o.id !== idReserva && o.estado !== 'cancelada' && o.fecha_inicio)
+    .map(hidratarHorarioRealReserva);
+
+  const solapadas = hidratadas.filter((o) => {
+    const oStart = new Date(o.fecha_inicio).getTime();
+    const oEnd = o.fecha_fin ? new Date(o.fecha_fin).getTime() : oStart + 45 * 60 * 1000;
+    return oStart < slotEnd && oEnd > slotStart;
+  });
+
+  if (solapadas.some((o) => o.estado === 'bloqueada')) {
+    return { valido: false, error: 'No se puede traslapar con un horario bloqueado.' };
+  }
+
+  if (solapadas.length > 1) {
+    return {
+      valido: false,
+      error: 'Solo se permite traslapar parcialmente con una cita a la vez sin afectar otras citas.',
+    };
+  }
+
+  let esTraslapeParcial = false;
+  if (solapadas.length === 1) {
+    const otra = solapadas[0];
+    const oStart = new Date(otra.fecha_inicio).getTime();
+    const oEnd = otra.fecha_fin ? new Date(otra.fecha_fin).getTime() : oStart + 45 * 60 * 1000;
+
+    if (
+      slotStart === oStart ||
+      slotEnd === oEnd ||
+      (slotStart >= oStart && slotEnd <= oEnd) ||
+      (oStart >= slotStart && oEnd <= slotEnd)
+    ) {
+      return {
+        valido: false,
+        error: 'No se permite traslapar una cita por completo sobre otra.',
+      };
+    }
+
+    const overlapMs = Math.min(slotEnd, oEnd) - Math.max(slotStart, oStart);
+    const restanteMovidaMs = slotEnd - slotStart - overlapMs;
+    const restanteOtraMs = oEnd - oStart - overlapMs;
+
+    if (restanteMovidaMs < MIN_NO_TRASLAPE_MS || restanteOtraMs < MIN_NO_TRASLAPE_MS) {
+      return {
+        valido: false,
+        error: 'El traslape parcial debe dejar al menos 15 minutos libres en cada cita.',
+      };
+    }
+
+    esTraslapeParcial = true;
+  }
+
+  // Sub-intervalo de BD libre que respeta la restricción GiST `no_doble_reserva`
+  const dbOcupados = hidratadas
+    .filter((o) => ESTADOS_EXCLUSION_DB.has(String(o.estado || '')))
+    .map((o) => {
+      const s = new Date(o.db_fecha_inicio || o.fecha_inicio).getTime();
+      const e = new Date(o.db_fecha_fin || o.fecha_fin || s + 45 * 60 * 1000).getTime();
+      return { start: s, end: e };
+    })
+    .filter((iv) => iv.start < slotEnd && iv.end > slotStart)
+    .sort((a, b) => a.start - b.start);
+
+  let segmentosLibres: Array<{ start: number; end: number }> = [{ start: slotStart, end: slotEnd }];
+  for (const occ of dbOcupados) {
+    const siguientes: Array<{ start: number; end: number }> = [];
+    for (const seg of segmentosLibres) {
+      if (occ.end <= seg.start || occ.start >= seg.end) {
+        siguientes.push(seg);
+      } else {
+        if (occ.start > seg.start) {
+          siguientes.push({ start: seg.start, end: occ.start });
+        }
+        if (occ.end < seg.end) {
+          siguientes.push({ start: occ.end, end: seg.end });
+        }
+      }
+    }
+    segmentosLibres = siguientes;
+  }
+
+  if (segmentosLibres.length === 0) {
+    return {
+      valido: false,
+      error: 'No queda espacio disponible para ubicar este traslape sin afectar otra cita.',
+    };
+  }
+
+  segmentosLibres.sort((a, b) => b.end - b.start - (a.end - a.start));
+  const mejorSegmento = segmentosLibres[0];
+  if (mejorSegmento.end <= mejorSegmento.start) {
+    return {
+      valido: false,
+      error: 'El intervalo resultante de traslape es inválido.',
+    };
+  }
+
+  const notasLimpias = String(notasActuales || '')
+    .replace(REGEX_HORARIO_REAL_CLEAN, '')
+    .trim();
+  const realStartIso = dInicio.toISOString();
+  const realEndIso = dFin.toISOString();
+  const requiereTagReal = mejorSegmento.start !== slotStart || mejorSegmento.end !== slotEnd;
+
+  const notasFinal = requiereTagReal
+    ? `${notasLimpias ? `${notasLimpias} | ` : ''}[HORARIO_REAL:${realStartIso}|${realEndIso}]`
+    : notasLimpias;
+
+  return {
+    valido: true,
+    dbFechaInicio: new Date(mejorSegmento.start).toISOString(),
+    dbFechaFin: new Date(mejorSegmento.end).toISOString(),
+    notasFinal,
+    esTraslapeParcial,
+  };
+}
+
 // Lista de Reservas para el Calendario (filtradas por complejo)
 app.get('/api/reservas', async (req: Request, res: Response) => {
   const { desde, hasta, complejo_id } = req.query;
@@ -842,7 +1002,10 @@ app.get('/api/reservas', async (req: Request, res: Response) => {
 
   const { data, error } = await query;
   if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
+  const hidratadas = (data || [])
+    .map(hidratarHorarioRealReserva)
+    .sort((a, b) => new Date(a.fecha_inicio).getTime() - new Date(b.fecha_inicio).getTime());
+  res.json(hidratadas);
 });
 
 // Bloquear Horarios (1 hora o varias horas, para admin o manicuristas)
@@ -1030,7 +1193,7 @@ app.patch('/api/reservas/:id/estado', async (req: Request, res: Response) => {
   res.json(data);
 });
 
-// Mover / reprogramar fecha y hora de una cita desde el planificador (libera horario anterior y ocupa el nuevo)
+// Mover / reprogramar fecha y hora de una cita desde el planificador (permite traslape parcial entre admin/especialista)
 app.patch('/api/reservas/:id/horario', async (req: Request, res: Response) => {
   const { id } = req.params;
   if (!esUUIDValido(id)) return res.status(400).json({ error: 'ID de reserva inválido' });
@@ -1041,14 +1204,16 @@ app.patch('/api/reservas/:id/horario', async (req: Request, res: Response) => {
   }
 
   try {
-    const { data: reserva, error: fetchError } = await supabase
+    const { data: reservaRaw, error: fetchError } = await supabase
       .from('reservas')
-      .select('id, cancha_id, fecha_inicio, fecha_fin, estado')
+      .select('id, cancha_id, fecha_inicio, fecha_fin, estado, notas')
       .eq('id', id)
       .maybeSingle();
 
     if (fetchError) return res.status(500).json({ error: fetchError.message });
-    if (!reserva) return res.status(404).json({ error: 'Reserva no encontrada' });
+    if (!reservaRaw) return res.status(404).json({ error: 'Reserva no encontrada' });
+
+    const reserva = hidratarHorarioRealReserva(reservaRaw);
 
     if (reserva.estado === 'completada' || reserva.estado === 'cancelada' || reserva.estado === 'bloqueada') {
       return res.status(400).json({ error: 'No se puede mover una cita completada, cancelada o un bloqueo' });
@@ -1074,25 +1239,38 @@ app.patch('/api/reservas/:id/horario', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Los domingos regulares el spa está cerrado' });
     }
 
-    const { data: colisiones, error: colError } = await supabase
+    const inicioVentana = new Date(dInicio.getTime() - 24 * 60 * 60 * 1000).toISOString();
+    const finVentana = new Date(dFin.getTime() + 24 * 60 * 60 * 1000).toISOString();
+
+    const { data: otrasReservas, error: colError } = await supabase
       .from('reservas')
-      .select('id')
+      .select('id, cancha_id, fecha_inicio, fecha_fin, estado, notas')
       .eq('cancha_id', reserva.cancha_id)
       .neq('id', id)
       .neq('estado', 'cancelada')
-      .lt('fecha_inicio', dFin.toISOString())
-      .gt('fecha_fin', dInicio.toISOString());
+      .gte('fecha_inicio', inicioVentana)
+      .lte('fecha_inicio', finVentana);
 
     if (colError) return res.status(500).json({ error: colError.message });
-    if (colisiones && colisiones.length > 0) {
-      return res.status(409).json({ error: 'Este horario ya está ocupado por otra cita o bloqueo' });
+
+    const validacion = validarYCalcularPersistenciaTraslape({
+      idReserva: id,
+      dInicio,
+      dFin,
+      notasActuales: reserva.notas,
+      otrasReservas: otrasReservas || [],
+    });
+
+    if (!validacion.valido) {
+      return res.status(409).json({ error: validacion.error });
     }
 
     const { data, error } = await supabase
       .from('reservas')
       .update({
-        fecha_inicio: dInicio.toISOString(),
-        fecha_fin: dFin.toISOString(),
+        fecha_inicio: validacion.dbFechaInicio,
+        fecha_fin: validacion.dbFechaFin,
+        notas: validacion.notasFinal,
         actualizado_en: new Date().toISOString(),
       })
       .eq('id', id)
@@ -1107,7 +1285,7 @@ app.patch('/api/reservas/:id/horario', async (req: Request, res: Response) => {
     }
 
     notificarCambioReservas('UPDATE', { id });
-    return res.json({ ok: true, reserva: data });
+    return res.json({ ok: true, reserva: hidratarHorarioRealReserva(data) });
   } catch (err: any) {
     return res.status(500).json({ error: err.message || 'Error interno al mover la cita' });
   }
@@ -1118,14 +1296,16 @@ app.get('/api/reservas/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
   if (!esUUIDValido(id)) return res.status(400).json({ error: 'ID de reserva inválido' });
   try {
-    const { data: reserva, error } = await supabase
+    const { data: reservaRaw, error } = await supabase
       .from('reservas')
       .select('*, canchas(*), clientes(*)')
       .eq('id', id)
       .maybeSingle();
 
     if (error) return res.status(500).json({ error: error.message });
-    if (!reserva) return res.status(404).json({ error: 'Reserva no encontrada' });
+    if (!reservaRaw) return res.status(404).json({ error: 'Reserva no encontrada' });
+
+    const reserva = hidratarHorarioRealReserva(reservaRaw);
 
     let abonoPrevio = 0;
     try {
@@ -1634,13 +1814,13 @@ app.get('/api/spa/slots', async (req: Request, res: Response) => {
 
     const { data: reservasOcupadas } = await supabase
       .from('reservas')
-      .select('cancha_id, fecha_inicio, fecha_fin, estado')
+      .select('cancha_id, fecha_inicio, fecha_fin, estado, notas')
       .in('cancha_id', listaEmpleadas.map(e => e.id))
       .neq('estado', 'cancelada')
       .gte('fecha_inicio', inicioBuffer)
       .lte('fecha_inicio', finBuffer);
 
-    const ocupadas = reservasOcupadas || [];
+    const ocupadas = (reservasOcupadas || []).map(hidratarHorarioRealReserva);
     const ahoraMs = Date.now();
     const horaCierreMs = new Date(`${date}T${cierreStr}:00-05:00`).getTime();
     const horaAperturaMs = new Date(`${date}T${aperturaStr}:00-05:00`).getTime();
@@ -1787,17 +1967,27 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
       return res.status(400).json({ error: 'No puedes reservar un horario que ya pasó.' });
     }
 
-    // 2. Buscar reservas activas solapadas en esta franja para evitar duplicados (excluyendo cita anterior si es reagendamiento)
-    const { data: reservasSolapadas } = await supabase
+    // 2. Buscar reservas activas solapadas en esta franja usando horario real (excluyendo cita anterior si es reagendamiento)
+    const inicioVentanaRes = new Date(dInicio.getTime() - 12 * 60 * 60 * 1000).toISOString();
+    const finVentanaRes = new Date(dFin.getTime() + 12 * 60 * 60 * 1000).toISOString();
+    const { data: reservasVentana } = await supabase
       .from('reservas')
-      .select('id, cancha_id, fecha_inicio, fecha_fin')
+      .select('id, cancha_id, fecha_inicio, fecha_fin, notas')
       .in('cancha_id', listaEmpleadas.map(e => e.id))
       .neq('estado', 'cancelada')
-      .lt('fecha_inicio', dFin.toISOString())
-      .gt('fecha_fin', dInicio.toISOString());
+      .gte('fecha_inicio', inicioVentanaRes)
+      .lte('fecha_inicio', finVentanaRes);
 
-    const ocupadasIds = (reservasSolapadas || [])
+    const inicioReqMs = dInicio.getTime();
+    const finReqMs = dFin.getTime();
+    const ocupadasIds = (reservasVentana || [])
       .filter(r => !reagendar_reserva_id || r.id !== reagendar_reserva_id)
+      .map(hidratarHorarioRealReserva)
+      .filter(r => {
+        const rStart = new Date(r.fecha_inicio).getTime();
+        const rEnd = r.fecha_fin ? new Date(r.fecha_fin).getTime() : rStart + 45 * 60 * 1000;
+        return rStart < finReqMs && rEnd > inicioReqMs;
+      })
       .map(r => r.cancha_id);
 
     let empleadaAsignada: any;

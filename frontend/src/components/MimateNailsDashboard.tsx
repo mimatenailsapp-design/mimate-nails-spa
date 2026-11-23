@@ -56,6 +56,8 @@ interface Reserva {
   cliente_id?: string;
   fecha_inicio: string;
   fecha_fin: string;
+  db_fecha_inicio?: string;
+  db_fecha_fin?: string;
   estado: 'pendiente_pago' | 'pendiente_anticipo' | 'confirmada' | 'cancelada' | 'completada' | 'bloqueada';
   valor_total: number;
   valor_anticipo_requerido: number;
@@ -171,7 +173,7 @@ function obtenerServicioCita(cita: Reserva): string {
   }
 
   // Deducción inteligente si las notas no contienen el tag Servicio:
-  const notasLower = (cita.notas || '').toLowerCase();
+  const notasLower = (cita.notas || '').replace(/\[HORARIO_REAL:[^\]]+\]/gi, '').toLowerCase();
   const serviciosConocidos = [
     'semi manos y pies', 'manos y pies', 'semi pies', 'semipermanente',
     'pies hombre', 'manos hombre', 'semi hombre', 'base rubber', 'press on',
@@ -312,6 +314,7 @@ interface CitaPosicionada {
 }
 
 interface DragCitaSemanalState {
+  modo: 'semanal' | 'diaria';
   cita: Reserva;
   duracionMinutos: number;
   alturaPx: number;
@@ -324,6 +327,99 @@ interface DragCitaSemanalState {
   snappedTopPx: number;
   esValido: boolean;
   motivoInvalido: string | null;
+  esTraslapeParcial?: boolean;
+}
+
+const REGEX_HORARIO_REAL = /\[HORARIO_REAL:([^|\]]+)\|([^\]]+)\]/i;
+const REGEX_HORARIO_REAL_CLEAN = /\s*\|?\s*\[HORARIO_REAL:[^\]]+\]/gi;
+const MIN_NO_TRASLAPE_MS = 15 * 60 * 1000;
+const ESTADOS_EXCLUSION_DB = new Set(['pendiente_pago', 'pendiente_anticipo', 'confirmada', 'bloqueada']);
+
+function hidratarHorarioRealReserva(r: Reserva): Reserva {
+  if (!r) return r;
+  const base: Reserva = {
+    ...r,
+    db_fecha_inicio: r.db_fecha_inicio || r.fecha_inicio,
+    db_fecha_fin: r.db_fecha_fin || r.fecha_fin,
+  };
+  const match = (r.notas || '').match(REGEX_HORARIO_REAL);
+  if (match && match[1] && match[2]) {
+    const iniMs = new Date(match[1].trim()).getTime();
+    const finMs = new Date(match[2].trim()).getTime();
+    if (!isNaN(iniMs) && !isNaN(finMs) && finMs > iniMs) {
+      return {
+        ...base,
+        fecha_inicio: new Date(iniMs).toISOString(),
+        fecha_fin: new Date(finMs).toISOString(),
+      };
+    }
+  }
+  return base;
+}
+
+function calcularPersistenciaTraslapeFallback(params: {
+  idReserva: string;
+  canchaId: string;
+  dInicio: Date;
+  dFin: Date;
+  notasActuales?: string;
+  todasReservas: Reserva[];
+}): { dbFechaInicio: string; dbFechaFin: string; notasFinal: string } | null {
+  const { idReserva, canchaId, dInicio, dFin, notasActuales, todasReservas } = params;
+  const slotStart = dInicio.getTime();
+  const slotEnd = dFin.getTime();
+
+  const dbOcupados = (todasReservas || [])
+    .filter(
+      (o) =>
+        o &&
+        o.id !== idReserva &&
+        o.cancha_id === canchaId &&
+        o.estado !== 'cancelada' &&
+        ESTADOS_EXCLUSION_DB.has(String(o.estado || '')) &&
+        (o.db_fecha_inicio || o.fecha_inicio)
+    )
+    .map((o) => {
+      const s = new Date(o.db_fecha_inicio || o.fecha_inicio).getTime();
+      const e = new Date(o.db_fecha_fin || o.fecha_fin || s + 45 * 60000).getTime();
+      return { start: s, end: e };
+    })
+    .filter((iv) => iv.start < slotEnd && iv.end > slotStart)
+    .sort((a, b) => a.start - b.start);
+
+  let segmentosLibres: Array<{ start: number; end: number }> = [{ start: slotStart, end: slotEnd }];
+  for (const occ of dbOcupados) {
+    const siguientes: Array<{ start: number; end: number }> = [];
+    for (const seg of segmentosLibres) {
+      if (occ.end <= seg.start || occ.start >= seg.end) {
+        siguientes.push(seg);
+      } else {
+        if (occ.start > seg.start) siguientes.push({ start: seg.start, end: occ.start });
+        if (occ.end < seg.end) siguientes.push({ start: occ.end, end: seg.end });
+      }
+    }
+    segmentosLibres = siguientes;
+  }
+
+  if (segmentosLibres.length === 0) return null;
+  segmentosLibres.sort((a, b) => b.end - b.start - (a.end - a.start));
+  const mejor = segmentosLibres[0];
+  if (mejor.end <= mejor.start) return null;
+
+  const notasLimpias = String(notasActuales || '')
+    .replace(REGEX_HORARIO_REAL_CLEAN, '')
+    .trim();
+  const realStartIso = dInicio.toISOString();
+  const realEndIso = dFin.toISOString();
+  const requiereTagReal = mejor.start !== slotStart || mejor.end !== slotEnd;
+
+  return {
+    dbFechaInicio: new Date(mejor.start).toISOString(),
+    dbFechaFin: new Date(mejor.end).toISOString(),
+    notasFinal: requiereTagReal
+      ? `${notasLimpias ? `${notasLimpias} | ` : ''}[HORARIO_REAL:${realStartIso}|${realEndIso}]`
+      : notasLimpias,
+  };
 }
 
 function formatearMinutosAHHMM(horaAperturaBase: number, minDesdeApertura: number): string {
@@ -1191,7 +1287,9 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       if (res.ok) {
         const data = await res.json();
         const dataOrdenada = Array.isArray(data)
-          ? [...data].sort((a: Reserva, b: Reserva) => new Date(a.fecha_inicio).getTime() - new Date(b.fecha_inicio).getTime())
+          ? data
+              .map(hidratarHorarioRealReserva)
+              .sort((a: Reserva, b: Reserva) => new Date(a.fecha_inicio).getTime() - new Date(b.fecha_inicio).getTime())
           : [];
         setReservas(dataOrdenada);
       }
@@ -1377,6 +1475,8 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   const touchInicioRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const scrollSemanalRef = useRef<HTMLDivElement | null>(null);
   const columnasDiasSemanalRef = useRef<HTMLDivElement | null>(null);
+  const scrollDiarioRef = useRef<HTMLDivElement | null>(null);
+  const lienzoTimelineDiarioRef = useRef<HTMLDivElement | null>(null);
   const [dragCitaSemanal, setDragCitaSemanal] = useState<DragCitaSemanalState | null>(null);
   const dragCitaSemanalRef = useRef<DragCitaSemanalState | null>(null);
   const holdDragTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1385,6 +1485,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   const isMovingCitaRef = useRef<boolean>(false);
   const suppressSwipeUntilRef = useRef<number>(0);
   const pointerHoldInfoRef = useRef<{
+    modo: 'semanal' | 'diaria';
     pointerId: number;
     cita: Reserva;
     startX: number;
@@ -1415,7 +1516,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
   // 1. Gesto en Vista de Día: Deslizar izquierda -> siguiente día; derecha -> día anterior
   const handleTouchStartDia = (e: React.TouchEvent) => {
-    if (e.touches.length !== 1) return;
+    if (e.touches.length !== 1 || dragCitaSemanalRef.current || pointerHoldInfoRef.current?.dragging) return;
     touchInicioRef.current = {
       x: e.touches[0].clientX,
       y: e.touches[0].clientY,
@@ -1424,7 +1525,15 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   };
 
   const handleTouchEndDia = (e: React.TouchEvent) => {
-    if (!touchInicioRef.current) return;
+    if (
+      !touchInicioRef.current ||
+      dragCitaSemanalRef.current ||
+      pointerHoldInfoRef.current?.dragging ||
+      Date.now() < suppressSwipeUntilRef.current
+    ) {
+      touchInicioRef.current = null;
+      return;
+    }
     const touchEnd = e.changedTouches[0];
     const deltaX = touchEnd.clientX - touchInicioRef.current.x;
     const deltaY = touchEnd.clientY - touchInicioRef.current.y;
@@ -1590,7 +1699,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   }, [fechaSeleccionada, hoyStr]);
 
   // ============================================================================
-  // DRAG & DROP (HOLD-TO-MOVE) EN VISTA SEMANAL (ADMIN Y ESPECIALISTAS)
+  // DRAG & DROP (HOLD-TO-MOVE) CON SOPORTE DE TRASLAPE PARCIAL EN VISTAS SEMANAL Y DIARIA
   // Diferencia click corto (abre DetalleCitaPopover) vs mantener presionado (arrastre suave)
   // ============================================================================
   const validarDestinoCitaSemanal = (
@@ -1598,7 +1707,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     targetFechaIso: string,
     targetMinInicio: number,
     duracionMinutos: number
-  ): { esValido: boolean; motivoInvalido: string | null } => {
+  ): { esValido: boolean; motivoInvalido: string | null; esTraslapeParcial?: boolean } => {
     const horaAperturaNum = parseInt((configAnticipo.horaApertura || '08:00').split(':')[0], 10) || 8;
     const horaInicioStr = formatearMinutosAHHMM(horaAperturaNum, targetMinInicio);
     const slotStartMs = new Date(`${targetFechaIso}T${horaInicioStr}:00-05:00`).getTime();
@@ -1623,8 +1732,8 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       return { esValido: false, motivoInvalido: 'Supera hora de cierre' };
     }
 
-    // 4. Colisión con otra reserva activa o bloqueo de la misma especialista
-    const hayColision = reservas.some((r) => {
+    // 4. Evaluar traslape parcial con citas activas de la misma especialista
+    const colisiones = reservas.filter((r) => {
       if (r.id === cita.id || r.estado === 'cancelada' || r.cancha_id !== cita.cancha_id) return false;
       if (!r.fecha_inicio) return false;
       const rStart = new Date(r.fecha_inicio).getTime();
@@ -1632,11 +1741,40 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       return rStart < slotEndMs && rEnd > slotStartMs;
     });
 
-    if (hayColision) {
-      return { esValido: false, motivoInvalido: 'Ocupado' };
+    if (colisiones.length === 0) {
+      return { esValido: true, motivoInvalido: null, esTraslapeParcial: false };
     }
 
-    return { esValido: true, motivoInvalido: null };
+    if (colisiones.some((r) => r.estado === 'bloqueada')) {
+      return { esValido: false, motivoInvalido: 'Horario bloqueado' };
+    }
+
+    if (colisiones.length > 1) {
+      return { esValido: false, motivoInvalido: 'Traslape múltiple' };
+    }
+
+    const otra = colisiones[0];
+    const oStart = new Date(otra.fecha_inicio).getTime();
+    const oEnd = otra.fecha_fin ? new Date(otra.fecha_fin).getTime() : oStart + 45 * 60000;
+
+    if (
+      slotStartMs === oStart ||
+      slotEndMs === oEnd ||
+      (slotStartMs >= oStart && slotEndMs <= oEnd) ||
+      (oStart >= slotStartMs && oEnd <= slotEndMs)
+    ) {
+      return { esValido: false, motivoInvalido: 'Sin traslape total' };
+    }
+
+    const overlapMs = Math.min(slotEndMs, oEnd) - Math.max(slotStartMs, oStart);
+    const restanteMovidaMs = slotEndMs - slotStartMs - overlapMs;
+    const restanteOtraMs = oEnd - oStart - overlapMs;
+
+    if (restanteMovidaMs < MIN_NO_TRASLAPE_MS || restanteOtraMs < MIN_NO_TRASLAPE_MS) {
+      return { esValido: false, motivoInvalido: 'Traslape excesivo' };
+    }
+
+    return { esValido: true, motivoInvalido: null, esTraslapeParcial: true };
   };
 
   const handleMoverCitaSemanal = async (drag: DragCitaSemanalState) => {
@@ -1655,6 +1793,9 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     const estadoPrevio = {
       fecha_inicio: drag.cita.fecha_inicio,
       fecha_fin: drag.cita.fecha_fin,
+      db_fecha_inicio: drag.cita.db_fecha_inicio,
+      db_fecha_fin: drag.cita.db_fecha_fin,
+      notas: drag.cita.notas,
     };
 
     // Actualización optimista inmediata: libera el horario anterior y ocupa el nuevo
@@ -1682,8 +1823,9 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
           apiHandled = true;
           const payload = await res.json().catch(() => null);
           if (payload?.reserva) {
+            const hydrated = hidratarHorarioRealReserva(payload.reserva);
             setReservas((prev) =>
-              prev.map((r) => (r.id === drag.cita.id ? { ...r, ...payload.reserva } : r))
+              prev.map((r) => (r.id === drag.cita.id ? { ...r, ...hydrated } : r))
             );
           }
         } else if (res.status === 400 || res.status === 404 || res.status === 409) {
@@ -1698,11 +1840,25 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       }
 
       if (!apiHandled) {
+        const persistencia = calcularPersistenciaTraslapeFallback({
+          idReserva: drag.cita.id,
+          canchaId: drag.cita.cancha_id,
+          dInicio,
+          dFin,
+          notasActuales: drag.cita.notas,
+          todasReservas: reservas,
+        });
+
+        if (!persistencia) {
+          throw new Error('No queda espacio disponible para ubicar este traslape sin afectar otra cita.');
+        }
+
         const { error: sbErr } = await supabase
           .from('reservas')
           .update({
-            fecha_inicio: nuevoInicioIso,
-            fecha_fin: nuevoFinIso,
+            fecha_inicio: persistencia.dbFechaInicio,
+            fecha_fin: persistencia.dbFechaFin,
+            notas: persistencia.notasFinal,
             actualizado_en: new Date().toISOString(),
           })
           .eq('id', drag.cita.id);
@@ -1713,6 +1869,21 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
           }
           throw sbErr;
         }
+
+        setReservas((prev) =>
+          prev.map((r) =>
+            r.id === drag.cita.id
+              ? {
+                  ...r,
+                  fecha_inicio: nuevoInicioIso,
+                  fecha_fin: nuevoFinIso,
+                  db_fecha_inicio: persistencia.dbFechaInicio,
+                  db_fecha_fin: persistencia.dbFechaFin,
+                  notas: persistencia.notasFinal,
+                }
+              : r
+          )
+        );
       }
 
       try {
@@ -1720,14 +1891,23 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       } catch {}
 
       mostrarNotificacionRealtime(
-        `✨ Cita de ${nombreClienta} reprogramada: ${horaInicioNueva} - ${horaFinNueva}`
+        drag.esTraslapeParcial
+          ? `✨ Cita de ${nombreClienta} movida con traslape parcial (${formatearHora12(horaInicioNueva)} - ${formatearHora12(horaFinNueva)})`
+          : `✨ Cita de ${nombreClienta} reprogramada: ${formatearHora12(horaInicioNueva)} - ${formatearHora12(horaFinNueva)}`
       );
     } catch (err: any) {
       // Revertir en caso de conflicto o error
       setReservas((prev) =>
         prev.map((r) =>
           r.id === drag.cita.id
-            ? { ...r, fecha_inicio: estadoPrevio.fecha_inicio, fecha_fin: estadoPrevio.fecha_fin }
+            ? {
+                ...r,
+                fecha_inicio: estadoPrevio.fecha_inicio,
+                fecha_fin: estadoPrevio.fecha_fin,
+                db_fecha_inicio: estadoPrevio.db_fecha_inicio,
+                db_fecha_fin: estadoPrevio.db_fecha_fin,
+                notas: estadoPrevio.notas,
+              }
             : r
         )
       );
@@ -1748,19 +1928,26 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
   const actualizarPosicionDrag = (clientX: number, clientY: number) => {
     const info = pointerHoldInfoRef.current;
-    const gridEl = columnasDiasSemanalRef.current;
-    if (!info || !info.dragging || !gridEl || diasDeLaSemana.length < 7) return;
+    if (!info || !info.dragging) return;
+
+    const esDiario = info.modo === 'diaria';
+    const gridEl = esDiario ? lienzoTimelineDiarioRef.current : columnasDiasSemanalRef.current;
+    if (!gridEl || (!esDiario && diasDeLaSemana.length < 7)) return;
 
     const gridRect = gridEl.getBoundingClientRect();
     if (gridRect.width <= 0) return;
 
-    const colWidth = gridRect.width / 7;
-    const relX = clientX - gridRect.left;
-    const targetDayIndex = Math.max(0, Math.min(6, Math.floor(relX / colWidth)));
-    const targetDia = diasDeLaSemana[targetDayIndex];
-    if (!targetDia) return;
+    let targetDayIndex = 0;
+    let targetFechaIso = info.fechaOriginalIso;
+    if (!esDiario) {
+      const colWidth = gridRect.width / 7;
+      const relX = clientX - gridRect.left;
+      targetDayIndex = Math.max(0, Math.min(6, Math.floor(relX / colWidth)));
+      const targetDia = diasDeLaSemana[targetDayIndex];
+      if (!targetDia) return;
+      targetFechaIso = targetDia.fechaIso;
+    }
 
-    const targetFechaIso = targetDia.fechaIso;
     const horaAperturaNum = parseInt((configAnticipo.horaApertura || '08:00').split(':')[0], 10) || 8;
     const horaCierreNum = parseInt((configAnticipo.horaCierre || '19:00').split(':')[0], 10) || 19;
     const cierreParts = (configAnticipo.horaCierre || '19:00').slice(0, 5).split(':').map(Number);
@@ -1772,7 +1959,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     const rawTopPx = Math.max(0, Math.min(maxRawTopPx, rawTopUnclamped));
     const rawMin = (rawTopPx / ALTURA_HORA_PX) * 60;
 
-    // Snapping híbrido: bloques de 15 min + snap magnético a citas adyacentes (<= 8 min)
+    // Snapping híbrido: bloques de 15 min + snap magnético suave a bordes de citas adyacentes (<= 4 min)
     let snappedMin = Math.round(rawMin / 15) * 15;
     const puntosMagneticos: number[] = [];
     for (const r of reservas) {
@@ -1790,10 +1977,10 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       }
     }
 
-    let mejorDist = 9;
+    let mejorDist = 5;
     for (const pt of puntosMagneticos) {
       const dist = Math.abs(rawMin - pt);
-      if (dist <= 8 && dist < mejorDist) {
+      if (dist <= 4 && dist < mejorDist) {
         mejorDist = dist;
         snappedMin = pt;
       }
@@ -1802,7 +1989,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     const targetMinInicio = Math.max(0, Math.min(maxMinPermitidos, snappedMin));
     const snappedTopPx = (targetMinInicio / 60) * ALTURA_HORA_PX;
 
-    const { esValido, motivoInvalido } = validarDestinoCitaSemanal(
+    const { esValido, motivoInvalido, esTraslapeParcial } = validarDestinoCitaSemanal(
       info.cita,
       targetFechaIso,
       targetMinInicio,
@@ -1810,6 +1997,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     );
 
     const nextDragState: DragCitaSemanalState = {
+      modo: info.modo,
       cita: info.cita,
       duracionMinutos: info.duracionMinutos,
       alturaPx: info.alturaPx,
@@ -1822,6 +2010,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       snappedTopPx,
       esValido,
       motivoInvalido,
+      esTraslapeParcial,
     };
 
     dragCitaSemanalRef.current = nextDragState;
@@ -1846,6 +2035,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     if (info?.dragging) {
       suppressSwipeUntilRef.current = Date.now() + 300;
       touchSemanalRef.current = null;
+      touchInicioRef.current = null;
     }
 
     if (!info || !info.dragging || !drag || !commit) return;
@@ -1873,45 +2063,69 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   const iniciarAutoScroll = () => {
     detenerAutoScroll();
     const step = () => {
-      const container = scrollSemanalRef.current;
       const pos = lastPointerPosRef.current;
       const info = pointerHoldInfoRef.current;
-      if (!container || !pos || !info || !info.dragging) {
+      if (!pos || !info || !info.dragging) {
         autoScrollFrameRef.current = null;
         return;
       }
 
-      const rect = container.getBoundingClientRect();
-      const leftStickyWidth = typeof window !== 'undefined' && window.innerWidth < 640 ? 64 : 96;
-      const topStickyHeight = 68;
-      const edge = 42;
-      let dx = 0;
-      let dy = 0;
+      const container = info.modo === 'diaria' ? scrollDiarioRef.current : scrollSemanalRef.current;
+      let scrolled = false;
 
-      if (pos.clientX < rect.left + leftStickyWidth + edge) {
-        const factor = Math.max(0, Math.min(1, (rect.left + leftStickyWidth + edge - pos.clientX) / edge));
-        dx = -Math.ceil(factor * 10);
-      } else if (pos.clientX > rect.right - edge) {
-        const factor = Math.max(0, Math.min(1, (pos.clientX - (rect.right - edge)) / edge));
-        dx = Math.ceil(factor * 10);
-      }
+      if (container) {
+        const rect = container.getBoundingClientRect();
+        const leftStickyWidth = typeof window !== 'undefined' && window.innerWidth < 640 ? 64 : 96;
+        const topStickyHeight = info.modo === 'diaria' ? 0 : 68;
+        const edge = 42;
+        let dx = 0;
+        let dy = 0;
 
-      if (pos.clientY < rect.top + topStickyHeight + edge) {
-        const factor = Math.max(0, Math.min(1, (rect.top + topStickyHeight + edge - pos.clientY) / edge));
-        dy = -Math.ceil(factor * 10);
-      } else if (pos.clientY > rect.bottom - edge) {
-        const factor = Math.max(0, Math.min(1, (pos.clientY - (rect.bottom - edge)) / edge));
-        dy = Math.ceil(factor * 10);
-      }
-
-      if (dx !== 0 || dy !== 0) {
-        const prevL = container.scrollLeft;
-        const prevT = container.scrollTop;
-        container.scrollLeft += dx;
-        container.scrollTop += dy;
-        if (container.scrollLeft !== prevL || container.scrollTop !== prevT) {
-          actualizarPosicionDragRef.current(pos.clientX, pos.clientY);
+        if (container.scrollWidth > container.clientWidth + 4) {
+          if (pos.clientX < rect.left + leftStickyWidth + edge) {
+            const factor = Math.max(0, Math.min(1, (rect.left + leftStickyWidth + edge - pos.clientX) / edge));
+            dx = -Math.ceil(factor * 10);
+          } else if (pos.clientX > rect.right - edge) {
+            const factor = Math.max(0, Math.min(1, (pos.clientX - (rect.right - edge)) / edge));
+            dx = Math.ceil(factor * 10);
+          }
         }
+
+        if (container.scrollHeight > container.clientHeight + 4) {
+          if (pos.clientY < rect.top + topStickyHeight + edge) {
+            const factor = Math.max(0, Math.min(1, (rect.top + topStickyHeight + edge - pos.clientY) / edge));
+            dy = -Math.ceil(factor * 10);
+          } else if (pos.clientY > rect.bottom - edge) {
+            const factor = Math.max(0, Math.min(1, (pos.clientY - (rect.bottom - edge)) / edge));
+            dy = Math.ceil(factor * 10);
+          }
+        } else if (info.modo === 'diaria' && typeof window !== 'undefined') {
+          let winDy = 0;
+          if (pos.clientY < 80) {
+            winDy = -Math.ceil(((80 - pos.clientY) / 80) * 10);
+          } else if (pos.clientY > window.innerHeight - 60) {
+            winDy = Math.ceil(((pos.clientY - (window.innerHeight - 60)) / 60) * 10);
+          }
+          if (winDy !== 0) {
+            const prevY = window.scrollY;
+            window.scrollBy(0, winDy);
+            if (window.scrollY !== prevY) scrolled = true;
+          }
+        }
+
+        if (dx !== 0 || dy !== 0) {
+          const prevL = container.scrollLeft;
+          const prevT = container.scrollTop;
+          container.scrollLeft += dx;
+          container.scrollTop += dy;
+          if (container.scrollLeft !== prevL || container.scrollTop !== prevT) {
+            scrolled = true;
+          }
+        }
+      }
+
+      if (scrolled) {
+        actualizarPosicionDragRef.current(pos.clientX, pos.clientY);
       }
 
       autoScrollFrameRef.current = requestAnimationFrame(step);
@@ -2006,9 +2220,11 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     dayIndex: number,
     fechaIso: string,
     pos: CitaPosicionada,
-    e: React.PointerEvent<HTMLDivElement>
+    e: React.PointerEvent<HTMLDivElement>,
+    modo: 'semanal' | 'diaria' = 'semanal'
   ) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if ((e.target as HTMLElement | null)?.closest('button, a')) return;
 
     if (holdDragTimerRef.current) {
       clearTimeout(holdDragTimerRef.current);
@@ -2028,6 +2244,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
     lastPointerPosRef.current = { clientX: e.clientX, clientY: e.clientY };
     pointerHoldInfoRef.current = {
+      modo,
       pointerId: e.pointerId,
       cita,
       startX: e.clientX,
@@ -3195,7 +3412,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
         </div>
 
         {/* Grilla de Tiempo Continua y Fiel a los Minutos */}
-        <div className="relative p-2.5 sm:p-6 overflow-x-auto">
+        <div ref={scrollDiarioRef} className="relative p-2.5 sm:p-6 overflow-x-auto">
           <div className="min-w-full sm:min-w-[600px] relative">
             <div className="flex relative" style={{ height: `${ALTURA_TOTAL_TIMELINE}px` }}>
               {/* Columna de Horas a la izquierda */}
@@ -3214,7 +3431,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
               </div>
 
               {/* Lienzo del Timeline a la derecha */}
-              <div className="flex-1 relative border-l border-[#F2C4D2]/60">
+              <div ref={lienzoTimelineDiarioRef} className="flex-1 relative border-l border-[#F2C4D2]/60">
                 {/* FRONTAL: Línea roja de la hora actual en tiempo real */}
                 {esHoy && estaEnHorario && (
                   <div
@@ -3298,6 +3515,8 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                     const inicioMs = new Date(cita.fecha_inicio).getTime();
                     const finMs = cita.fecha_fin ? new Date(cita.fecha_fin).getTime() : inicioMs + 45 * 60000;
                     const estaEnAtencion = esHoy && !esBloqueada && cita.estado !== 'completada' && cita.estado !== 'cancelada' && ahoraMs >= inicioMs && ahoraMs < finMs;
+                    const esMovible = !esBloqueada && cita.estado !== 'completada' && cita.estado !== 'cancelada' && finMs > ahoraMs;
+                    const esCitaArrastrada = dragCitaSemanal?.modo === 'diaria' && dragCitaSemanal?.cita.id === cita.id;
 
                     const leftPercent = (colIndex / totalCols) * 100;
                     const widthPercent = (1 / totalCols) * 100;
@@ -3306,6 +3525,10 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                       <div
                         key={cita.id}
                         onClick={(e) => e.stopPropagation()}
+                        onPointerDown={(e) => iniciarHoldCitaSemanal(cita, 0, fechaActualTimeline, pos, e, 'diaria')}
+                        onContextMenu={(e) => {
+                          if (esMovible) e.preventDefault();
+                        }}
                         onMouseEnter={(e) => abrirPopoverCita(cita, e)}
                         onMouseLeave={cerrarPopoverCita}
                         style={{
@@ -3313,20 +3536,30 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                           height: `${height}px`,
                           left: `calc(${leftPercent}% + 4px)`,
                           width: `calc(${widthPercent}% - 8px)`,
+                          WebkitTouchCallout: 'none',
                         }}
-                        className={`absolute z-20 pointer-events-auto rounded-2xl border transition-all shadow-xs hover:shadow-md flex flex-col justify-between overflow-hidden p-2.5 sm:p-3 cursor-pointer ${
-                          esBloqueada
-                            ? 'bg-gradient-to-r from-amber-50 to-orange-50/80 border-amber-300 shadow-amber-100/50'
-                            : estaEnAtencion
-                            ? 'bg-rose-50/90 border-[#8C243B] ring-2 ring-[#8C243B]/20 shadow-[#8C243B]/10'
-                            : cita.estado === 'pendiente_anticipo' || cita.estado === 'pendiente_pago'
-                            ? 'bg-amber-50/80 border-amber-300 shadow-amber-100/40 text-amber-950'
-                            : cita.estado === 'completada'
-                            ? 'bg-emerald-50/80 border-emerald-300'
-                            : cita.estado === 'cancelada'
-                            ? 'bg-slate-50 border-slate-200 opacity-60'
-                            : 'bg-white border-[#F2C4D2] hover:border-[#8C243B]'
+                        className={`absolute z-20 pointer-events-auto rounded-2xl border transition-all flex flex-col justify-between overflow-hidden p-2.5 sm:p-3 select-none ${
+                          esCitaArrastrada
+                            ? 'border-2 border-dashed border-[#8C243B]/45 bg-[#FFF5F7]/70 opacity-60 shadow-none pointer-events-none'
+                            : `shadow-xs hover:shadow-md ${esMovible ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} ${
+                                esBloqueada
+                                  ? 'bg-gradient-to-r from-amber-50 to-orange-50/80 border-amber-300 shadow-amber-100/50'
+                                  : estaEnAtencion
+                                  ? 'bg-rose-50/90 border-[#8C243B] ring-2 ring-[#8C243B]/20 shadow-[#8C243B]/10'
+                                  : cita.estado === 'pendiente_anticipo' || cita.estado === 'pendiente_pago'
+                                  ? 'bg-amber-50/80 border-amber-300 shadow-amber-100/40 text-amber-950'
+                                  : cita.estado === 'completada'
+                                  ? 'bg-emerald-50/80 border-emerald-300'
+                                  : cita.estado === 'cancelada'
+                                  ? 'bg-slate-50 border-slate-200 opacity-60'
+                                  : 'bg-white border-[#F2C4D2] hover:border-[#8C243B]'
+                              }`
                         }`}
+                        title={
+                          esMovible
+                            ? 'Clic corto: ver detalles · Mantén presionado: mover horario o traslapar parcialmente'
+                            : 'Clic para ver todos los detalles de esta cita'
+                        }
                       >
                         {/* Cabecera de la Cita */}
                         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -3557,6 +3790,99 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                     );
                   })}
                 </div>
+
+                {/* Previsualización magnética y bloque flotante durante el arrastre en vista diaria */}
+                {dragCitaSemanal &&
+                  dragCitaSemanal.modo === 'diaria' &&
+                  dragCitaSemanal.targetFechaIso === fechaActualTimeline &&
+                  (!canchaId || canchaId === 'todas' || canchaId === dragCitaSemanal.cita.cancha_id) &&
+                  (() => {
+                    const dragHoraIni = formatearMinutosAHHMM(horaAperturaNum, dragCitaSemanal.targetMinInicio);
+                    const dragHoraFin = formatearMinutosAHHMM(
+                      horaAperturaNum,
+                      dragCitaSemanal.targetMinInicio + dragCitaSemanal.duracionMinutos
+                    );
+                    const dragNombre = obtenerNombreClienta(dragCitaSemanal.cita);
+                    const dragServicio = obtenerServicioCita(dragCitaSemanal.cita);
+
+                    return (
+                      <>
+                        {/* Recuadro guía magnético (posición exacta donde encajará al soltar) */}
+                        <div
+                          style={{
+                            top: `${dragCitaSemanal.snappedTopPx}px`,
+                            height: `${dragCitaSemanal.alturaPx}px`,
+                            left: '4px',
+                            width: 'calc(100% - 8px)',
+                            transition: 'top 90ms ease-out',
+                          }}
+                          className={`absolute z-30 pointer-events-none rounded-2xl border-2 border-dashed flex items-center justify-center p-2 text-center ${
+                            dragCitaSemanal.esValido
+                              ? dragCitaSemanal.esTraslapeParcial
+                                ? 'border-violet-500 bg-violet-50/75 text-violet-900 shadow-sm'
+                                : 'border-emerald-500 bg-emerald-50/75 text-emerald-800 shadow-sm'
+                              : 'border-rose-500 bg-rose-50/80 text-rose-700 shadow-sm'
+                          }`}
+                        >
+                          <span className="text-xs font-extrabold font-mono px-2.5 py-1 rounded-xl bg-white/95 shadow-2xs truncate">
+                            {dragCitaSemanal.esValido
+                              ? dragCitaSemanal.esTraslapeParcial
+                                ? `✓ Traslape parcial: ${formatearHora12(dragHoraIni)} - ${formatearHora12(dragHoraFin)}`
+                                : `✓ ${formatearHora12(dragHoraIni)} - ${formatearHora12(dragHoraFin)}`
+                              : `⚠ ${dragCitaSemanal.motivoInvalido || 'No disponible'}`}
+                          </span>
+                        </div>
+
+                        {/* Bloque flotante con movimiento continuo */}
+                        <div
+                          style={{
+                            top: `${dragCitaSemanal.rawTopPx}px`,
+                            height: `${dragCitaSemanal.alturaPx}px`,
+                            left: '4px',
+                            width: 'calc(100% - 8px)',
+                          }}
+                          className={`absolute z-40 pointer-events-none rounded-2xl border-2 p-2.5 sm:p-3 shadow-2xl scale-[1.01] flex flex-col justify-between overflow-hidden ring-4 backdrop-blur-xs select-none ${
+                            dragCitaSemanal.esValido
+                              ? dragCitaSemanal.esTraslapeParcial
+                                ? 'bg-white/95 border-violet-600 ring-violet-400/35 text-[#2D2529]'
+                                : 'bg-white/95 border-[#8C243B] ring-emerald-400/35 text-[#2D2529]'
+                              : 'bg-rose-50/95 border-rose-500 ring-rose-400/35 text-rose-950'
+                          }`}
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2 leading-none">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div className="px-2 py-0.5 rounded-lg border bg-[#FFF5F7] border-[#F2C4D2] text-[#8C243B] font-mono font-bold text-xs flex items-center gap-1 shrink-0">
+                                <IconClock className="w-3.5 h-3.5 text-[#C74B66]" />
+                                <span>{formatearRangoHoras12(dragHoraIni, dragHoraFin)}</span>
+                              </div>
+                              <p className="font-bold text-xs sm:text-sm truncate">{dragNombre}</p>
+                            </div>
+                            <span
+                              className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border shrink-0 ${
+                                dragCitaSemanal.esValido
+                                  ? dragCitaSemanal.esTraslapeParcial
+                                    ? 'bg-violet-100 text-violet-800 border-violet-300'
+                                    : 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                  : 'bg-rose-100 text-rose-800 border-rose-300'
+                              }`}
+                            >
+                              {dragCitaSemanal.esValido
+                                ? dragCitaSemanal.esTraslapeParcial
+                                  ? '✓ Traslape parcial'
+                                  : '✓ Libre'
+                                : dragCitaSemanal.motivoInvalido}
+                            </span>
+                          </div>
+
+                          {dragCitaSemanal.alturaPx >= 52 && (
+                            <div className="leading-none text-xs text-[#7D6870] truncate pt-1 border-t border-[#FCE8EF]/70">
+                              <span className="truncate">💅 {dragServicio}</span>
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    );
+                  })()}
               </div>
             </div>
           </div>
@@ -3791,13 +4117,13 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                     .sort((a, b) => new Date(a.fecha_inicio).getTime() - new Date(b.fecha_inicio).getTime());
 
                   const posicionesDia = calcularPosicionesCitas(citasDelDia, horaAperturaNum);
-                  const esColumnaDestinoDrag = dragCitaSemanal?.targetFechaIso === d.fechaIso;
+                  const esColumnaDestinoDrag = dragCitaSemanal?.modo === 'semanal' && dragCitaSemanal?.targetFechaIso === d.fechaIso;
 
                   return (
                     <div
                       key={d.fechaIso}
                       className={`relative h-full transition-colors ${
-                        esColumnaDestinoDrag
+                        esColumnaDestinoDrag && dragCitaSemanal
                           ? dragCitaSemanal.esValido
                             ? 'bg-emerald-50/35'
                             : 'bg-rose-50/35'
@@ -3949,7 +4275,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                 })}
 
                 {/* Previsualización magnética y bloque flotante durante el arrastre */}
-                {dragCitaSemanal && (() => {
+                {dragCitaSemanal && dragCitaSemanal.modo === 'semanal' && (() => {
                   const dragHoraIni = formatearMinutosAHHMM(horaAperturaNum, dragCitaSemanal.targetMinInicio);
                   const dragHoraFin = formatearMinutosAHHMM(
                     horaAperturaNum,
@@ -3971,13 +4297,17 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                         }}
                         className={`absolute z-30 pointer-events-none rounded-xl border-2 border-dashed flex items-center justify-center p-1 text-center ${
                           dragCitaSemanal.esValido
-                            ? 'border-emerald-500 bg-emerald-50/75 text-emerald-800 shadow-sm'
+                            ? dragCitaSemanal.esTraslapeParcial
+                              ? 'border-violet-500 bg-violet-50/75 text-violet-900 shadow-sm'
+                              : 'border-emerald-500 bg-emerald-50/75 text-emerald-800 shadow-sm'
                             : 'border-rose-500 bg-rose-50/80 text-rose-700 shadow-sm'
                         }`}
                       >
                         <span className="text-[9px] font-extrabold font-mono px-1.5 py-0.5 rounded bg-white/90 shadow-2xs truncate">
                           {dragCitaSemanal.esValido
-                            ? `✓ ${dragHoraIni}-${dragHoraFin}`
+                            ? dragCitaSemanal.esTraslapeParcial
+                              ? `✓ Traslape ${dragHoraIni}-${dragHoraFin}`
+                              : `✓ ${dragHoraIni}-${dragHoraFin}`
                             : `⚠ ${dragCitaSemanal.motivoInvalido || 'No disponible'}`}
                         </span>
                       </div>
@@ -3993,7 +4323,9 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                         }}
                         className={`absolute z-40 pointer-events-none rounded-xl border-2 p-1.5 shadow-2xl scale-[1.03] flex flex-col justify-between overflow-hidden ring-4 backdrop-blur-xs select-none ${
                           dragCitaSemanal.esValido
-                            ? 'bg-white/95 border-[#8C243B] ring-emerald-400/35 text-[#2D2529]'
+                            ? dragCitaSemanal.esTraslapeParcial
+                              ? 'bg-white/95 border-violet-600 ring-violet-400/35 text-[#2D2529]'
+                              : 'bg-white/95 border-[#8C243B] ring-emerald-400/35 text-[#2D2529]'
                             : 'bg-rose-50/95 border-rose-500 ring-rose-400/35 text-rose-950'
                         }`}
                       >
@@ -4005,11 +4337,17 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                           <span
                             className={`text-[8px] font-extrabold px-1 py-0.2 rounded border shrink-0 ${
                               dragCitaSemanal.esValido
-                                ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                ? dragCitaSemanal.esTraslapeParcial
+                                  ? 'bg-violet-100 text-violet-800 border-violet-300'
+                                  : 'bg-emerald-100 text-emerald-800 border-emerald-300'
                                 : 'bg-rose-100 text-rose-800 border-rose-300'
                             }`}
                           >
-                            {dragCitaSemanal.esValido ? '✓ Libre' : dragCitaSemanal.motivoInvalido}
+                            {dragCitaSemanal.esValido
+                              ? dragCitaSemanal.esTraslapeParcial
+                                ? '✓ Traslape'
+                                : '✓ Libre'
+                              : dragCitaSemanal.motivoInvalido}
                           </span>
                         </div>
 
