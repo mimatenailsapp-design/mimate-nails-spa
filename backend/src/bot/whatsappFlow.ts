@@ -1749,31 +1749,44 @@ export class WhatsAppFlow {
         esConfirmar = true;
       }
     } else {
-      // Mensaje corto directo del usuario
+      // Mensaje corto o natural directo de la clienta
+      const textoLimpio = input.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+
       if (
-        input === '3' ||
-        input === 'cambiar fecha' ||
-        input === 'reagendar' ||
-        input === 'reprogramar' ||
-        input === 'cambio de fecha' ||
-        input.includes('cambiar fecha') ||
-        input.includes('reagendar')
+        textoLimpio === '3' ||
+        textoLimpio.startsWith('3') ||
+        textoLimpio.includes('3️⃣') ||
+        textoLimpio.includes('cambiar fecha') ||
+        textoLimpio.includes('cambio de fecha') ||
+        textoLimpio.includes('reagendar') ||
+        textoLimpio.includes('reprogramar') ||
+        textoLimpio.includes('otra fecha') ||
+        textoLimpio.includes('otro dia') ||
+        textoLimpio.includes('otro horario')
       ) {
         esReagendar = true;
       } else if (
-        input === '2' ||
-        input === 'cancelar cita' ||
-        input === 'cancelar' ||
-        input === 'cancelo' ||
-        input.includes('cancelar cita')
+        textoLimpio === '2' ||
+        textoLimpio.startsWith('2') ||
+        textoLimpio.includes('2️⃣') ||
+        textoLimpio.includes('cancel') || // cancelar, cancelo, cancelacion, cancelada
+        textoLimpio.includes('no puedo ir') ||
+        textoLimpio.includes('no voy a poder')
       ) {
         esCancelar = true;
       } else if (
-        input === '1' ||
-        input === 'confirmar' ||
-        input === 'confirmar cita' ||
-        input === 'confirmo' ||
-        input.includes('confirmar cita')
+        textoLimpio === '1' ||
+        textoLimpio.startsWith('1') ||
+        textoLimpio.includes('1️⃣') ||
+        textoLimpio.includes('confirm') || // confirmar, confirmo, confirmada, confirmado, si confirmo, reconfirmar
+        textoLimpio.includes('asist') ||  // asistire, asisto, voy a asistir
+        textoLimpio === 'si' ||
+        textoLimpio === 'si voy' ||
+        textoLimpio === 'si voy a ir' ||
+        textoLimpio === 'claro que si' ||
+        textoLimpio === 'alla estare' ||
+        textoLimpio === 'ahi estare' ||
+        textoLimpio.startsWith('si ')
       ) {
         esConfirmar = true;
       }
