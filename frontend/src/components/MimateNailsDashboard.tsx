@@ -4078,13 +4078,13 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
             className="overflow-x-auto no-scrollbar touch-pan-x touch-pan-y"
           >
             <div className="min-w-[980px] sm:min-w-[1050px] w-full px-2.5 sm:px-5 pr-4 sm:pr-6 pt-2 pb-2.5 flex items-center">
-              <div className="w-16 sm:w-24 pr-3 flex-shrink-0 text-right select-none sticky left-0 z-30 bg-white/95 backdrop-blur-xs self-stretch flex items-center justify-end">
+              <div className="w-16 sm:w-24 pr-3 flex-shrink-0 text-right select-none sticky left-0 z-30 bg-white border-r border-[#F2C4D2]/60 self-stretch flex items-center justify-end">
                 <span className="text-[11px] font-extrabold text-[#8C243B] uppercase tracking-wider">
                   HORA
                 </span>
               </div>
 
-              <div className="flex-1 grid grid-cols-7 divide-x divide-[#F2C4D2]/60 border-l border-r border-[#F2C4D2]/60">
+              <div className="flex-1 grid grid-cols-7 divide-x divide-[#F2C4D2]/60 border-r border-[#F2C4D2]/60">
                 {diasDeLaSemana.map((d) => {
                   const citasDelDia = citasFiltradas.filter((r) => {
                     if (!r.fecha_inicio) return false;
@@ -4157,8 +4157,8 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
           <div className="min-w-[980px] sm:min-w-[1050px] w-full px-2.5 sm:px-5 pr-4 sm:pr-6 pt-3 pb-2.5 sm:pb-5">
             {/* CUERPO DEL TIMELINE CONTINUO POR COLUMNAS DE DÍAS (LUNES A DOMINGO) */}
             <div className="flex relative" style={{ height: `${ALTURA_TOTAL_TIMELINE}px` }}>
-              {/* Columna de Horas a la izquierda */}
-              <div className="w-16 sm:w-24 pr-3 flex-shrink-0 relative select-none sticky left-0 z-20 bg-white/95 backdrop-blur-xs">
+              {/* Columna de Horas a la izquierda (z-30 sólido para que ninguna cita la tape al deslizar días) */}
+              <div className="w-16 sm:w-24 pr-3 flex-shrink-0 relative select-none sticky left-0 z-30 bg-white border-r border-[#F2C4D2]/60">
                 {horasTimeline.map((h, index) => (
                   <div
                     key={h}
@@ -4170,23 +4170,28 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                     </span>
                   </div>
                 ))}
+                {esSemanaActual && estaEnHorario && (
+                  <span
+                    className="absolute right-1.5 -mt-2.5 z-10 bg-red-500 text-white text-[10px] sm:text-[11px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full shadow-md flex items-center gap-1 select-none pointer-events-none"
+                    style={{ top: `${posicionYLinea}px` }}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+                    {horaMinutosActualStr}
+                  </span>
+                )}
               </div>
 
               {/* 7 Columnas de los Días a la derecha */}
               <div
                 ref={columnasDiasSemanalRef}
-                className="flex-1 grid grid-cols-7 divide-x divide-[#F2C4D2]/60 relative border-l border-r border-[#F2C4D2]/60"
+                className="flex-1 grid grid-cols-7 divide-x divide-[#F2C4D2]/60 relative border-r border-[#F2C4D2]/60"
               >
                 {/* FRONTAL: Línea roja de la hora actual en tiempo real si esta semana incluye hoy */}
                 {esSemanaActual && estaEnHorario && (
                   <div
-                    className="absolute left-0 right-0 z-30 pointer-events-none flex items-center transition-all duration-700"
+                    className="absolute left-0 right-0 z-20 pointer-events-none flex items-center transition-all duration-700"
                     style={{ top: `${posicionYLinea}px` }}
                   >
-                    <span className="absolute -left-14 sm:-left-16 -top-2.5 bg-red-500 text-white text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-full shadow-md flex items-center gap-1 select-none">
-                      <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
-                      {horaMinutosActualStr}
-                    </span>
                     <span className="w-2.5 h-2.5 rounded-full bg-red-500 -ml-1 ring-2 ring-white shadow-xs" />
                     <div className="flex-1 h-[2px] bg-red-500 shadow-xs" />
                   </div>
@@ -4272,10 +4277,10 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                                 width: `calc(${widthPercent}% - 4px)`,
                                 WebkitTouchCallout: 'none',
                               }}
-                              className={`absolute z-20 pointer-events-auto rounded-xl border text-xs p-1.5 transition-all select-none flex flex-col justify-between overflow-hidden ${
+                              className={`absolute z-10 pointer-events-auto rounded-xl border text-xs p-1.5 transition-all select-none flex flex-col justify-between overflow-hidden ${
                                 esCitaArrastrada
                                   ? 'border-2 border-dashed border-[#8C243B]/45 bg-[#FFF5F7]/70 opacity-60 shadow-none pointer-events-none'
-                                  : `shadow-2xs hover:shadow-lg hover:scale-[1.02] hover:z-30 ${
+                                  : `shadow-2xs hover:shadow-lg hover:scale-[1.02] hover:z-20 ${
                                       esMovible ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
                                     } ${
                                       esBloqueada
