@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { IconClock, IconCheck, IconX, IconLoader2 } from '@tabler/icons-react';
+import { formatearHora12 } from '../../utils/formatoHora';
 
 export interface ConfigAnticipoData {
   exigeAnticipo: boolean;
@@ -39,7 +40,7 @@ export const ConfigAnticipoModal: React.FC<ConfigAnticipoModalProps> = ({
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="bg-white rounded-3xl max-w-md w-full p-6 border border-[#F2C4D2] shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto"
+            className="bg-white rounded-3xl max-w-md w-full p-4 sm:p-6 border border-[#F2C4D2] shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto"
           >
             <div className="flex items-center justify-between border-b border-[#FCE8EF] pb-3">
               <div className="flex items-center gap-2">
@@ -77,11 +78,16 @@ export const ConfigAnticipoModal: React.FC<ConfigAnticipoModalProps> = ({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 pt-1">
-                  <div>
-                    <label className="font-bold text-[#7D6870] block mb-1">
-                      Hora Apertura
-                    </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div className="bg-white p-2.5 rounded-xl border border-[#F2C4D2]/80 shadow-2xs">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="font-bold text-[#7D6870] text-xs">
+                        Hora Apertura
+                      </label>
+                      <span className="text-[11px] font-extrabold text-[#8C243B] bg-[#FFF5F7] px-2 py-0.5 rounded-md border border-[#F2C4D2]">
+                        {formatearHora12(configAnticipo.horaApertura || '08:00')}
+                      </span>
+                    </div>
                     <input
                       type="time"
                       value={configAnticipo.horaApertura || '08:00'}
@@ -91,14 +97,19 @@ export const ConfigAnticipoModal: React.FC<ConfigAnticipoModalProps> = ({
                           horaApertura: e.target.value,
                         }))
                       }
-                      className="w-full px-3 py-2 bg-white border border-[#F2C4D2] rounded-xl font-bold text-[#2D2529] outline-none focus:border-[#8C243B]"
+                      className="w-full px-3 py-2 bg-[#FFF5F7]/40 border border-[#F2C4D2] rounded-xl font-bold text-[#2D2529] outline-none focus:border-[#8C243B] focus:bg-white text-sm"
                       required
                     />
                   </div>
-                  <div>
-                    <label className="font-bold text-[#7D6870] block mb-1">
-                      Hora Cierre
-                    </label>
+                  <div className="bg-white p-2.5 rounded-xl border border-[#F2C4D2]/80 shadow-2xs">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="font-bold text-[#7D6870] text-xs">
+                        Hora Cierre
+                      </label>
+                      <span className="text-[11px] font-extrabold text-[#8C243B] bg-[#FFF5F7] px-2 py-0.5 rounded-md border border-[#F2C4D2]">
+                        {formatearHora12(configAnticipo.horaCierre || '19:00')}
+                      </span>
+                    </div>
                     <input
                       type="time"
                       value={configAnticipo.horaCierre || '19:00'}
@@ -108,7 +119,7 @@ export const ConfigAnticipoModal: React.FC<ConfigAnticipoModalProps> = ({
                           horaCierre: e.target.value,
                         }))
                       }
-                      className="w-full px-3 py-2 bg-white border border-[#F2C4D2] rounded-xl font-bold text-[#2D2529] outline-none focus:border-[#8C243B]"
+                      className="w-full px-3 py-2 bg-[#FFF5F7]/40 border border-[#F2C4D2] rounded-xl font-bold text-[#2D2529] outline-none focus:border-[#8C243B] focus:bg-white text-sm"
                       required
                     />
                   </div>
