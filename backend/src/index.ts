@@ -838,6 +838,8 @@ app.get('/api/reservas', async (req: Request, res: Response) => {
   if (desde) query = query.gte('fecha_inicio', desde as string);
   if (hasta) query = query.lte('fecha_fin', hasta as string);
 
+  query = query.order('fecha_inicio', { ascending: true });
+
   const { data, error } = await query;
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);

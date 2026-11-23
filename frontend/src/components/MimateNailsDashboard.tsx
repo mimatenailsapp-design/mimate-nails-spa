@@ -1190,7 +1190,10 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       const res = await fetch(`/api/reservas?complejo_id=${spaId}`);
       if (res.ok) {
         const data = await res.json();
-        setReservas(data || []);
+        const dataOrdenada = Array.isArray(data)
+          ? [...data].sort((a: Reserva, b: Reserva) => new Date(a.fecha_inicio).getTime() - new Date(b.fecha_inicio).getTime())
+          : [];
+        setReservas(dataOrdenada);
       }
     } catch (e) {
       console.error('Error cargando reservas:', e);
@@ -2688,15 +2691,17 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     }
   };
 
-  // Filtrado de reservas por fecha seleccionada
+  // Filtrado de reservas por fecha seleccionada (ordenadas cronológicamente de forma ascendente: de más temprano a más tarde)
   const reservasDelDia = useMemo(() => {
-    return reservas.filter((r) => {
-      if (!r.fecha_inicio) return false;
-      const fechaCita = new Date(r.fecha_inicio).toLocaleDateString('en-CA', {
-        timeZone: 'America/Bogota',
-      });
-      return fechaCita === fechaSeleccionada;
-    });
+    return reservas
+      .filter((r) => {
+        if (!r.fecha_inicio) return false;
+        const fechaCita = new Date(r.fecha_inicio).toLocaleDateString('en-CA', {
+          timeZone: 'America/Bogota',
+        });
+        return fechaCita === fechaSeleccionada;
+      })
+      .sort((a, b) => new Date(a.fecha_inicio).getTime() - new Date(b.fecha_inicio).getTime());
   }, [reservas, fechaSeleccionada]);
 
   // Citas reales vs Bloqueos del día
@@ -2708,17 +2713,19 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     return reservasDelDia.filter((r) => r.estado === 'bloqueada');
   }, [reservasDelDia]);
 
-  // Reservas de toda la semana activa
+  // Reservas de toda la semana activa (ordenadas cronológicamente de forma ascendente)
   const reservasDeLaSemana = useMemo(() => {
     if (diasDeLaSemana.length === 0) return [];
     const fechasSet = new Set(diasDeLaSemana.map((d) => d.fechaIso));
-    return reservas.filter((r) => {
-      if (!r.fecha_inicio) return false;
-      const fechaCita = new Date(r.fecha_inicio).toLocaleDateString('en-CA', {
-        timeZone: 'America/Bogota',
-      });
-      return fechasSet.has(fechaCita);
-    });
+    return reservas
+      .filter((r) => {
+        if (!r.fecha_inicio) return false;
+        const fechaCita = new Date(r.fecha_inicio).toLocaleDateString('en-CA', {
+          timeZone: 'America/Bogota',
+        });
+        return fechasSet.has(fechaCita);
+      })
+      .sort((a, b) => new Date(a.fecha_inicio).getTime() - new Date(b.fecha_inicio).getTime());
   }, [reservas, diasDeLaSemana]);
 
   const citasClientesDeLaSemana = useMemo(() => {
@@ -3773,13 +3780,15 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
                 {/* Las 7 Columnas de días */}
                 {diasDeLaSemana.map((d, dayIdx) => {
-                  const citasDelDia = citasFiltradas.filter((r) => {
-                    if (!r.fecha_inicio) return false;
-                    const fCita = new Date(r.fecha_inicio).toLocaleDateString('en-CA', {
-                      timeZone: 'America/Bogota',
-                    });
-                    return fCita === d.fechaIso && r.estado !== 'cancelada';
-                  });
+                  const citasDelDia = citasFiltradas
+                    .filter((r) => {
+                      if (!r.fecha_inicio) return false;
+                      const fCita = new Date(r.fecha_inicio).toLocaleDateString('en-CA', {
+                        timeZone: 'America/Bogota',
+                      });
+                      return fCita === d.fechaIso && r.estado !== 'cancelada';
+                    })
+                    .sort((a, b) => new Date(a.fecha_inicio).getTime() - new Date(b.fecha_inicio).getTime());
 
                   const posicionesDia = calcularPosicionesCitas(citasDelDia, horaAperturaNum);
                   const esColumnaDestinoDrag = dragCitaSemanal?.targetFechaIso === d.fechaIso;
@@ -4636,7 +4645,9 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                   {especialistaSeleccionadaId !== 'todas' ? (
                   (() => {
                     const targetCancha = canchas.find((c) => c.id === especialistaSeleccionadaId);
-                    const citasTarget = reservasDelDia.filter((r) => r.cancha_id === especialistaSeleccionadaId && r.estado !== 'cancelada');
+                    const citasTarget = [...reservasDelDia]
+                      .filter((r) => r.cancha_id === especialistaSeleccionadaId && r.estado !== 'cancelada')
+                      .sort((a, b) => new Date(a.fecha_inicio).getTime() - new Date(b.fecha_inicio).getTime());
                     return renderTimelineManicurista(
                       citasTarget,
                       targetCancha?.nombre || 'Especialista',
@@ -4648,7 +4659,9 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                   /* TABLAS EN 4 COLUMNAS (1 POR CADA MANICURISTA) */
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {canchas.map((cancha) => {
-                const citasCancha = reservasDelDia.filter((r) => r.cancha_id === cancha.id && r.estado !== 'cancelada');
+                const citasCancha = [...reservasDelDia]
+                  .filter((r) => r.cancha_id === cancha.id && r.estado !== 'cancelada')
+                  .sort((a, b) => new Date(a.fecha_inicio).getTime() - new Date(b.fecha_inicio).getTime());
                 const esColumnaAdmin = cancha.nombre.toLowerCase().includes('lili') || cancha.nombre.toLowerCase().includes('jhoana');
 
                 return (
@@ -5416,9 +5429,9 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                 >
                   {/* TIMELINE DIARIO CRONOLÓGICO DE LA MANICURISTA CON LÍNEA ROJA EN TIEMPO REAL */}
                   {(() => {
-                    const misCitas = reservasDelDia.filter(
-                      (r) => r.cancha_id === perfilActual.canchaId && r.estado !== 'cancelada'
-                    );
+                    const misCitas = [...reservasDelDia]
+                      .filter((r) => r.cancha_id === perfilActual.canchaId && r.estado !== 'cancelada')
+                      .sort((a, b) => new Date(a.fecha_inicio).getTime() - new Date(b.fecha_inicio).getTime());
 
                     return renderTimelineManicurista(
                       misCitas,
