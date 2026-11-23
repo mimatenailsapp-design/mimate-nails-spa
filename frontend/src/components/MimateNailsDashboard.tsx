@@ -1048,9 +1048,33 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   }, [configAnticipo.horaApertura, configAnticipo.horaCierre]);
 
   // Horas para el timeline visual calculadas dinámicamente según horario de apertura y cierre
+  // Si hay citas activas de Admin/Especialistas que terminan después del cierre, se extiende automáticamente el timeline
   const horasTimeline = useMemo(() => {
-    return calcularHorasTimeline(configAnticipo.horaApertura, configAnticipo.horaCierre);
-  }, [configAnticipo.horaApertura, configAnticipo.horaCierre]);
+    const baseHoras = calcularHorasTimeline(configAnticipo.horaApertura, configAnticipo.horaCierre);
+    const maxBase = baseHoras[baseHoras.length - 1] ?? 19;
+    let maxHoraFin = maxBase;
+
+    for (const r of reservas) {
+      if (r.estado === 'cancelada' || !r.fecha_fin) continue;
+      const hhmmFin = obtenerHoraMinutosBogota(r.fecha_fin);
+      const [hFin, mFin] = hhmmFin.split(':').map(Number);
+      if (!isNaN(hFin)) {
+        const horaTecho = mFin > 0 ? hFin + 1 : hFin;
+        if (horaTecho > maxHoraFin) {
+          maxHoraFin = Math.min(23, horaTecho);
+        }
+      }
+    }
+
+    if (maxHoraFin > maxBase) {
+      const extendidas = [...baseHoras];
+      for (let h = maxBase + 1; h <= maxHoraFin; h++) {
+        extendidas.push(h);
+      }
+      return extendidas;
+    }
+    return baseHoras;
+  }, [configAnticipo.horaApertura, configAnticipo.horaCierre, reservas]);
 
   // Horas libres para el modal de Agendar Cita con cálculo dinámico por duración y fin de citas previas
   const horasDisponiblesAgendarAdmin = useMemo(() => {
@@ -1124,8 +1148,9 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
         continue;
       }
 
-      // 2. Si sobrepasa la hora de cierre del spa, no se puede agendar
-      if (slotEndMs > horaCierreMs) {
+      // 2. En el panel de Admin y Especialistas se permite que la cita finalice después de la hora de cierre
+      // siempre que inicie antes de la hora de cierre configurada (ej. inicia 6:00 PM y termina 8:00 PM con cierre 7:00 PM)
+      if (slotStartMs >= horaCierreMs) {
         continue;
       }
 
@@ -1781,11 +1806,11 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       return { esValido: false, motivoInvalido: 'Horario ya pasado' };
     }
 
-    // 3. Supera hora de cierre del spa
+    // 3. El inicio no puede ser igual o posterior a la hora de cierre del spa (el fin sí puede extenderse más allá del cierre para Admin/Especialistas)
     const cierreStr = (configAnticipo.horaCierre || '19:00').slice(0, 5);
     const horaCierreMs = new Date(`${targetFechaIso}T${cierreStr}:00-05:00`).getTime();
-    if (slotEndMs > horaCierreMs) {
-      return { esValido: false, motivoInvalido: 'Supera hora de cierre' };
+    if (slotStartMs >= horaCierreMs) {
+      return { esValido: false, motivoInvalido: 'Inicia después del cierre' };
     }
 
     // 4. Evaluar traslape parcial con citas activas de la misma especialista
@@ -2008,8 +2033,8 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     const horaCierreNum = parseInt((configAnticipo.horaCierre || '19:00').split(':')[0], 10) || 19;
     const cierreParts = (configAnticipo.horaCierre || '19:00').slice(0, 5).split(':').map(Number);
     const cierreMinTotal = (isNaN(cierreParts[0]) ? horaCierreNum : cierreParts[0]) * 60 + (isNaN(cierreParts[1]) ? 0 : cierreParts[1]);
-    const maxMinPermitidos = Math.max(0, cierreMinTotal - horaAperturaNum * 60 - info.duracionMinutos);
-    const maxRawTopPx = Math.max(0, horasTimeline.length * ALTURA_HORA_PX - info.alturaPx);
+    const maxMinPermitidos = Math.max(0, cierreMinTotal - horaAperturaNum * 60 - 15);
+    const maxRawTopPx = Math.max(0, (maxMinPermitidos / 60) * ALTURA_HORA_PX);
 
     const rawTopUnclamped = clientY - gridRect.top - info.grabOffsetY;
     const rawTopPx = Math.max(0, Math.min(maxRawTopPx, rawTopUnclamped));

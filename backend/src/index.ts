@@ -1969,6 +1969,30 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
       return res.status(400).json({ error: 'No puedes reservar un horario que ya pasó.' });
     }
 
+    // 1B. Validar horario de atención según origen:
+    // - Clientas (origen !== 'panel'): bajo ninguna circunstancia pueden superar la hora de cierre del spa.
+    // - Admin / Especialistas (origen === 'panel'): pueden agendar citas que terminen después del cierre si inician dentro del horario laboral.
+    const aperturaStr = complejo.hora_apertura ? String(complejo.hora_apertura).slice(0, 5) : '08:00';
+    const cierreStr = complejo.hora_cierre ? String(complejo.hora_cierre).slice(0, 5) : '19:00';
+    const horaAperturaMs = new Date(`${fecha}T${aperturaStr}:00-05:00`).getTime();
+    const horaCierreMs = new Date(`${fecha}T${cierreStr}:00-05:00`).getTime();
+
+    if (!isNaN(horaAperturaMs) && !isNaN(horaCierreMs)) {
+      if (origen !== 'panel') {
+        if (dInicio.getTime() < horaAperturaMs || dFin.getTime() > horaCierreMs) {
+          return res.status(400).json({
+            error: 'El horario seleccionado supera la hora de cierre del spa. Por favor elige un turno más temprano.',
+          });
+        }
+      } else {
+        if (dInicio.getTime() < horaAperturaMs || dInicio.getTime() >= horaCierreMs) {
+          return res.status(400).json({
+            error: 'La hora de inicio debe estar dentro del horario de apertura y cierre del spa.',
+          });
+        }
+      }
+    }
+
     // 2. Buscar reservas activas solapadas en esta franja usando horario real (excluyendo cita anterior si es reagendamiento)
     const inicioVentanaRes = new Date(dInicio.getTime() - 12 * 60 * 60 * 1000).toISOString();
     const finVentanaRes = new Date(dFin.getTime() + 12 * 60 * 60 * 1000).toISOString();
