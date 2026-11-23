@@ -1963,7 +1963,7 @@ export class WhatsAppFlow {
       if (!notasActuales.includes('[CONFIRMADA_POR_CLIENTA]')) {
         await supabase
           .from('reservas')
-          .update({ notas: `${notasActuales} [CONFIRMADA_POR_CLIENTA]`.trim() })
+          .update({ notas: `${notasActuales} [CONFIRMADA_POR_CLIENTA]`.replace(/\s*\[POR_CONFIRMAR_CLIENTA\]/g, '').trim() })
           .eq('id', reserva.id);
       }
 

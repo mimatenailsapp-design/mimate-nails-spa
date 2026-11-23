@@ -38,7 +38,7 @@ import { ConfigAnticipoModal } from './dashboard/ConfigAnticipoModal';
 import { AgendarCitaModal } from './dashboard/AgendarCitaModal';
 import { SelectorFechaMimate, SelectorMesMimate } from './dashboard/SelectorFechaMimate';
 import { ExclusionesBotModal } from './dashboard/ExclusionesBotModal';
-import { DetalleCitaPopover, sumarAdicionalesCita } from './dashboard/DetalleCitaPopover';
+import { DetalleCitaPopover, sumarAdicionalesCita, esPorConfirmar } from './dashboard/DetalleCitaPopover';
 import { ModalAgregarAdicional } from './dashboard/ModalAgregarAdicional';
 import { WhatsAppVinculacionModal } from './dashboard/WhatsAppVinculacionModal';
 
@@ -2618,6 +2618,8 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
             cancha_id: agendarManicuristaId || undefined,
             cliente_nombre: agendarNombre.trim(),
             cliente_telefono: agendarTelefono.trim(),
+            origen: 'panel',
+            agendado_por: perfilActual ? (perfilActual.alias || perfilActual.nombre) : 'Personal',
           }),
         });
 
@@ -2679,7 +2681,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
           valor_total: precioTotalAdmin,
           valor_anticipo_requerido: 0,
           estado: 'confirmada',
-          notas: `💅 Servicio: ${nombreServiciosAdmin} | Duración: ${duracionTotalAdmin} min | Clienta: ${agendarNombre.trim()} | Agendado en cabina por: ${autor}`,
+          notas: `💅 Servicio: ${nombreServiciosAdmin} | Duración: ${duracionTotalAdmin} min | Clienta: ${agendarNombre.trim()} | Agendado en cabina por: ${autor}${(dInicio.getTime() - Date.now() >= 24 * 60 * 60 * 1000 && agendarFecha !== hoyStr) ? ' [POR_CONFIRMAR_CLIENTA]' : ''}`,
         });
 
         if (sbErr) {
@@ -3706,7 +3708,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                                       : 'bg-[#FCE8EF] text-[#8C243B] border-[#F2C4D2]'
                                   }`}
                                 >
-                                  {cita.estado.toUpperCase()}
+                                  {esPorConfirmar(cita) ? 'POR CONFIRMAR' : cita.estado.toUpperCase()}
                                 </span>
 
                                 {telLimpio && (
@@ -4239,7 +4241,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                                         : 'bg-[#FCE8EF] text-[#8C243B] border-[#F2C4D2]'
                                     }`}
                                   >
-                                    {esBloqueada ? 'BLOQ' : (cita.estado === 'pendiente_anticipo' || cita.estado === 'pendiente_pago') ? 'ABONO' : cita.estado === 'completada' ? 'LISTA' : 'CONF'}
+                                    {esBloqueada ? 'BLOQ' : (cita.estado === 'pendiente_anticipo' || cita.estado === 'pendiente_pago') ? 'ABONO' : cita.estado === 'completada' ? 'LISTA' : esPorConfirmar(cita) ? 'POR CONF.' : 'CONF'}
                                   </span>
                                 )}
                               </div>
@@ -5124,7 +5126,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                                         : 'bg-[#FCE8EF] text-[#8C243B] border-[#F2C4D2]'
                                     }`}
                                   >
-                                    {esBloqueada ? 'BLOQUEADO' : (cita.estado === 'pendiente_anticipo' || cita.estado === 'pendiente_pago') ? 'ABONO' : cita.estado.toUpperCase()}
+                                    {esBloqueada ? 'BLOQUEADO' : (cita.estado === 'pendiente_anticipo' || cita.estado === 'pendiente_pago') ? 'ABONO' : esPorConfirmar(cita) ? 'POR CONFIRMAR' : cita.estado.toUpperCase()}
                                   </span>
                                 )}
                               </div>

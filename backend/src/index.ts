@@ -1909,7 +1909,9 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
     cancha_id,
     cliente_nombre,
     cliente_telefono,
-    reagendar_reserva_id
+    reagendar_reserva_id,
+    origen,
+    agendado_por
   } = req.body;
 
   // Sanitización y normalización defensiva contra XSS y desbordamientos
@@ -2129,6 +2131,13 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
       }
     } else if (exigeAnticipo) {
       notas = `💅 Servicio: ${servicio_nombre || 'Uñas'} | Clienta: ${cliente_nombre.trim()} | Pre-Reserva Web JL Mímate Nails | [PENDIENTE_ANTICIPO: ${anticipoFmt}]`;
+    } else if (origen === 'panel') {
+      // Cita agendada desde el panel (admin / especialista): solo queda confirmada cuando la clienta
+      // la confirma en el recordatorio de WhatsApp. Si es para hoy o falta menos de 24 h, queda confirmada de una vez.
+      const hoyCol = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+      const esCitaCercana = fecha === hoyCol || dInicio.getTime() - Date.now() < 24 * 60 * 60 * 1000;
+      const autorPanel = sanitizeInput(agendado_por, 60) || 'Personal';
+      notas = `💅 Servicio: ${servicio_nombre || 'Uñas'} | Clienta: ${cliente_nombre.trim()} | Agendado en cabina por: ${autorPanel} | Pago en el spa (Sin cobro anticipado)${esCitaCercana ? '' : ' [POR_CONFIRMAR_CLIENTA]'}`;
     } else {
       notas = `💅 Servicio: ${servicio_nombre || 'Uñas'} | Clienta: ${cliente_nombre.trim()} | Reserva Web JL Mímate Nails | Pago en el spa (Sin cobro anticipado)`;
     }

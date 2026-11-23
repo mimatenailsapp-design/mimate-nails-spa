@@ -1,5 +1,11 @@
 import React from 'react';
 import { formatearHora12, formatearRangoHoras12 } from '../../utils/formatoHora';
+
+/** Cita agendada desde el panel que aún espera la confirmación de la clienta por el recordatorio de WhatsApp. */
+export function esPorConfirmar(cita: { estado?: string; notas?: string | null }): boolean {
+  const n = cita.notas || '';
+  return cita.estado === 'confirmada' && n.includes('[POR_CONFIRMAR_CLIENTA]') && !n.includes('[CONFIRMADA_POR_CLIENTA]');
+}
 import {
   IconClock,
   IconBrandWhatsapp,
@@ -198,10 +204,12 @@ export const DetalleCitaPopover: React.FC<DetalleCitaPopoverProps> = ({
                     ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
                     : cita.estado === 'cancelada'
                     ? 'bg-rose-100 text-rose-800 border-rose-300'
+                    : esPorConfirmar(cita)
+                    ? 'bg-sky-50 text-sky-800 border-sky-300'
                     : 'bg-[#FCE8EF] text-[#8C243B] border-[#F2C4D2]'
                 }`}
               >
-                {esBloqueada ? 'BLOQUEADO' : cita.estado.toUpperCase()}
+                {esBloqueada ? 'BLOQUEADO' : esPorConfirmar(cita) ? 'POR CONFIRMAR' : cita.estado.toUpperCase()}
               </span>
             )}
           </div>
