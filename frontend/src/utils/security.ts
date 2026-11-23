@@ -24,6 +24,35 @@ export const HASH_ACCESO_LILI = '4923057e68a376e2ea02a68b1ce057b977b2b9e82803184
 export const HASH_ACCESO_JHOANA = '767db4e02b5bd73fb26a136a01393baa4793692b615a82f7b7828daf731f2c6c';
 export const HASH_ACCESO_MANUELA = '62be8d3a876bddec3b22097879e54def7e5a3886b078a81fc7eececd43a76d2b';
 
+const STAFF_TOKEN_MAP: Record<string, string> = {
+  'admin-m1': HASH_ACCESO_LILI,
+  'admin-m2': HASH_ACCESO_JHOANA,
+  'staff-m3': HASH_ACCESO_MANUELA,
+};
+
+/**
+ * Construye las cabeceras de autenticación del equipo para peticiones al backend
+ * leyendo el perfil activo de localStorage y resolviendo su hash de acceso.
+ */
+export function obtenerHeadersStaff(extraHeaders: Record<string, string> = {}): Record<string, string> {
+  const headers: Record<string, string> = { ...extraHeaders };
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const raw = window.localStorage.getItem('mimate_staff_profile');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const token = parsed?.id ? STAFF_TOKEN_MAP[String(parsed.id)] : undefined;
+        if (token) {
+          headers['X-Spa-Auth'] = token;
+        }
+      }
+    }
+  } catch {
+    // Ignorar si localStorage no está disponible o corrupto
+  }
+  return headers;
+}
+
 /**
  * Genera el hash criptográfico SHA-256 salteado de un PIN o clave en texto plano.
  */

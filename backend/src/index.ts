@@ -49,24 +49,44 @@ app.use(
 );
 
 
-// CORS seguro y optimizado
+// CORS seguro con lista blanca de orígenes autorizados
+const ORIGINS_EXACTOS_PERMITIDOS = new Set(
+  [
+    'https://mimate-nails-spa.vercel.app',
+    'https://mimate-nails-api.onrender.com',
+    process.env.FRONTEND_URL ? process.env.FRONTEND_URL.trim().replace(/\/+$/, '') : '',
+  ].filter(Boolean)
+);
+
+function esOrigenPermitido(origin?: string): boolean {
+  if (!origin) return true; // Peticiones server-to-server, cron jobs o mismo origen
+  const cleanOrigin = origin.trim().replace(/\/+$/, '');
+  if (ORIGINS_EXACTOS_PERMITIDOS.has(cleanOrigin)) return true;
+  if (/^https:\/\/mimate-nails[a-z0-9-]*\.vercel\.app$/i.test(cleanOrigin)) return true;
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(cleanOrigin)) return true;
+  return false;
+}
+
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Permitir peticiones de servidor a servidor (cron, curl, uptime) y orígenes válidos
-      callback(null, true);
+      if (esOrigenPermitido(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Origen no permitido por política CORS'));
+      }
     },
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'X-Spa-Auth'],
     credentials: true,
   })
 );
 
 app.use(compression());
 
-// Límites de tamaño de payload para mitigar ataques DoS / Memory Exhaustion
-app.use(express.json({ limit: '1mb' }));
-app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+// Límites estrictos de tamaño de payload para mitigar ataques DoS / Memory Exhaustion
+app.use(express.json({ limit: '250kb' }));
+app.use(express.urlencoded({ extended: true, limit: '250kb' }));
 
 // Función defensiva recursiva contra Prototype Pollution
 function sanitizeObject(obj: any, depth = 0): void {
@@ -178,6 +198,69 @@ export function setSecureCookie(
   });
 }
 
+const STAFF_DEFAULT_PIN_HASH = 'fb03a4b64b8bcb37d2967b46951043048eed9c56629857495bba7d295520f186';
+const ADMIN_MASTER_PIN_HASH = '7dc28d72e8f9bfaf28453b71d5a662b5f5baacdc373a6a1796f4acaa57b0138e';
+const HASH_ACCESO_LILI = '4923057e68a376e2ea02a68b1ce057b977b2b9e82803184fadcd8ffed0c68c7c';
+const HASH_ACCESO_JHOANA = '767db4e02b5bd73fb26a136a01393baa4793692b615a82f7b7828daf731f2c6c';
+const HASH_ACCESO_MANUELA = '62be8d3a876bddec3b22097879e54def7e5a3886b078a81fc7eececd43a76d2b';
+
+const HASHES_ADMIN_VALIDOS = new Set([
+  ADMIN_MASTER_PIN_HASH,
+  HASH_ACCESO_LILI,
+  HASH_ACCESO_JHOANA,
+  STAFF_DEFAULT_PIN_HASH,
+]);
+
+const HASHES_STAFF_VALIDOS = new Set([
+  ...HASHES_ADMIN_VALIDOS,
+  HASH_ACCESO_MANUELA,
+]);
+
+function extraerTokenStaff(req: Request): string {
+  const headerToken = req.headers['x-spa-auth'];
+  if (typeof headerToken === 'string') return headerToken.trim().toLowerCase();
+  if (Array.isArray(headerToken) && typeof headerToken[0] === 'string') {
+    return headerToken[0].trim().toLowerCase();
+  }
+  return '';
+}
+
+function esStaffAutenticado(req: Request): boolean {
+  const token = extraerTokenStaff(req);
+  return Boolean(token && HASHES_STAFF_VALIDOS.has(token));
+}
+
+function esAdminAutenticado(req: Request): boolean {
+  const token = extraerTokenStaff(req);
+  return Boolean(token && HASHES_ADMIN_VALIDOS.has(token));
+}
+
+function requireStaffAuth(req: Request, res: Response, next: any) {
+  if (!esStaffAutenticado(req)) {
+    return res.status(401).json({ error: 'No autorizado. Se requiere sesión activa del equipo.' });
+  }
+  next();
+}
+
+function requireAdminAuth(req: Request, res: Response, next: any) {
+  if (!esAdminAutenticado(req)) {
+    return res.status(401).json({ error: 'No autorizado. Acceso exclusivo para administración.' });
+  }
+  next();
+}
+
+function sanitizarComplejoPublico(complejo: any) {
+  if (!complejo || typeof complejo !== 'object') return complejo;
+  const { whatsapp_token: _tok, whatsapp_phone_number_id: _pid, ...seguro } = complejo;
+  return seguro;
+}
+
+// Caché en memoria de corta duración para proteger Supabase contra picos de tráfico y bots
+const CACHE_BOOTSTRAP_TTL_MS = 15 * 1000;
+let spaBootstrapCache: { data: any; ts: number } | null = null;
+let spaConfigCache: { data: any; ts: number } | null = null;
+let ultimoCronRecordatoriosMs = 0;
+
 // Endpoint de verificación segura de PIN por hash (con protección de fuerza bruta via rate limit)
 app.post('/api/auth/verify-pin', authLimiter, (req: Request, res: Response) => {
   try {
@@ -185,12 +268,7 @@ app.post('/api/auth/verify-pin', authLimiter, (req: Request, res: Response) => {
     if (!pinHash || typeof pinHash !== 'string') {
       return res.status(400).json({ valido: false, error: 'Hash no proporcionado o inválido' });
     }
-    // Hashes seguros (coinciden con frontend/src/utils/security.ts)
-    const HASHES_VALIDOS = new Set([
-      'fb03a4b64b8bcb37d2967b46951043048eed9c56629857495bba7d295520f186',
-      '7dc28d72e8f9bfaf28453b71d5a662b5f5baacdc373a6a1796f4acaa57b0138e',
-    ]);
-    const esValido = HASHES_VALIDOS.has(pinHash.trim().toLowerCase());
+    const esValido = HASHES_STAFF_VALIDOS.has(pinHash.trim().toLowerCase());
     return res.json({ valido: esValido });
   } catch {
     return res.status(500).json({ error: 'Error interno en validación de seguridad.' });
@@ -286,8 +364,8 @@ app.all('/webhook', (req: Request, res: Response) => {
   });
 });
 
-// Forzar sincronización dinámica de LIDs de WhatsApp
-app.get(['/api/baileys/sync-lids', '/api/debug/sync-lids'], async (req: Request, res: Response) => {
+// Forzar sincronización dinámica de LIDs de WhatsApp (solo administración)
+app.get(['/api/baileys/sync-lids', '/api/debug/sync-lids'], requireAdminAuth, async (req: Request, res: Response) => {
   await BaileysService.sincronizarLids();
   return res.json({
     ok: true,
@@ -297,31 +375,41 @@ app.get(['/api/baileys/sync-lids', '/api/debug/sync-lids'], async (req: Request,
   });
 });
 
-// Diagnóstico general y detallado del servicio WhatsApp Baileys
+// Estado de WhatsApp Baileys (sanitizado: sin variables de entorno, logs ni eventos internos)
 app.get(['/api/debug/whatsapp', '/api/baileys/status', '/api/baileys/diagnostico'], (req: Request, res: Response) => {
   const estado = BaileysService.getEstado();
-  res.json({
+  const referer = String(req.headers.referer || '');
+  const esQrMismoOrigen =
+    /\/qr(\?|$|#)/.test(referer) &&
+    (referer.startsWith('https://mimate-nails-api.onrender.com') ||
+      referer.startsWith('http://localhost') ||
+      referer.startsWith('http://127.0.0.1'));
+
+  if (esStaffAutenticado(req) || esQrMismoOrigen) {
+    return res.json({
+      status: estado.status,
+      tieneQr: estado.tieneQr,
+      qr: estado.qr,
+      usuarioConectado: estado.usuarioConectado,
+      proveedor: 'baileys',
+      baileys: {
+        status: estado.status,
+        tieneQr: estado.tieneQr,
+        qr: estado.qr,
+        usuarioConectado: estado.usuarioConectado,
+      },
+    });
+  }
+
+  return res.json({
     status: estado.status,
     tieneQr: estado.tieneQr,
-    qr: estado.qr,
-    usuarioConectado: estado.usuarioConectado,
     proveedor: 'baileys',
-    baileys: estado,
-    whitelist: BaileysService.getWhitelist(),
-    eventos_recientes: BaileysService.eventosDebug,
-    environment_variables: {
-      has_supabase_url: !!process.env.SUPABASE_URL,
-      has_supabase_service_key: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
-      has_gemini_key: !!process.env.GEMINI_API_KEY,
-      whitelist_numbers: process.env.BAILEYS_WHITELIST_NUMBERS || 'MODO_ABIERTO_TODOS_LOS_NUMEROS',
-    },
-    total_logs: debugLogs.length,
-    recent_logs: debugLogs.slice(0, 20),
   });
 });
 
-// Prueba de envío directo con Baileys
-app.post('/api/debug/test-send', testLimiter, async (req: Request, res: Response) => {
+// Prueba de envío directo con Baileys (solo administración)
+app.post('/api/debug/test-send', requireAdminAuth, testLimiter, async (req: Request, res: Response) => {
   const { to, text } = req.body;
   if (!to) {
     return res.status(400).json({ error: 'Falta parametro "to" (ej. "573219610896")' });
@@ -341,12 +429,11 @@ app.post('/api/debug/test-send', testLimiter, async (req: Request, res: Response
     success: enviado,
     proveedor: 'baileys',
     destinatario: cleanTo,
-    estado_baileys: BaileysService.getEstado(),
   });
 });
 
-// Simulación directa de mensaje entrante para pruebas
-app.post('/api/baileys/simular-entrante', testLimiter, async (req: Request, res: Response) => {
+// Simulación directa de mensaje entrante para pruebas (solo administración)
+app.post('/api/baileys/simular-entrante', requireAdminAuth, testLimiter, async (req: Request, res: Response) => {
   const { from, text } = req.body;
   const tel = String(from || '573134862536').replace(/\D/g, '');
   const dummyMessage: any = {
@@ -364,19 +451,21 @@ app.post('/api/baileys/simular-entrante', testLimiter, async (req: Request, res:
   return res.json({
     ok: true,
     simulado: { from: tel, text: text || 'hola' },
-    eventos_recientes: BaileysService.eventosDebug,
   });
 });
 
-// Reconectar WebSocket suavemente manteniendo credenciales
-app.all(['/api/baileys/reconnect', '/api/debug/reconnect'], async (req: Request, res: Response) => {
+// Reconectar WebSocket suavemente manteniendo credenciales (solo administración)
+app.all(['/api/baileys/reconnect', '/api/debug/reconnect'], requireAdminAuth, async (req: Request, res: Response) => {
   await BaileysService.reconectarSuave();
   return res.json({ ok: true, mensaje: 'Reconexión suave de WhatsApp solicitada exitosamente' });
 });
 
-// Desvincular sesión y forzar generación de nuevo QR
-app.all('/api/baileys/relink', async (req: Request, res: Response) => {
+// Desvincular sesión y forzar generación de nuevo QR (solo administración)
+app.all('/api/baileys/relink', requireAdminAuth, async (req: Request, res: Response) => {
   await BaileysService.desvincularYReiniciar();
+  if (req.method === 'POST' || extraerTokenStaff(req)) {
+    return res.json({ ok: true, mensaje: 'Sesión desvinculada. Generando nuevo QR.' });
+  }
   return res.redirect('/qr');
 });
 
@@ -550,7 +639,7 @@ async function enviarMensajeWhatsApp(
 // ==============================================================================
 // 2.1 LISTA DE EXCLUSIÓN DE WHATSAPP (BOT SILENCIADO - ATENCIÓN HUMANA MANUAL)
 // ==============================================================================
-app.get('/api/bot/exclusiones', async (req: Request, res: Response) => {
+app.get('/api/bot/exclusiones', requireAdminAuth, async (req: Request, res: Response) => {
   try {
     const exclusiones = await BotExclusionsService.getExclusiones();
     res.json({ success: true, exclusiones });
@@ -559,7 +648,7 @@ app.get('/api/bot/exclusiones', async (req: Request, res: Response) => {
   }
 });
 
-app.post('/api/bot/exclusiones', async (req: Request, res: Response) => {
+app.post('/api/bot/exclusiones', requireAdminAuth, async (req: Request, res: Response) => {
   try {
     const { telefono, nombre, motivo } = req.body;
     if (!telefono) {
@@ -572,7 +661,7 @@ app.post('/api/bot/exclusiones', async (req: Request, res: Response) => {
   }
 });
 
-app.delete('/api/bot/exclusiones/:telefono', async (req: Request, res: Response) => {
+app.delete('/api/bot/exclusiones/:telefono', requireAdminAuth, async (req: Request, res: Response) => {
   try {
     const { telefono } = req.params;
     await BotExclusionsService.eliminarExclusion(telefono);
@@ -585,7 +674,7 @@ app.delete('/api/bot/exclusiones/:telefono', async (req: Request, res: Response)
 // ==============================================================================
 // 3. SIMULADOR CONVERSACIONAL DE WHATSAPP (SOPORTA SELECCIÓN DE EMPRESA)
 // ==============================================================================
-app.post('/api/bot/simulate', testLimiter, async (req: Request, res: Response) => {
+app.post('/api/bot/simulate', requireAdminAuth, testLimiter, async (req: Request, res: Response) => {
   try {
     const rawTelefono = String(req.body.telefono || '573009999999').replace(/\D/g, '').slice(0, 15);
     const telefono = rawTelefono || '573009999999';
@@ -620,28 +709,28 @@ app.post('/api/bot/simulate', testLimiter, async (req: Request, res: Response) =
 // 4. GESTIÓN MULTI-TENANT DE EMPRESAS (COMPLEJOS)
 // ==============================================================================
 
-// Listar todos los complejos deportivos
+// Listar todos los complejos deportivos (sin exponer tokens privados)
 app.get('/api/complejos', async (req: Request, res: Response) => {
   try {
     const complejos = await BookingService.getComplejos();
-    res.json(complejos);
+    res.json((complejos || []).map(sanitizarComplejoPublico));
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// Registrar un nuevo complejo deportivo en la plataforma
-app.post('/api/complejos', async (req: Request, res: Response) => {
+// Registrar un nuevo complejo deportivo en la plataforma (solo administración)
+app.post('/api/complejos', requireAdminAuth, async (req: Request, res: Response) => {
   try {
     const nuevoComplejo = await BookingService.crearComplejo(req.body);
-    res.status(201).json(nuevoComplejo);
+    res.status(201).json(sanitizarComplejoPublico(nuevoComplejo));
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// Actualizar configuración de un complejo (WhatsApp Token, Phone ID, Nequi, etc.)
-app.patch('/api/complejos/:id', async (req: Request, res: Response) => {
+// Actualizar configuración de un complejo (solo administración, respuesta sanitizada)
+app.patch('/api/complejos/:id', requireAdminAuth, async (req: Request, res: Response) => {
   const { id } = req.params;
   if (!esUUIDValido(id)) {
     return res.status(400).json({ error: 'ID de complejo inválido' });
@@ -655,15 +744,21 @@ app.patch('/api/complejos/:id', async (req: Request, res: Response) => {
       .single();
 
     if (error) throw error;
-    res.json(data);
+    spaBootstrapCache = null;
+    spaConfigCache = null;
+    res.json(sanitizarComplejoPublico(data));
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// Consultar configuración actual de anticipos, cuentas y horario del spa
+// Consultar configuración actual de anticipos, cuentas y horario del spa (con caché 15s)
 app.get('/api/spa/config', async (req: Request, res: Response) => {
   try {
+    if (spaConfigCache && Date.now() - spaConfigCache.ts < CACHE_BOOTSTRAP_TTL_MS) {
+      return res.json(spaConfigCache.data);
+    }
+
     const { data: complejo, error } = await supabase
       .from('complejos')
       .select('*')
@@ -677,7 +772,7 @@ app.get('/api/spa/config', async (req: Request, res: Response) => {
     const exigeAnticipo = porcentajeMin > 0;
     const montoFijo = getMontoAnticipoFijo(complejo);
 
-    res.json({
+    const payload = {
       exigeAnticipo,
       montoAnticipoFijo: montoFijo,
       porcentajeAnticipo: montoFijo, // Compatibilidad
@@ -687,14 +782,17 @@ app.get('/api/spa/config', async (req: Request, res: Response) => {
       titularCuenta: getTitularLimpio(complejo.titular_cuenta),
       horaApertura: complejo.hora_apertura ? complejo.hora_apertura.slice(0, 5) : '08:00',
       horaCierre: complejo.hora_cierre ? complejo.hora_cierre.slice(0, 5) : '19:00',
-    });
+    };
+
+    spaConfigCache = { data: payload, ts: Date.now() };
+    res.json(payload);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// Actualizar configuración de anticipos, cuentas y horario del spa desde el Dashboard
-app.patch('/api/spa/config', async (req: Request, res: Response) => {
+// Actualizar configuración de anticipos, cuentas y horario del spa desde el Dashboard (solo administración)
+app.patch('/api/spa/config', requireAdminAuth, async (req: Request, res: Response) => {
   try {
     const {
       exigeAnticipo,
@@ -757,6 +855,10 @@ app.patch('/api/spa/config', async (req: Request, res: Response) => {
 
     if (error) throw error;
 
+    // Invalidar caché en memoria tras guardar cambios
+    spaBootstrapCache = null;
+    spaConfigCache = null;
+
     const porcResult = Number(data.porcentaje_anticipo_minimo) || 0;
     const finalMontoFijo = getMontoAnticipoFijo(data);
 
@@ -795,8 +897,8 @@ app.get('/api/complejos/:id/faq', async (req: Request, res: Response) => {
   }
 });
 
-// Actualizar base de conocimiento / FAQ personalizada de un complejo
-app.post('/api/complejos/:id/faq', async (req: Request, res: Response) => {
+// Actualizar base de conocimiento / FAQ personalizada de un complejo (solo administración)
+app.post('/api/complejos/:id/faq', requireAdminAuth, async (req: Request, res: Response) => {
   const { id } = req.params;
   if (!esUUIDValido(id)) {
     return res.status(400).json({ error: 'ID de complejo inválido' });
@@ -984,9 +1086,13 @@ function validarYCalcularPersistenciaTraslape(params: {
   };
 }
 
-// Lista de Reservas para el Calendario (filtradas por complejo)
-app.get('/api/reservas', async (req: Request, res: Response) => {
+// Lista de Reservas para el Calendario (solo personal autorizado, ventana acotada y límite de filas)
+app.get('/api/reservas', requireStaffAuth, async (req: Request, res: Response) => {
   const { desde, hasta, complejo_id } = req.query;
+
+  if (complejo_id && !esUUIDValido(String(complejo_id))) {
+    return res.status(400).json({ error: 'ID de complejo inválido' });
+  }
 
   let query = supabase
     .from('reservas')
@@ -995,10 +1101,18 @@ app.get('/api/reservas', async (req: Request, res: Response) => {
   if (complejo_id) {
     query = query.eq('canchas.complejo_id', complejo_id as string);
   }
-  if (desde) query = query.gte('fecha_inicio', desde as string);
-  if (hasta) query = query.lte('fecha_fin', hasta as string);
+  if (desde || hasta) {
+    if (desde) query = query.gte('fecha_inicio', String(desde));
+    if (hasta) query = query.lte('fecha_fin', String(hasta));
+  } else {
+    // Ventana por defecto: 60 días atrás hasta 120 días adelante para evitar volcados históricos masivos
+    const ahoraMs = Date.now();
+    const desdeDef = new Date(ahoraMs - 60 * 24 * 60 * 60 * 1000).toISOString();
+    const hastaDef = new Date(ahoraMs + 120 * 24 * 60 * 60 * 1000).toISOString();
+    query = query.gte('fecha_inicio', desdeDef).lte('fecha_inicio', hastaDef);
+  }
 
-  query = query.order('fecha_inicio', { ascending: true });
+  query = query.order('fecha_inicio', { ascending: true }).limit(600);
 
   const { data, error } = await query;
   if (error) return res.status(500).json({ error: error.message });
@@ -1008,8 +1122,8 @@ app.get('/api/reservas', async (req: Request, res: Response) => {
   res.json(hidratadas);
 });
 
-// Bloquear Horarios (1 hora o varias horas, para admin o manicuristas)
-app.post('/api/bloqueos', async (req: Request, res: Response) => {
+// Bloquear Horarios (1 hora o varias horas, solo personal del spa)
+app.post('/api/bloqueos', requireStaffAuth, async (req: Request, res: Response) => {
   try {
     const {
       cancha_id,
@@ -1162,8 +1276,8 @@ app.post('/api/bloqueos', async (req: Request, res: Response) => {
   }
 });
 
-// Desbloquear Horario (Eliminar bloqueo específico)
-app.delete('/api/bloqueos/:id', async (req: Request, res: Response) => {
+// Desbloquear Horario (Eliminar bloqueo específico - solo personal del spa)
+app.delete('/api/bloqueos/:id', requireStaffAuth, async (req: Request, res: Response) => {
   const { id } = req.params;
   if (!esUUIDValido(id)) return res.status(400).json({ error: 'ID de bloqueo inválido' });
   const { error } = await supabase
@@ -1176,8 +1290,8 @@ app.delete('/api/bloqueos/:id', async (req: Request, res: Response) => {
   res.json({ success: true, message: 'Horario desbloqueado con éxito' });
 });
 
-// Actualizar estado de una reserva
-app.patch('/api/reservas/:id/estado', async (req: Request, res: Response) => {
+// Actualizar estado de una reserva (solo personal del spa)
+app.patch('/api/reservas/:id/estado', requireStaffAuth, async (req: Request, res: Response) => {
   const { id } = req.params;
   if (!esUUIDValido(id)) return res.status(400).json({ error: 'ID de reserva inválido' });
   const { estado } = req.body;
@@ -1193,8 +1307,8 @@ app.patch('/api/reservas/:id/estado', async (req: Request, res: Response) => {
   res.json(data);
 });
 
-// Mover / reprogramar fecha y hora de una cita desde el planificador (permite traslape parcial entre admin/especialista)
-app.patch('/api/reservas/:id/horario', async (req: Request, res: Response) => {
+// Mover / reprogramar fecha y hora de una cita desde el planificador (solo personal del spa)
+app.patch('/api/reservas/:id/horario', requireStaffAuth, async (req: Request, res: Response) => {
   const { id } = req.params;
   if (!esUUIDValido(id)) return res.status(400).json({ error: 'ID de reserva inválido' });
 
@@ -1291,21 +1405,21 @@ app.patch('/api/reservas/:id/horario', async (req: Request, res: Response) => {
   }
 });
 
-// Obtener detalles de una reserva por ID
+// Obtener detalles mínimos de una reserva por ID (para reagendamiento público sin fuga de notas internas)
 app.get('/api/reservas/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
   if (!esUUIDValido(id)) return res.status(400).json({ error: 'ID de reserva inválido' });
   try {
     const { data: reservaRaw, error } = await supabase
       .from('reservas')
-      .select('*, canchas(*), clientes(*)')
+      .select('id, cancha_id, fecha_inicio, fecha_fin, estado, notas, valor_total, valor_anticipo_requerido, canchas(id, nombre), clientes(nombre, telefono_wa)')
       .eq('id', id)
       .maybeSingle();
 
     if (error) return res.status(500).json({ error: error.message });
     if (!reservaRaw) return res.status(404).json({ error: 'Reserva no encontrada' });
 
-    const reserva = hidratarHorarioRealReserva(reservaRaw);
+    const reserva: any = hidratarHorarioRealReserva(reservaRaw);
 
     let abonoPrevio = 0;
     try {
@@ -1328,17 +1442,25 @@ app.get('/api/reservas/:id', async (req: Request, res: Response) => {
     const servicioNombre = matchSvc && matchSvc[1] ? matchSvc[1].trim() : undefined;
 
     res.json({
-      ...reserva,
+      id: reserva.id,
+      cancha_id: reserva.cancha_id,
+      fecha_inicio: reserva.fecha_inicio,
+      fecha_fin: reserva.fecha_fin,
+      estado: reserva.estado,
+      valor_total: reserva.valor_total,
+      valor_anticipo_requerido: reserva.valor_anticipo_requerido,
       servicio_nombre: servicioNombre,
       abono_previo: abonoPrevio,
+      canchas: reserva.canchas ? { id: reserva.canchas.id, nombre: reserva.canchas.nombre } : null,
+      clientes: reserva.clientes ? { nombre: reserva.clientes.nombre, telefono_wa: reserva.clientes.telefono_wa } : null,
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Eliminar una reserva (Cancelar y remover del sistema)
-app.delete('/api/reservas/:id', async (req: Request, res: Response) => {
+// Eliminar una reserva (Cancelar y remover del sistema - solo personal del spa)
+app.delete('/api/reservas/:id', requireStaffAuth, async (req: Request, res: Response) => {
   const { id } = req.params;
   if (!esUUIDValido(id)) return res.status(400).json({ error: 'ID de reserva inválido' });
 
@@ -1359,8 +1481,8 @@ app.delete('/api/reservas/:id', async (req: Request, res: Response) => {
 // OPCIÓN A: APROBACIÓN ASISTIDA DESDE EL VISOR WEB (CON NOTIFICACIÓN WHATSAPP)
 // ==============================================================================
 
-// 1. Aprobar Anticipo manualmente desde el Visor Web
-app.patch('/api/reservas/:id/aprobar-anticipo', async (req: Request, res: Response) => {
+// 1. Aprobar Anticipo manualmente desde el Visor Web (solo administración)
+app.patch('/api/reservas/:id/aprobar-anticipo', requireAdminAuth, async (req: Request, res: Response) => {
   const { id } = req.params;
   if (!esUUIDValido(id)) return res.status(400).json({ error: 'ID de reserva inválido' });
   const notas_admin = sanitizeInput(req.body.notas_admin, 255);
@@ -1452,8 +1574,8 @@ app.patch('/api/reservas/:id/aprobar-anticipo', async (req: Request, res: Respon
   }
 });
 
-// 2. Rechazar Comprobante de Anticipo desde el Visor Web
-app.patch('/api/reservas/:id/rechazar-anticipo', async (req: Request, res: Response) => {
+// 2. Rechazar Comprobante de Anticipo desde el Visor Web (solo administración)
+app.patch('/api/reservas/:id/rechazar-anticipo', requireAdminAuth, async (req: Request, res: Response) => {
   const { id } = req.params;
   if (!esUUIDValido(id)) return res.status(400).json({ error: 'ID de reserva inválido' });
   const motivo = sanitizeInput(req.body.motivo, 255);
@@ -1685,9 +1807,13 @@ const SERVICIOS_MIMATE_NAILS = [
   },
 ];
 
-// Obtener info del spa, empleadas y catálogo de servicios
+// Obtener info del spa, empleadas y catálogo de servicios (con caché de 15s y sin exponer credenciales)
 app.get('/api/spa/info', async (req: Request, res: Response) => {
   try {
+    if (spaBootstrapCache && Date.now() - spaBootstrapCache.ts < CACHE_BOOTSTRAP_TTL_MS) {
+      return res.json(spaBootstrapCache.data);
+    }
+
     let { data: complejo } = await supabase
       .from('complejos')
       .select('*')
@@ -1735,13 +1861,14 @@ app.get('/api/spa/info', async (req: Request, res: Response) => {
       })
       .map(enriquecerCancha);
     const bootstrapData = {
-      complejo,
+      complejo: sanitizarComplejoPublico(complejo),
       equipo: equipoEnriquecido,
       config,
       servicios: SERVICIOS_MIMATE_NAILS,
       categorias: ['Todos', 'Tradicional', 'Rubber', 'Semipermanente', 'Acrílico esculpido']
     };
 
+    spaBootstrapCache = { data: bootstrapData, ts: Date.now() };
     res.json(bootstrapData);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -1969,16 +2096,17 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
       return res.status(400).json({ error: 'No puedes reservar un horario que ya pasó.' });
     }
 
-    // 1B. Validar horario de atención según origen:
-    // - Clientas (origen !== 'panel'): bajo ninguna circunstancia pueden superar la hora de cierre del spa.
-    // - Admin / Especialistas (origen === 'panel'): pueden agendar citas que terminen después del cierre si inician dentro del horario laboral.
+    // 1B. Validar horario de atención según origen verificado con autenticación del equipo:
+    // - Clientas (origenReal !== 'panel'): bajo ninguna circunstancia pueden superar la hora de cierre del spa.
+    // - Admin / Especialistas autenticadas (origenReal === 'panel'): pueden agendar citas que terminen después del cierre si inician dentro del horario laboral.
+    const origenReal = origen === 'panel' && esStaffAutenticado(req) ? 'panel' : 'web';
     const aperturaStr = complejo.hora_apertura ? String(complejo.hora_apertura).slice(0, 5) : '08:00';
     const cierreStr = complejo.hora_cierre ? String(complejo.hora_cierre).slice(0, 5) : '19:00';
     const horaAperturaMs = new Date(`${fecha}T${aperturaStr}:00-05:00`).getTime();
     const horaCierreMs = new Date(`${fecha}T${cierreStr}:00-05:00`).getTime();
 
     if (!isNaN(horaAperturaMs) && !isNaN(horaCierreMs)) {
-      if (origen !== 'panel') {
+      if (origenReal !== 'panel') {
         if (dInicio.getTime() < horaAperturaMs || dFin.getTime() > horaCierreMs) {
           return res.status(400).json({
             error: 'El horario seleccionado supera la hora de cierre del spa. Por favor elige un turno más temprano.',
@@ -2155,7 +2283,7 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
       }
     } else if (exigeAnticipo) {
       notas = `💅 Servicio: ${servicio_nombre || 'Uñas'} | Clienta: ${cliente_nombre.trim()} | Pre-Reserva Web JL Mímate Nails | [PENDIENTE_ANTICIPO: ${anticipoFmt}]`;
-    } else if (origen === 'panel') {
+    } else if (origenReal === 'panel') {
       // Cita agendada desde el panel (admin / especialista): solo queda confirmada cuando la clienta
       // la confirma en el recordatorio de WhatsApp. Si es para hoy o falta menos de 24 h, queda confirmada de una vez.
       const hoyCol = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
@@ -2371,11 +2499,18 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
   }
 });
 
-// Métricas y Resumen Financiero filtradas por complejo
-app.get('/api/metricas', async (req: Request, res: Response) => {
+// Métricas y Resumen Financiero filtradas por complejo (solo personal autorizado, con límite de filas)
+app.get('/api/metricas', requireStaffAuth, async (req: Request, res: Response) => {
   try {
     const { complejo_id } = req.query;
-    let query = supabase.from('reservas').select('estado, valor_total, valor_anticipo_requerido, canchas!inner(complejo_id)');
+    if (complejo_id && !esUUIDValido(String(complejo_id))) {
+      return res.status(400).json({ error: 'ID de complejo inválido' });
+    }
+    let query = supabase
+      .from('reservas')
+      .select('estado, valor_total, valor_anticipo_requerido, canchas!inner(complejo_id)')
+      .order('fecha_inicio', { ascending: false })
+      .limit(2500);
 
     if (complejo_id) {
       query = query.eq('canchas.complejo_id', complejo_id as string);
@@ -2410,9 +2545,14 @@ app.get(['/api/ping', '/api/health', '/health'], (req: Request, res: Response) =
   });
 });
 
-// Tarea de recordatorios automáticos (admite GET y POST para cron jobs y keep-alive)
+// Tarea de recordatorios automáticos con cooldown anti-sobrecarga (admite GET y POST para cron jobs y keep-alive)
 app.all('/api/cron/recordatorios', async (req: Request, res: Response) => {
   try {
+    const ahoraMs = Date.now();
+    if (ahoraMs - ultimoCronRecordatoriosMs < 30 * 1000) {
+      return res.json({ status: 'ok', keep_alive: true, cached: true, timestamp: new Date().toISOString() });
+    }
+    ultimoCronRecordatoriosMs = ahoraMs;
     const resultado = await ReminderService.procesarRecordatoriosProximos();
     await BookingService.liberarReservasExpiradas();
     res.json({ status: 'ok', keep_alive: true, timestamp: new Date().toISOString(), ...resultado });

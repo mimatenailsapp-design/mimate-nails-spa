@@ -30,6 +30,7 @@ import {
   HASH_ACCESO_LILI,
   HASH_ACCESO_JHOANA,
   HASH_ACCESO_MANUELA,
+  obtenerHeadersStaff,
 } from '../utils/security';
 import { formatearHora12, formatearRangoHoras12 } from '../utils/formatoHora';
 export { formatearHora12, formatearRangoHoras12 };
@@ -669,7 +670,9 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   const cargarExclusionesBot = async () => {
     try {
       setCargandoExclusiones(true);
-      const res = await fetch('/api/bot/exclusiones');
+      const res = await fetch('/api/bot/exclusiones', {
+        headers: obtenerHeadersStaff(),
+      });
       if (res.ok) {
         const data = await res.json();
         setExclusionesBot(data.exclusiones || []);
@@ -720,7 +723,9 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     let montado = true;
     const verificarWhatsAppBadge = async () => {
       try {
-        const res = await fetch(`/api/baileys/status?_t=${Date.now()}`);
+        const res = await fetch(`/api/baileys/status?_t=${Date.now()}`, {
+          headers: obtenerHeadersStaff(),
+        });
         if (!res.ok) return;
         const d = await res.json();
         const status = d.status || d.baileys?.status;
@@ -838,7 +843,9 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
   const cargarConfigAnticipo = async () => {
     try {
-      const res = await fetch('/api/spa/config');
+      const res = await fetch('/api/spa/config', {
+        headers: obtenerHeadersStaff(),
+      });
       if (res.ok) {
         const d = await res.json();
         const montoFijo = Number(d.montoAnticipoFijo ?? d.porcentajeAnticipo) || 20000;
@@ -865,7 +872,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     try {
       const res = await fetch('/api/spa/config', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: obtenerHeadersStaff({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(configAnticipo),
       });
       if (res.ok) {
@@ -888,7 +895,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     try {
       const res = await fetch(`/api/reservas/${reservaId}/aprobar-anticipo`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: obtenerHeadersStaff({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ notas_admin: 'Aprobado manualmente desde el Visor de Control' }),
       });
       if (res.ok) {
@@ -913,7 +920,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     try {
       const res = await fetch(`/api/reservas/${reservaId}/rechazar-anticipo`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: obtenerHeadersStaff({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ motivo: motivo.trim() || 'Comprobante no válido o tiempo límite expirado' }),
       });
       if (res.ok) {
@@ -957,7 +964,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     try {
       const res = await fetch('/api/bot/exclusiones', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: obtenerHeadersStaff({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           telefono: telLimpio,
           nombre: nuevoNombreExclusion.trim() || undefined,
@@ -991,6 +998,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     try {
       const res = await fetch(`/api/bot/exclusiones/${exclusionAReactivar.telefono}`, {
         method: 'DELETE',
+        headers: obtenerHeadersStaff(),
       });
       if (res.ok) {
         setExclusionesBot((prev) => prev.filter((item) => item.telefono !== exclusionAReactivar.telefono));
@@ -1300,15 +1308,22 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     }
   };
 
-  // 2. Cargar Reservas del Spa
+  // 2. Cargar Reservas del Spa (solo con sesión autenticada del equipo)
   const cargarReservas = async (overrideId?: string | unknown, silencioso = false) => {
+    const authHeaders = obtenerHeadersStaff();
+    if (!authHeaders['X-Spa-Auth']) {
+      if (!silencioso) setCargando(false);
+      return;
+    }
     if (!silencioso) setCargando(true);
     try {
       const spaId =
         typeof overrideId === 'string' && overrideId
           ? overrideId
           : idComplejoDetectado || complejoId || '3bd1708c-21de-42a8-a529-d7c91fd41ed2';
-      const res = await fetch(`/api/reservas?complejo_id=${spaId}`);
+      const res = await fetch(`/api/reservas?complejo_id=${spaId}`, {
+        headers: authHeaders,
+      });
       if (res.ok) {
         const data = await res.json();
         const dataOrdenada = Array.isArray(data)
@@ -1330,6 +1345,12 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     cargarReservas();
     cargarConfigAnticipo();
   }, [complejoId]);
+
+  useEffect(() => {
+    if (perfilActual?.id) {
+      cargarReservas();
+    }
+  }, [perfilActual?.id]);
 
   // Suscripción Realtime a cambios en reservas (Broadcast + Postgres + Polling inteligente)
   useEffect(() => {
@@ -1893,7 +1914,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       try {
         const res = await fetch(`/api/reservas/${drag.cita.id}/horario`, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
+          headers: obtenerHeadersStaff({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({
             fecha_inicio: nuevoInicioIso,
             fecha_fin: nuevoFinIso,
@@ -2500,7 +2521,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     try {
       const res = await fetch(`/api/reservas/${reservaId}/estado`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: obtenerHeadersStaff({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ estado: nuevoEstado }),
       });
       if (res.ok) {
@@ -2693,7 +2714,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       try {
         const res = await fetch('/api/spa/reservar', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: obtenerHeadersStaff({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({
             servicio_nombre: nombreServiciosAdmin,
             precio: precioTotalAdmin,
@@ -2875,7 +2896,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       try {
         const res = await fetch('/api/bloqueos', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: obtenerHeadersStaff({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({
             cancha_ids: targetCanchasIds,
             fecha: bloquearFecha,
@@ -2974,10 +2995,16 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     try {
       let borrado = false;
       try {
-        const res = await fetch(`/api/bloqueos/${reservaId}`, { method: 'DELETE' });
+        const res = await fetch(`/api/bloqueos/${reservaId}`, {
+          method: 'DELETE',
+          headers: obtenerHeadersStaff(),
+        });
         if (res.ok) borrado = true;
         else {
-          const res2 = await fetch(`/api/reservas/${reservaId}`, { method: 'DELETE' });
+          const res2 = await fetch(`/api/reservas/${reservaId}`, {
+            method: 'DELETE',
+            headers: obtenerHeadersStaff(),
+          });
           if (res2.ok) borrado = true;
         }
       } catch (errApi) {

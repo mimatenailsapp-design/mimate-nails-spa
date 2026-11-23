@@ -10,6 +10,7 @@ import {
   IconAlertCircle,
   IconUnlink,
 } from '@tabler/icons-react';
+import { obtenerHeadersStaff } from '../../utils/security';
 
 interface WhatsAppStatusData {
   status: 'CONECTADO' | 'ESPERANDO_QR' | 'DESCONECTADO' | 'CONECTANDO' | string;
@@ -44,7 +45,9 @@ export const WhatsAppVinculacionModal: React.FC<Props> = ({
     if (!silencioso) setCargando(true);
     setErrorFetch(null);
     try {
-      const res = await fetch(`/api/baileys/status?_t=${Date.now()}`);
+      const res = await fetch(`/api/baileys/status?_t=${Date.now()}`, {
+        headers: obtenerHeadersStaff(),
+      });
       if (!res.ok) throw new Error('Error de conexión con el servidor');
       const json: WhatsAppStatusData = await res.json();
       setData(json);
@@ -82,7 +85,10 @@ export const WhatsAppVinculacionModal: React.FC<Props> = ({
 
     setProcesandoRelink(true);
     try {
-      await fetch('/api/baileys/relink');
+      await fetch('/api/baileys/relink', {
+        method: 'POST',
+        headers: obtenerHeadersStaff(),
+      });
       setTimeout(() => {
         consultarEstado(false);
       }, 1500);
