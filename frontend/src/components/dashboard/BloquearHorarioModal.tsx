@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { SelectorFechaMimate } from './SelectorFechaMimate';
+import { formatearHora12 } from '../../utils/formatoHora';
 import {
   IconLock,
   IconX,
@@ -287,7 +288,7 @@ export const BloquearHorarioModal: React.FC<BloquearHorarioModalProps> = ({
                       >
                         <div className="flex items-center gap-1">
                           <IconClock className="w-3 h-3 opacity-75" />
-                          <span>{h}</span>
+                          <span>{formatearHora12(h)}</span>
                         </div>
                         {yaPasada ? (
                           <span className="text-[9px] font-sans font-bold text-slate-400 uppercase tracking-tighter">

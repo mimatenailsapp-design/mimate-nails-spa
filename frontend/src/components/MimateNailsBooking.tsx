@@ -1204,7 +1204,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                 <p className="text-xs text-pink-100 leading-relaxed">
                   {citaPreviaInfo ? (
                     <>
-                      Cita previa: <strong>{citaPreviaInfo.fecha} a las {citaPreviaInfo.hora}</strong> con {citaPreviaInfo.manicurista || 'especialista'}
+                      Cita previa: <strong>{citaPreviaInfo.fecha} a las {formatearHora12h(citaPreviaInfo.hora)}</strong> con {citaPreviaInfo.manicurista || 'especialista'}
                       {citaPreviaInfo.servicio ? ` (${citaPreviaInfo.servicio})` : ''}.{' '}
                       {citaPreviaInfo.abonoPrevio ? (
                         <span>Abono transferible: <strong>${citaPreviaInfo.abonoPrevio.toLocaleString('es-CO')} COP</strong>.{' '}</span>
@@ -2154,7 +2154,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                                   : 'bg-white border-[#F2C4D2] text-[#2D2529] hover:border-[#C74B66]'
                               }`}
                             >
-                              {s}
+                              {formatearHora12h(s)}
                             </button>
                           ))}
                         </div>
@@ -2183,7 +2183,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                         <span className="italic text-[#A8324F] font-serif font-bold">datos</span>
                       </h2>
                       <p className="text-xs text-[#665158]">
-                        {nombreServiciosCombinados} · {formatearDuracion(duracionTotal)} · {fecha} · {horaSeleccionada}
+                        {nombreServiciosCombinados} · {formatearDuracion(duracionTotal)} · {fecha} · {formatearHora12h(horaSeleccionada || '')}
                       </p>
                     </div>
 
@@ -2692,7 +2692,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                       </div>
                       <div className="flex justify-between border-b border-[#FCE8EF] pb-1.5">
                         <span className="text-[#665158]">Hora:</span>
-                        <span className="font-bold text-[#2D2529]">{reservaConfirmada.hora}</span>
+                        <span className="font-bold text-[#2D2529]">{formatearHora12h(reservaConfirmada.hora)}</span>
                       </div>
                       <div className="flex justify-between items-center border-b border-[#FCE8EF] pb-1.5 gap-2">
                         <span className="text-[#665158] shrink-0">Lugar:</span>

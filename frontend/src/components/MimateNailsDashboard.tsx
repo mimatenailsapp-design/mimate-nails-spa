@@ -31,6 +31,8 @@ import {
   HASH_ACCESO_JHOANA,
   HASH_ACCESO_MANUELA,
 } from '../utils/security';
+import { formatearHora12, formatearRangoHoras12 } from '../utils/formatoHora';
+export { formatearHora12, formatearRangoHoras12 };
 import { BloquearHorarioModal } from './dashboard/BloquearHorarioModal';
 import { ConfigAnticipoModal } from './dashboard/ConfigAnticipoModal';
 import { AgendarCitaModal } from './dashboard/AgendarCitaModal';
@@ -251,13 +253,6 @@ export function calcularHorasTimeline(horaApertura: string = '08:00', horaCierre
 }
 
 const ALTURA_HORA_PX = 88;
-
-function formatearHora12(hora24: number): string {
-  if (hora24 === 12) return 'Mediodía';
-  const periodo = hora24 < 12 ? 'a.m.' : 'p.m.';
-  const h12 = hora24 % 12 === 0 ? 12 : hora24 % 12;
-  return `${h12} ${periodo}`;
-}
 
 // Funciones para calcular la hora en Colombia (America/Bogota, UTC-5)
 function obtenerHoraMinutosBogota(isoStr: string): string {
@@ -3147,11 +3142,14 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     const estaEnHorario = horaActualNum >= horaAperturaNum && horaActualNum <= horaCierreNum;
     const minutosDesdeApertura = (horaActualNum - horaAperturaNum) * 60 + minutosActuales;
     const posicionYLinea = (minutosDesdeApertura / 60) * ALTURA_HORA_PX;
-    const horaMinutosActualStr = ahora.toLocaleTimeString('es-CO', {
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: false,
-    });
+    const horaMinutosActualStr = formatearHora12(
+      ahora.toLocaleTimeString('es-CO', {
+        timeZone: 'America/Bogota',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      })
+    );
 
     const ALTURA_TOTAL_TIMELINE = horasTimeline.length * ALTURA_HORA_PX;
     const citasVisibles = citasManicurista.filter((r) => r.estado !== 'cancelada');
@@ -3178,7 +3176,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
           <div className="flex items-center gap-2">
             <span className="text-[11px] text-[#7D6870] hidden sm:inline">
-              Horario: {configAnticipo.horaApertura || '08:00'} a {configAnticipo.horaCierre || '19:00'}
+              Horario: {formatearHora12(configAnticipo.horaApertura || '08:00')} a {formatearHora12(configAnticipo.horaCierre || '19:00')}
             </span>
             {esHoy && estaEnHorario && (
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-red-50 text-red-600 border border-red-200 shadow-2xs">
@@ -3338,7 +3336,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                               ) : (
                                 <IconClock className="w-3.5 h-3.5 text-[#C74B66]" />
                               )}
-                              <span>{horaInicio}{horaFin ? ` - ${horaFin}` : ''}</span>
+                              <span>{formatearRangoHoras12(horaInicio, horaFin)}</span>
                             </div>
 
                             <div className="min-w-0 flex items-center gap-1.5 truncate">
@@ -3415,7 +3413,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                                       <a
                                         href={`https://wa.me/${telLimpio}?text=Hola%20${encodeURIComponent(
                                           nombreClienta
-                                        )},%20te%20saludamos%20de%20JL%20M%C3%ADmate%20Nails%20respecto%20al%20abono%20de%20tu%20cita%20de%20las%20${horaInicio}.`}
+                                        )},%20te%20saludamos%20de%20JL%20M%C3%ADmate%20Nails%20respecto%20al%20abono%20de%20tu%20cita%20de%20las%20${formatearHora12(horaInicio)}.`}
                                         target="_blank"
                                         rel="noreferrer"
                                         onClick={(ev) => ev.stopPropagation()}
@@ -3475,7 +3473,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                                   <a
                                     href={`https://wa.me/${telLimpio}?text=Hola%20${encodeURIComponent(
                                       nombreClienta
-                                    )},%20te%20saludamos%20de%20JL%20M%C3%ADmate%20Nails%20respecto%20a%20tu%20cita%20de%20las%20${horaInicio}.`}
+                                    )},%20te%20saludamos%20de%20JL%20M%C3%ADmate%20Nails%20respecto%20a%20tu%20cita%20de%20las%20${formatearHora12(horaInicio)}.`}
                                     target="_blank"
                                     rel="noreferrer"
                                     onClick={(ev) => ev.stopPropagation()}
@@ -3588,11 +3586,14 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     const estaEnHorario = horaActualNum >= horaAperturaNum && horaActualNum <= horaCierreNum;
     const minutosDesdeApertura = (horaActualNum - horaAperturaNum) * 60 + minutosActuales;
     const posicionYLinea = (minutosDesdeApertura / 60) * ALTURA_HORA_PX;
-    const horaMinutosActualStr = ahora.toLocaleTimeString('es-CO', {
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: false,
-    });
+    const horaMinutosActualStr = formatearHora12(
+      ahora.toLocaleTimeString('es-CO', {
+        timeZone: 'America/Bogota',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      })
+    );
     const esSemanaActual = diasDeLaSemana.some((d) => d.esHoy);
     const ALTURA_TOTAL_TIMELINE = horasTimeline.length * ALTURA_HORA_PX;
     const ahoraMs = ahora.getTime();
@@ -3642,7 +3643,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
               <div className="flex items-center gap-2">
                 <span className="text-[11px] text-[#7D6870] hidden sm:inline">
-                  Horario: {configAnticipo.horaApertura || '08:00'} a {configAnticipo.horaCierre || '19:00'}
+                  Horario: {formatearHora12(configAnticipo.horaApertura || '08:00')} a {formatearHora12(configAnticipo.horaCierre || '19:00')}
                 </span>
                 {esSemanaActual && estaEnHorario && (
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-red-50 text-red-600 border border-red-200 shadow-2xs">
@@ -3881,7 +3882,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                                   ) : (
                                     <IconClock className="w-2.5 h-2.5 text-[#C74B66] shrink-0" />
                                   )}
-                                  <span>{horaInicio}{horaFin ? `-${horaFin}` : ''}</span>
+                                  <span>{formatearRangoHoras12(horaInicio, horaFin, true)}</span>
                                 </div>
 
                                 {estaEnAtencion ? (
@@ -4560,7 +4561,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                   : `Planificación Semanal · ${etiquetaSemana}`}
               </h2>
               <span className="text-xs text-[#7D6870]">
-                Horario: {configAnticipo.horaApertura || '08:00'} a {configAnticipo.horaCierre || '19:00'}
+                Horario: {formatearHora12(configAnticipo.horaApertura || '08:00')} a {formatearHora12(configAnticipo.horaCierre || '19:00')}
               </span>
             </div>
 
@@ -4751,7 +4752,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                                   ) : (
                                     <IconClock className="w-3 h-3 text-[#C74B66]" />
                                   )}
-                                  {horaInicio}{horaFin ? ` - ${horaFin}` : ''}
+                                  {formatearRangoHoras12(horaInicio, horaFin)}
                                 </span>
                                 {estaEnAtencion ? (
                                   <span className="inline-flex items-center gap-1 text-[9px] font-extrabold px-1.5 py-0.2 rounded-full bg-rose-100 text-rose-800 border border-rose-300 shadow-2xs animate-pulse">

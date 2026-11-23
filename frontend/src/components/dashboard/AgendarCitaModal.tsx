@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { SelectorFechaMimate } from './SelectorFechaMimate';
 import { supabase } from '../../config/supabase';
+import { formatearHora12 } from '../../utils/formatoHora';
 import {
   IconX,
   IconClock,
@@ -518,7 +519,7 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                   >
                     <span className="flex items-center gap-1.5 font-mono text-[#8C243B]">
                       <IconClock className="w-4 h-4 text-[#C74B66]" />
-                      {agendarHora || 'Seleccionar turno disponible'}
+                      {agendarHora ? formatearHora12(agendarHora) : 'Seleccionar turno disponible'}
                     </span>
                     <IconChevronDown
                       className={`w-4 h-4 text-[#8C243B] transition-transform ${
@@ -557,7 +558,7 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                                     : 'hover:bg-[#FFF5F7] text-[#2D2529]'
                                 }`}
                               >
-                                <span>{h}</span>
+                                <span>{formatearHora12(h)}</span>
                                 {estaSel && <IconCheck className="w-3.5 h-3.5 text-[#8C243B]" />}
                               </div>
                             );
@@ -629,7 +630,7 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                     {1 + agendarServiciosExtrasIds.length} {1 + agendarServiciosExtrasIds.length === 1 ? 'servicio' : 'servicios seleccionados'}
                   </span>
                   <span className="text-[10px] text-[#7D6870]">
-                    Horario: {agendarHora || '--:--'} · {duracionTotalAdmin} min
+                    Horario: {agendarHora ? formatearHora12(agendarHora) : '--:--'} · {duracionTotalAdmin} min
                   </span>
                 </div>
                 <div className="text-right">

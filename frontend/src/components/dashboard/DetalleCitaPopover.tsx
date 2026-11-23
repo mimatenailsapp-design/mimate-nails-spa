@@ -1,4 +1,5 @@
 import React from 'react';
+import { formatearHora12, formatearRangoHoras12 } from '../../utils/formatoHora';
 import {
   IconClock,
   IconBrandWhatsapp,
@@ -211,7 +212,7 @@ export const DetalleCitaPopover: React.FC<DetalleCitaPopoverProps> = ({
           <div className="flex items-center gap-2">
             <IconClock className="w-4 h-4 text-[#C74B66]" />
             <span className="font-mono font-bold text-[#8C243B]">
-              {horaInicio} - {horaFin}
+              {formatearRangoHoras12(horaInicio, horaFin)}
             </span>
           </div>
           <span className="text-[11px] font-semibold text-[#7D6870] bg-white px-2 py-0.5 rounded-lg border border-[#F2C4D2]">
@@ -303,7 +304,7 @@ export const DetalleCitaPopover: React.FC<DetalleCitaPopoverProps> = ({
                 <a
                   href={`https://wa.me/${telLimpio}?text=Hola%20${encodeURIComponent(
                     nombreClienta
-                  )},%20te%20saludamos%20de%20JL%20M%C3%ADmate%20Nails%20respecto%20al%20abono%20de%20tu%20cita%20de%20las%20${horaInicio}.`}
+                  )},%20te%20saludamos%20de%20JL%20M%C3%ADmate%20Nails%20respecto%20al%20abono%20de%20tu%20cita%20de%20las%20${formatearHora12(horaInicio)}.`}
                   target="_blank"
                   rel="noreferrer"
                   className="flex-1 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold transition flex items-center justify-center gap-1 shadow-2xs"
@@ -352,7 +353,7 @@ export const DetalleCitaPopover: React.FC<DetalleCitaPopoverProps> = ({
                 <a
                   href={`https://wa.me/${telLimpio}?text=Hola%20${encodeURIComponent(
                     nombreClienta
-                  )},%20te%20saludamos%20de%20JL%20M%C3%ADmate%20Nails%20respecto%20a%20tu%20cita%20de%20las%20${horaInicio}.`}
+                  )},%20te%20saludamos%20de%20JL%20M%C3%ADmate%20Nails%20respecto%20a%20tu%20cita%20de%20las%20${formatearHora12(horaInicio)}.`}
                   target="_blank"
                   rel="noreferrer"
                   className="flex-1 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold transition flex items-center justify-center gap-1 shadow-2xs"
