@@ -1474,6 +1474,11 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   const feedbackSwipeTimerRef = useRef<any>(null);
   const touchInicioRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const scrollSemanalRef = useRef<HTMLDivElement | null>(null);
+  const headerScrollSemanalRef = useRef<HTMLDivElement | null>(null);
+  const syncingSemanalScrollRef = useRef<'header' | 'body' | null>(null);
+  const desktopHeaderRef = useRef<HTMLElement | null>(null);
+  const mobileStickyBarRef = useRef<HTMLDivElement | null>(null);
+  const [stickyTopOffset, setStickyTopOffset] = useState<number>(49);
   const columnasDiasSemanalRef = useRef<HTMLDivElement | null>(null);
   const scrollDiarioRef = useRef<HTMLDivElement | null>(null);
   const lienzoTimelineDiarioRef = useRef<HTMLDivElement | null>(null);
@@ -1505,6 +1510,55 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     scrollLeftStart: number;
     time: number;
   } | null>(null);
+
+  useEffect(() => {
+    const calcularOffset = () => {
+      const mobileEl = mobileStickyBarRef.current;
+      const desktopEl = desktopHeaderRef.current;
+      if (mobileEl && mobileEl.offsetHeight > 0) {
+        setStickyTopOffset(mobileEl.offsetHeight);
+      } else if (desktopEl && typeof window !== 'undefined' && window.getComputedStyle(desktopEl).position === 'sticky') {
+        setStickyTopOffset(desktopEl.offsetHeight);
+      } else {
+        setStickyTopOffset(0);
+      }
+    };
+    calcularOffset();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(calcularOffset) : null;
+    if (ro) {
+      if (mobileStickyBarRef.current) ro.observe(mobileStickyBarRef.current);
+      if (desktopHeaderRef.current) ro.observe(desktopHeaderRef.current);
+    }
+    window.addEventListener('resize', calcularOffset);
+    return () => {
+      if (ro) ro.disconnect();
+      window.removeEventListener('resize', calcularOffset);
+    };
+  }, [perfilActual, tabAdmin, vistaAgenda]);
+
+  const handleScrollHeaderSemanal = () => {
+    if (syncingSemanalScrollRef.current === 'body') return;
+    const hEl = headerScrollSemanalRef.current;
+    const bEl = scrollSemanalRef.current;
+    if (!hEl || !bEl) return;
+    syncingSemanalScrollRef.current = 'header';
+    bEl.scrollLeft = hEl.scrollLeft;
+    requestAnimationFrame(() => {
+      syncingSemanalScrollRef.current = null;
+    });
+  };
+
+  const handleScrollBodySemanal = () => {
+    if (syncingSemanalScrollRef.current === 'header') return;
+    const hEl = headerScrollSemanalRef.current;
+    const bEl = scrollSemanalRef.current;
+    if (!hEl || !bEl) return;
+    syncingSemanalScrollRef.current = 'body';
+    hEl.scrollLeft = bEl.scrollLeft;
+    requestAnimationFrame(() => {
+      syncingSemanalScrollRef.current = null;
+    });
+  };
 
   const mostrarFeedbackSwipe = (texto: string) => {
     if (feedbackSwipeTimerRef.current) clearTimeout(feedbackSwipeTimerRef.current);
@@ -1639,6 +1693,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
         mostrarFeedbackSwipe('👉 Semana siguiente');
         setTimeout(() => {
           if (scrollSemanalRef.current) scrollSemanalRef.current.scrollLeft = 0;
+          if (headerScrollSemanalRef.current) headerScrollSemanalRef.current.scrollLeft = 0;
         }, 60);
         return;
       }
@@ -1651,6 +1706,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
         mostrarFeedbackSwipe('👈 Semana anterior');
         setTimeout(() => {
           if (scrollSemanalRef.current) scrollSemanalRef.current.scrollLeft = 0;
+          if (headerScrollSemanalRef.current) headerScrollSemanalRef.current.scrollLeft = 0;
         }, 60);
         return;
       }
@@ -2091,7 +2147,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
           }
         }
 
-        if (container.scrollHeight > container.clientHeight + 4) {
+        if (container.scrollHeight > container.clientHeight + 4 && info.modo !== 'semanal') {
           if (pos.clientY < rect.top + topStickyHeight + edge) {
             const factor = Math.max(0, Math.min(1, (rect.top + topStickyHeight + edge - pos.clientY) / edge));
             dy = -Math.ceil(factor * 10);
@@ -2099,10 +2155,11 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
             const factor = Math.max(0, Math.min(1, (pos.clientY - (rect.bottom - edge)) / edge));
             dy = Math.ceil(factor * 10);
           }
-        } else if (info.modo === 'diaria' && typeof window !== 'undefined') {
+        } else if (typeof window !== 'undefined') {
+          const topThreshold = info.modo === 'semanal' ? stickyTopOffset + 70 : 80;
           let winDy = 0;
-          if (pos.clientY < 80) {
-            winDy = -Math.ceil(((80 - pos.clientY) / 80) * 10);
+          if (pos.clientY < topThreshold) {
+            winDy = -Math.ceil(((topThreshold - pos.clientY) / topThreshold) * 10);
           } else if (pos.clientY > window.innerHeight - 60) {
             winDy = Math.ceil(((pos.clientY - (window.innerHeight - 60)) / 60) * 10);
           }
@@ -2120,6 +2177,9 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
           container.scrollTop += dy;
           if (container.scrollLeft !== prevL || container.scrollTop !== prevT) {
             scrolled = true;
+            if (info.modo === 'semanal' && headerScrollSemanalRef.current) {
+              headerScrollSemanalRef.current.scrollLeft = container.scrollLeft;
+            }
           }
         }
       }
@@ -3939,136 +3999,137 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
         initial={{ opacity: 0.35 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.2 }}
-        className="bg-white rounded-3xl border border-[#F2C4D2] shadow-xs overflow-hidden"
+        className="bg-white rounded-3xl border border-[#F2C4D2] shadow-xs"
       >
-        {/* Grilla Semanal dividida en 7 días y con horas de apertura a cierre */}
+        {/* Cabecera del Timeline Semanal (fluye naturalmente al hacer scroll hacia abajo) */}
         <div
-          ref={scrollSemanalRef}
-          onTouchStart={handleTouchStartSemanalBody}
-          onTouchEnd={handleTouchEndSemanalBody}
-          className="relative max-h-[calc(100dvh-68px)] sm:max-h-[78vh] overflow-auto touch-pan-x touch-pan-y rounded-3xl bg-white"
+          onTouchStart={handleTouchStartCabeceraSemanal}
+          onTouchEnd={handleTouchEndCabeceraSemanal}
+          className="p-3.5 sm:p-4 bg-gradient-to-r from-[#FFF5F7] to-[#FCE8EF] border-b border-[#F2C4D2] rounded-t-3xl flex flex-wrap items-center justify-between gap-2.5 sm:gap-3 touch-pan-y select-none"
         >
-          {/* Cabecera e indicador móvil dentro del contenedor de scroll: se esconden al deslizar hacia abajo dejando fijo solo el día y fecha */}
-          <div className="sticky left-0 z-20 w-full">
-            {/* Cabecera del Timeline Semanal */}
-            <div
-              onTouchStart={(e) => {
-                e.stopPropagation();
-                handleTouchStartCabeceraSemanal(e);
-              }}
-              onTouchEnd={(e) => {
-                e.stopPropagation();
-                handleTouchEndCabeceraSemanal(e);
-              }}
-              className="p-3.5 sm:p-4 bg-gradient-to-r from-[#FFF5F7] to-[#FCE8EF] border-b border-[#F2C4D2] flex flex-wrap items-center justify-between gap-2.5 sm:gap-3 touch-pan-y select-none"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-white border border-[#F2C4D2] flex items-center justify-center font-bold text-base text-[#8C243B] shadow-2xs">
-                  {icono}
-                </div>
-                <div>
-                  <h3 className="font-bold text-sm sm:text-base text-[#2D2529] font-serif">
-                    {nombreTarget}
-                  </h3>
-                  <p className="text-xs text-[#7D6870]">
-                    {etiquetaSemana} · <strong className="text-[#8C243B]">{citasFiltradas.filter((r) => r.estado !== 'cancelada').length} citas</strong> agendadas
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] text-[#7D6870] hidden sm:inline">
-                  Horario: {formatearHora12(configAnticipo.horaApertura || '08:00')} a {formatearHora12(configAnticipo.horaCierre || '19:00')}
-                </span>
-                {esSemanaActual && estaEnHorario && (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-red-50 text-red-600 border border-red-200 shadow-2xs">
-                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                    Ahora: {horaMinutosActualStr}
-                  </span>
-                )}
-              </div>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-white border border-[#F2C4D2] flex items-center justify-center font-bold text-base text-[#8C243B] shadow-2xs">
+              {icono}
             </div>
-
-            {/* Indicador táctil para celular */}
-            <div className="sm:hidden px-3 py-1.5 bg-[#FFF0F4] border-b border-[#F2C4D2] text-[10px] text-[#8C243B] font-medium flex items-center justify-center gap-1.5 select-none">
-              <span>↔️</span>
-              <span>Desliza para ver días · En los topes cambia de semana</span>
+            <div>
+              <h3 className="font-bold text-sm sm:text-base text-[#2D2529] font-serif">
+                {nombreTarget}
+              </h3>
+              <p className="text-xs text-[#7D6870]">
+                {etiquetaSemana} · <strong className="text-[#8C243B]">{citasFiltradas.filter((r) => r.estado !== 'cancelada').length} citas</strong> agendadas
+              </p>
             </div>
           </div>
 
-          <div className="min-w-[980px] sm:min-w-[1050px] w-full px-2.5 pb-2.5 sm:px-5 sm:pb-5 pr-4 sm:pr-6">
-            {/* ENCABEZADOS DE LOS 7 DÍAS (ANCLADOS/STICKY ARRIBA AL HACER SCROLL VERTICAL) */}
-            <div
-              className="sticky top-0 z-30 bg-white/95 backdrop-blur-md pt-2 pb-2.5 mb-1 border-b border-[#F2C4D2] shadow-xs"
-            >
-              <div className="flex items-center">
-                <div className="w-16 sm:w-24 pr-3 flex-shrink-0 text-right select-none sticky left-0 z-30 bg-white/95 backdrop-blur-xs">
-                  <span className="text-[11px] font-extrabold text-[#8C243B] uppercase tracking-wider">
-                    HORA
-                  </span>
-                </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-[#7D6870] hidden sm:inline">
+              Horario: {formatearHora12(configAnticipo.horaApertura || '08:00')} a {formatearHora12(configAnticipo.horaCierre || '19:00')}
+            </span>
+            {esSemanaActual && estaEnHorario && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-red-50 text-red-600 border border-red-200 shadow-2xs">
+                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                Ahora: {horaMinutosActualStr}
+              </span>
+            )}
+          </div>
+        </div>
 
-                <div className="flex-1 grid grid-cols-7 divide-x divide-[#F2C4D2]/60 border-l border-r border-[#F2C4D2]/60">
-                  {diasDeLaSemana.map((d) => {
-                    const citasDelDia = citasFiltradas.filter((r) => {
-                      if (!r.fecha_inicio) return false;
-                      const fCita = new Date(r.fecha_inicio).toLocaleDateString('en-CA', {
-                        timeZone: 'America/Bogota',
-                      });
-                      return fCita === d.fechaIso && r.estado !== 'cancelada' && r.estado !== 'bloqueada';
+        {/* Indicador táctil para celular */}
+        <div className="sm:hidden px-3 py-1.5 bg-[#FFF0F4] border-b border-[#F2C4D2] text-[10px] text-[#8C243B] font-medium flex items-center justify-center gap-1.5 select-none">
+          <span>↔️</span>
+          <span>Desliza para ver días · En los topes cambia de semana</span>
+        </div>
+
+        {/* ENCABEZADOS DE LOS 7 DÍAS (STICKY AL VIEWPORT AL HACER SCROLL VERTICAL EN LA PÁGINA) */}
+        <div
+          style={{ top: `${stickyTopOffset}px` }}
+          className="sticky z-30 bg-white/95 backdrop-blur-md border-b border-[#F2C4D2] shadow-xs"
+        >
+          <div
+            ref={headerScrollSemanalRef}
+            onScroll={handleScrollHeaderSemanal}
+            onTouchStart={handleTouchStartSemanalBody}
+            onTouchEnd={handleTouchEndSemanalBody}
+            className="overflow-x-auto no-scrollbar touch-pan-x touch-pan-y"
+          >
+            <div className="min-w-[980px] sm:min-w-[1050px] w-full px-2.5 sm:px-5 pr-4 sm:pr-6 pt-2 pb-2.5 flex items-center">
+              <div className="w-16 sm:w-24 pr-3 flex-shrink-0 text-right select-none sticky left-0 z-30 bg-white/95 backdrop-blur-xs self-stretch flex items-center justify-end">
+                <span className="text-[11px] font-extrabold text-[#8C243B] uppercase tracking-wider">
+                  HORA
+                </span>
+              </div>
+
+              <div className="flex-1 grid grid-cols-7 divide-x divide-[#F2C4D2]/60 border-l border-r border-[#F2C4D2]/60">
+                {diasDeLaSemana.map((d) => {
+                  const citasDelDia = citasFiltradas.filter((r) => {
+                    if (!r.fecha_inicio) return false;
+                    const fCita = new Date(r.fecha_inicio).toLocaleDateString('en-CA', {
+                      timeZone: 'America/Bogota',
                     });
-                    const esDiaDestinoDrag = dragCitaSemanal?.targetFechaIso === d.fechaIso;
+                    return fCita === d.fechaIso && r.estado !== 'cancelada' && r.estado !== 'bloqueada';
+                  });
+                  const esDiaDestinoDrag = dragCitaSemanal?.targetFechaIso === d.fechaIso;
 
-                    return (
-                      <div
-                        key={d.fechaIso}
-                        className={`px-1.5 py-1 text-center transition-colors rounded-xl mx-0.5 ${
-                          esDiaDestinoDrag
-                            ? dragCitaSemanal.esValido
-                              ? 'bg-emerald-50 ring-2 ring-emerald-500/60'
-                              : 'bg-rose-50 ring-2 ring-rose-500/60'
-                            : d.esHoy
-                            ? 'bg-[#FFF5F7] ring-1 ring-[#8C243B]/25'
-                            : ''
+                  return (
+                    <div
+                      key={d.fechaIso}
+                      className={`px-1.5 py-1 text-center transition-colors rounded-xl mx-0.5 ${
+                        esDiaDestinoDrag
+                          ? dragCitaSemanal.esValido
+                            ? 'bg-emerald-50 ring-2 ring-emerald-500/60'
+                            : 'bg-rose-50 ring-2 ring-rose-500/60'
+                          : d.esHoy
+                          ? 'bg-[#FFF5F7] ring-1 ring-[#8C243B]/25'
+                          : ''
+                      }`}
+                    >
+                      <p
+                        className={`text-[11px] font-bold uppercase tracking-wider ${
+                          d.esHoy ? 'text-[#8C243B]' : 'text-[#7D6870]'
                         }`}
                       >
-                        <p
-                          className={`text-[11px] font-bold uppercase tracking-wider ${
-                            d.esHoy ? 'text-[#8C243B]' : 'text-[#7D6870]'
-                          }`}
-                        >
-                          {d.nombreCorto}
-                        </p>
-                        <div className="flex items-center justify-center gap-1 my-0.5">
-                          <span
-                            className={`text-base font-extrabold font-serif ${
-                              d.esHoy ? 'text-[#8C243B]' : 'text-[#2D2529]'
-                            }`}
-                          >
-                            {d.diaNum} {d.mesCorto}
-                          </span>
-                          {d.esHoy && (
-                            <span className="text-[8px] font-extrabold px-1.5 py-0.2 rounded-full bg-[#8C243B] text-white leading-none">
-                              HOY
-                            </span>
-                          )}
-                        </div>
+                        {d.nombreCorto}
+                      </p>
+                      <div className="flex items-center justify-center gap-1 my-0.5">
                         <span
-                          className={`text-[9px] font-semibold px-2 py-0.5 rounded-full border inline-block ${
-                            d.esHoy
-                              ? 'bg-[#8C243B] text-white border-[#8C243B]'
-                              : 'bg-white text-[#8C243B] border-[#F2C4D2]'
+                          className={`text-base font-extrabold font-serif ${
+                            d.esHoy ? 'text-[#8C243B]' : 'text-[#2D2529]'
                           }`}
                         >
-                          {citasDelDia.length} {citasDelDia.length === 1 ? 'cita' : 'citas'}
+                          {d.diaNum} {d.mesCorto}
                         </span>
+                        {d.esHoy && (
+                          <span className="text-[8px] font-extrabold px-1.5 py-0.2 rounded-full bg-[#8C243B] text-white leading-none">
+                            HOY
+                          </span>
+                        )}
                       </div>
-                    );
-                  })}
-                </div>
+                      <span
+                        className={`text-[9px] font-semibold px-2 py-0.5 rounded-full border inline-block ${
+                          d.esHoy
+                            ? 'bg-[#8C243B] text-white border-[#8C243B]'
+                            : 'bg-white text-[#8C243B] border-[#F2C4D2]'
+                        }`}
+                      >
+                        {citasDelDia.length} {citasDelDia.length === 1 ? 'cita' : 'citas'}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
+          </div>
+        </div>
 
+        {/* Grilla Semanal dividida en 7 días y con horas de apertura a cierre (sin ventana vertical interna) */}
+        <div
+          ref={scrollSemanalRef}
+          onScroll={handleScrollBodySemanal}
+          onTouchStart={handleTouchStartSemanalBody}
+          onTouchEnd={handleTouchEndSemanalBody}
+          className="relative overflow-x-auto touch-pan-x touch-pan-y rounded-b-3xl bg-white"
+        >
+          <div className="min-w-[980px] sm:min-w-[1050px] w-full px-2.5 sm:px-5 pr-4 sm:pr-6 pt-3 pb-2.5 sm:pb-5">
             {/* CUERPO DEL TIMELINE CONTINUO POR COLUMNAS DE DÍAS (LUNES A DOMINGO) */}
             <div className="flex relative" style={{ height: `${ALTURA_TOTAL_TIMELINE}px` }}>
               {/* Columna de Horas a la izquierda */}
@@ -4396,7 +4457,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       </AnimatePresence>
 
       {/* BARRA SUPERIOR ELEGANTE (En móvil se desplaza al bajar; en desktop/tablet permanece fija) */}
-      <header className="bg-white/95 backdrop-blur-md md:sticky md:top-0 z-40 md:border-b border-[#F2C4D2] md:shadow-xs">
+      <header ref={desktopHeaderRef} className="bg-white/95 backdrop-blur-md md:sticky md:top-0 z-40 md:border-b border-[#F2C4D2] md:shadow-xs">
         <div className="max-w-7xl mx-auto px-3.5 sm:px-4 pt-2.5 pb-1.5 md:py-3">
           
           {/* FILA 1: Marca/Perfil a la izquierda, Controles del Sistema a la derecha */}
@@ -4680,7 +4741,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       </header>
 
       {/* BARRA FIJA (STICKY) EXCLUSIVA EN MÓVIL (< md): Ubicada debajo de los demás controles para que al bajar solo queden fijos "Agendar Cita" y "Bloquear Horario" con transición suave */}
-      <div className="md:hidden sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-[#F2C4D2] shadow-xs px-3.5 py-2">
+      <div ref={mobileStickyBarRef} className="md:hidden sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-[#F2C4D2] shadow-xs px-3.5 py-2">
         <div className="max-w-7xl mx-auto grid grid-cols-2 gap-2">
           {/* Agendar (Disponible para Admin y Manicuristas) */}
           <button
