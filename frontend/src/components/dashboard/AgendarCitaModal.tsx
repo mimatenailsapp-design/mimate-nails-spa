@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { SelectorFechaMimate } from './SelectorFechaMimate';
 import { supabase } from '../../config/supabase';
 import { formatearHora12 } from '../../utils/formatoHora';
+import { esTarifaDesdeDiciembre, obtenerPrecioServicioParaFecha } from '../../utils/tarifas';
 import {
   IconX,
   IconClock,
@@ -24,6 +25,7 @@ export interface AgendarCitaModalProps {
     categoria: string;
     duracion: number;
     precio: number;
+    precioDiciembre?: number;
     descripcion?: string;
   }>;
   agendarManicuristaId: string;
@@ -41,6 +43,7 @@ export interface AgendarCitaModalProps {
     categoria: string;
     duracion: number;
     precio: number;
+    precioDiciembre?: number;
   };
   // Servicios extras adicionales
   agendarServiciosExtrasIds: number[];
@@ -298,7 +301,7 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                   <div className="truncate pr-2">
                     <span>{servicioSeleccionadoForm?.nombre || 'Seleccionar Servicio'}</span>
                     <span className="text-[11px] font-mono text-[#8C243B] ml-2">
-                      (${servicioSeleccionadoForm?.precio.toLocaleString('es-CO')} · {servicioSeleccionadoForm?.duracion} min)
+                      (${obtenerPrecioServicioParaFecha(servicioSeleccionadoForm, agendarFecha).toLocaleString('es-CO')} · {servicioSeleccionadoForm?.duracion} min)
                     </span>
                   </div>
                   <IconChevronDown
@@ -341,7 +344,7 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                             </div>
                             <div className="flex items-center gap-2">
                               <span className="font-mono font-bold text-[#8C243B]">
-                                ${s.precio.toLocaleString('es-CO')}
+                                ${obtenerPrecioServicioParaFecha(s, agendarFecha).toLocaleString('es-CO')}
                               </span>
                               {estaSel && <IconCheck className="w-4 h-4 text-[#8C243B]" />}
                             </div>
@@ -371,7 +374,7 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                       <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-white text-[#2D2529] border border-[#F2C4D2] rounded-full text-xs font-semibold shadow-2xs">
                         <span>✨ {servicioSeleccionadoForm.nombre}</span>
                         <span className="font-mono text-[11px] text-[#7D6870]">
-                          ({servicioSeleccionadoForm.duracion}m · ${servicioSeleccionadoForm.precio.toLocaleString('es-CO')})
+                          ({servicioSeleccionadoForm.duracion}m · ${obtenerPrecioServicioParaFecha(servicioSeleccionadoForm, agendarFecha).toLocaleString('es-CO')})
                         </span>
                       </span>
                     )}
@@ -384,7 +387,7 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                         >
                           <span className="font-bold">+ {extra.nombre}</span>
                           <span className="font-mono text-[10px] text-[#8C243B]/80">
-                            (+{extra.duracion}m · +${extra.precio.toLocaleString('es-CO')})
+                            (+{extra.duracion}m · +${obtenerPrecioServicioParaFecha(extra, agendarFecha).toLocaleString('es-CO')})
                           </span>
                           <button
                             type="button"
@@ -462,7 +465,7 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                               </div>
                               <div className="flex items-center gap-2">
                                 <span className="font-mono font-bold text-xs text-[#8C243B]">
-                                  +${s.precio.toLocaleString('es-CO')}
+                                  +${obtenerPrecioServicioParaFecha(s, agendarFecha).toLocaleString('es-CO')}
                                 </span>
                                 <span
                                   className={`w-5 h-5 rounded-full flex items-center justify-center text-xs ${
@@ -634,7 +637,9 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                   </span>
                 </div>
                 <div className="text-right">
-                  <span className="text-[10px] text-[#7D6870] block font-medium">Total a cobrar:</span>
+                  <span className="text-[10px] text-[#7D6870] block font-medium">
+                    Total a cobrar{esTarifaDesdeDiciembre(agendarFecha) && !esTarifaDesdeDiciembre() ? ' (Tarifa dic)' : ''}:
+                  </span>
                   <span className="font-mono font-extrabold text-sm text-[#8C243B]">
                     ${precioTotalAdmin.toLocaleString('es-CO')} COP
                   </span>

@@ -1637,6 +1637,15 @@ app.patch('/api/reservas/:id/rechazar-anticipo', requireAdminAuth, async (req: R
 // 4. ENDPOINTS RESERVAS WEB SPA DE UÑAS (JL MÍMATE NAILS) - SIN ANTICIPO
 // ==============================================================================
 
+const FECHA_CAMBIO_TARIFAS = '2026-12-01';
+
+function esTarifaDesdeDiciembre(fechaIso?: string | null): boolean {
+  const ref = fechaIso
+    ? fechaIso.trim().slice(0, 10)
+    : new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+  return ref >= FECHA_CAMBIO_TARIFAS;
+}
+
 const SERVICIOS_MIMATE_NAILS = [
   // --- TRADICIONAL ---
   {
@@ -1645,6 +1654,7 @@ const SERVICIOS_MIMATE_NAILS = [
     categoria: 'Tradicional',
     duracion: 60,
     precio: 14000,
+    precioDiciembre: 17000,
     descripcion: 'Cuidado completo para pies masculinos, limpieza profunda, recorte, limado y exfoliación.'
   },
   {
@@ -1653,6 +1663,7 @@ const SERVICIOS_MIMATE_NAILS = [
     categoria: 'Tradicional',
     duracion: 60,
     precio: 14000,
+    precioDiciembre: 15000,
     descripcion: 'Cuidado para manos masculinas, limpieza de cutícula, limado, exfoliación e hidratación.'
   },
   {
@@ -1661,6 +1672,7 @@ const SERVICIOS_MIMATE_NAILS = [
     categoria: 'Tradicional',
     duracion: 120,
     precio: 35000,
+    precioDiciembre: 40000,
     descripcion: 'Combo completo tradicional de manicure y pedicure con exfoliación, hidratación y esmaltado clásico.'
   },
   {
@@ -1669,6 +1681,7 @@ const SERVICIOS_MIMATE_NAILS = [
     categoria: 'Tradicional',
     duracion: 60,
     precio: 20000,
+    precioDiciembre: 22000,
     descripcion: 'Pedicure tradicional con limpieza profunda, exfoliación, masaje relajante y esmaltado clásico.'
   },
   {
@@ -1677,6 +1690,7 @@ const SERVICIOS_MIMATE_NAILS = [
     categoria: 'Tradicional',
     duracion: 60,
     precio: 16000,
+    precioDiciembre: 18000,
     descripcion: 'Manicure tradicional con limpieza de cutícula, limado, hidratación y esmaltado clásico.'
   },
 
@@ -1687,6 +1701,7 @@ const SERVICIOS_MIMATE_NAILS = [
     categoria: 'Rubber',
     duracion: 90,
     precio: 50000,
+    precioDiciembre: 55000,
     descripcion: 'Mantenimiento y retoque profesional para tus uñas press on, dejándolas como nuevas.'
   },
   {
@@ -1695,6 +1710,7 @@ const SERVICIOS_MIMATE_NAILS = [
     categoria: 'Rubber',
     duracion: 120,
     precio: 65000,
+    precioDiciembre: 70000,
     descripcion: 'Aplicación completa de tips preformados de gel de alta calidad para largo y forma al instante.'
   },
   {
@@ -1703,6 +1719,7 @@ const SERVICIOS_MIMATE_NAILS = [
     categoria: 'Rubber',
     duracion: 90,
     precio: 55000,
+    precioDiciembre: 55000,
     descripcion: 'Técnica de polvo de inmersión sin lámpara, extra resistente y con acabado ultra natural.'
   },
   {
@@ -1711,6 +1728,7 @@ const SERVICIOS_MIMATE_NAILS = [
     categoria: 'Rubber',
     duracion: 90,
     precio: 55000,
+    precioDiciembre: 60000,
     descripcion: 'Nivelación y refuerzo estructural con base elástica de alta densidad para uñas frágiles.'
   },
 
@@ -1721,6 +1739,7 @@ const SERVICIOS_MIMATE_NAILS = [
     categoria: 'Semipermanente',
     duracion: 15,
     precio: 6000,
+    precioDiciembre: 8000,
     descripcion: 'Retiro seguro, cuidadoso y profesional de esmalte semipermanente sin maltratar la uña natural.'
   },
   {
@@ -1729,6 +1748,7 @@ const SERVICIOS_MIMATE_NAILS = [
     categoria: 'Semipermanente',
     duracion: 60,
     precio: 25000,
+    precioDiciembre: 25000,
     descripcion: 'Esmaltado o tratamiento semipermanente protector y prolijo para caballeros.'
   },
   {
@@ -1737,6 +1757,7 @@ const SERVICIOS_MIMATE_NAILS = [
     categoria: 'Semipermanente',
     duracion: 150,
     precio: 75000,
+    precioDiciembre: 80000,
     descripcion: 'Combo completo de manos y pies con esmaltado semipermanente de larga duración y secado LED.'
   },
   {
@@ -1745,6 +1766,7 @@ const SERVICIOS_MIMATE_NAILS = [
     categoria: 'Semipermanente',
     duracion: 80,
     precio: 38000,
+    precioDiciembre: 43000,
     descripcion: 'Pedicure spa con esmaltado semipermanente de alto brillo y secado inmediato en lámpara LED.'
   },
   {
@@ -1753,6 +1775,7 @@ const SERVICIOS_MIMATE_NAILS = [
     categoria: 'Semipermanente',
     duracion: 90,
     precio: 43000,
+    precioDiciembre: 48000,
     descripcion: 'Esmaltado en gel curado en lámpara LED con brillo espejo y duración de hasta 21 días intacto.'
   },
 
@@ -1763,6 +1786,7 @@ const SERVICIOS_MIMATE_NAILS = [
     categoria: 'Acrílico esculpido',
     duracion: 20,
     precio: 6000,
+    precioDiciembre: 7000,
     descripcion: 'Reparación o montaje individual de una uña en acrílico o sistema esculpido.'
   },
   {
@@ -1771,6 +1795,7 @@ const SERVICIOS_MIMATE_NAILS = [
     categoria: 'Acrílico esculpido',
     duracion: 60,
     precio: 10000,
+    precioDiciembre: 10000,
     descripcion: 'Retiro profesional y delicado de sistema acrílico cuidando la salud de tu uña natural.'
   },
   {
@@ -1779,6 +1804,7 @@ const SERVICIOS_MIMATE_NAILS = [
     categoria: 'Acrílico esculpido',
     duracion: 60,
     precio: 15000,
+    precioDiciembre: 10000,
     descripcion: 'Retiro completo y seguro de sistemas artificiales con nutrición e hidratación profunda.'
   },
   {
@@ -1787,6 +1813,7 @@ const SERVICIOS_MIMATE_NAILS = [
     categoria: 'Acrílico esculpido',
     duracion: 120,
     precio: 65000,
+    precioDiciembre: 70000,
     descripcion: 'Mantenimiento y relleno de crecimiento para sistema acrílico esculpido.'
   },
   {
@@ -1795,6 +1822,7 @@ const SERVICIOS_MIMATE_NAILS = [
     categoria: 'Acrílico esculpido',
     duracion: 120,
     precio: 65000,
+    precioDiciembre: 75000,
     descripcion: 'Capa protectora de acrílico sobre el largo natural para aportar máxima firmeza y resistencia.'
   },
   {
@@ -1803,9 +1831,37 @@ const SERVICIOS_MIMATE_NAILS = [
     categoria: 'Acrílico esculpido',
     duracion: 120,
     precio: 90000,
+    precioDiciembre: 95000,
     descripcion: 'Extensión completa artesanal de uñas acrílicas esculpidas con monómero y polímero para estructura perfecta.'
   },
+  {
+    id: 21,
+    nombre: 'Polygel',
+    categoria: 'Acrílico esculpido',
+    duracion: 120,
+    precio: 90000,
+    precioDiciembre: 95000,
+    descripcion: 'Extensión y moldeado profesional en Polygel ligero, flexible y de alta durabilidad.'
+  },
 ];
+
+function calcularPrecioServiciosParaFecha(servicioNombre?: string, fechaIso?: string): number | null {
+  if (!servicioNombre || !servicioNombre.trim()) return null;
+  const normalizar = (txt: string) =>
+    txt.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  const partes = servicioNombre.split('+').map((p) => p.trim()).filter(Boolean);
+  if (partes.length === 0) return null;
+
+  const aplicarDic = esTarifaDesdeDiciembre(fechaIso);
+  let total = 0;
+  for (const parte of partes) {
+    const pNorm = normalizar(parte);
+    const svc = SERVICIOS_MIMATE_NAILS.find((s) => normalizar(s.nombre) === pNorm);
+    if (!svc) return null;
+    total += aplicarDic ? svc.precioDiciembre : svc.precio;
+  }
+  return total > 0 ? total : null;
+}
 
 // Obtener info del spa, empleadas y catálogo de servicios (con caché de 15s y sin exponer credenciales)
 app.get('/api/spa/info', async (req: Request, res: Response) => {
@@ -1860,11 +1916,16 @@ app.get('/api/spa/info', async (req: Request, res: Response) => {
         return !nLower.includes('manicurista 4') && nLower !== '4';
       })
       .map(enriquecerCancha);
+    const aplicarDicHoy = esTarifaDesdeDiciembre();
+    const serviciosVigentes = SERVICIOS_MIMATE_NAILS.map((s) => ({
+      ...s,
+      precio: aplicarDicHoy ? s.precioDiciembre : s.precio,
+    }));
     const bootstrapData = {
       complejo: sanitizarComplejoPublico(complejo),
       equipo: equipoEnriquecido,
       config,
-      servicios: SERVICIOS_MIMATE_NAILS,
+      servicios: serviciosVigentes,
       categorias: ['Todos', 'Tradicional', 'Rubber', 'Semipermanente', 'Acrílico esculpido']
     };
 
@@ -2227,7 +2288,8 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
     }
 
     const esReagendamiento = Boolean(reagendar_reserva_id && reservaPrevia);
-    const numPrecio = Number(precio || 35000);
+    const precioCatalogoFecha = calcularPrecioServiciosParaFecha(servicio_nombre, fecha);
+    const numPrecio = precioCatalogoFecha ?? Number(precio || 35000);
 
     // Calcular el anticipo total requerido para el servicio y fecha seleccionada
     const anticipoTotalParaEsteTurno = exigeAnticipo ? Math.min(numPrecio, montoFijoConfigurado) : 0;

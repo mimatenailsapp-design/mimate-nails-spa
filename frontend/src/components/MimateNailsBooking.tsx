@@ -18,6 +18,7 @@ import {
 } from '@tabler/icons-react';
 import { supabase } from '../config/supabase';
 import { LegalModal, LegalTab } from './legal/LegalModal';
+import { esTarifaDesdeDiciembre, obtenerPrecioServicioParaFecha } from '../utils/tarifas';
 
 interface Servicio {
   id: number;
@@ -25,6 +26,7 @@ interface Servicio {
   categoria: string;
   duracion: number;
   precio: number;
+  precioDiciembre?: number;
   descripcion: string;
 }
 
@@ -83,6 +85,7 @@ const SERVICIOS_DEFAULT: Servicio[] = [
     categoria: 'Tradicional',
     duracion: 60,
     precio: 14000,
+    precioDiciembre: 17000,
     descripcion: 'Cuidado completo para pies masculinos, limpieza profunda, recorte, limado y exfoliación.',
   },
   {
@@ -91,6 +94,7 @@ const SERVICIOS_DEFAULT: Servicio[] = [
     categoria: 'Tradicional',
     duracion: 60,
     precio: 14000,
+    precioDiciembre: 15000,
     descripcion: 'Cuidado para manos masculinas, limpieza de cutícula, limado, exfoliación e hidratación.',
   },
   {
@@ -99,6 +103,7 @@ const SERVICIOS_DEFAULT: Servicio[] = [
     categoria: 'Tradicional',
     duracion: 120,
     precio: 35000,
+    precioDiciembre: 40000,
     descripcion: 'Combo completo tradicional de manicure y pedicure con exfoliación, hidratación y esmaltado clásico.',
   },
   {
@@ -107,6 +112,7 @@ const SERVICIOS_DEFAULT: Servicio[] = [
     categoria: 'Tradicional',
     duracion: 60,
     precio: 20000,
+    precioDiciembre: 22000,
     descripcion: 'Pedicure tradicional con limpieza profunda, exfoliación, masaje relajante y esmaltado clásico.',
   },
   {
@@ -115,6 +121,7 @@ const SERVICIOS_DEFAULT: Servicio[] = [
     categoria: 'Tradicional',
     duracion: 60,
     precio: 16000,
+    precioDiciembre: 18000,
     descripcion: 'Manicure tradicional con limpieza de cutícula, limado, hidratación y esmaltado clásico.',
   },
 
@@ -125,6 +132,7 @@ const SERVICIOS_DEFAULT: Servicio[] = [
     categoria: 'Rubber',
     duracion: 90,
     precio: 50000,
+    precioDiciembre: 55000,
     descripcion: 'Mantenimiento y retoque profesional para tus uñas press on, dejándolas como nuevas.',
   },
   {
@@ -133,6 +141,7 @@ const SERVICIOS_DEFAULT: Servicio[] = [
     categoria: 'Rubber',
     duracion: 120,
     precio: 65000,
+    precioDiciembre: 70000,
     descripcion: 'Aplicación completa de tips preformados de gel de alta calidad para largo y forma al instante.',
   },
   {
@@ -141,6 +150,7 @@ const SERVICIOS_DEFAULT: Servicio[] = [
     categoria: 'Rubber',
     duracion: 90,
     precio: 55000,
+    precioDiciembre: 55000,
     descripcion: 'Técnica de polvo de inmersión sin lámpara, extra resistente y con acabado ultra natural.',
   },
   {
@@ -149,6 +159,7 @@ const SERVICIOS_DEFAULT: Servicio[] = [
     categoria: 'Rubber',
     duracion: 90,
     precio: 55000,
+    precioDiciembre: 60000,
     descripcion: 'Nivelación y refuerzo estructural con base elástica de alta densidad para uñas frágiles.',
   },
 
@@ -159,6 +170,7 @@ const SERVICIOS_DEFAULT: Servicio[] = [
     categoria: 'Semipermanente',
     duracion: 15,
     precio: 6000,
+    precioDiciembre: 8000,
     descripcion: 'Retiro seguro, cuidadoso y profesional de esmalte semipermanente sin maltratar la uña natural.',
   },
   {
@@ -167,6 +179,7 @@ const SERVICIOS_DEFAULT: Servicio[] = [
     categoria: 'Semipermanente',
     duracion: 60,
     precio: 25000,
+    precioDiciembre: 25000,
     descripcion: 'Esmaltado o tratamiento semipermanente protector y prolijo para caballeros.',
   },
   {
@@ -175,6 +188,7 @@ const SERVICIOS_DEFAULT: Servicio[] = [
     categoria: 'Semipermanente',
     duracion: 150,
     precio: 75000,
+    precioDiciembre: 80000,
     descripcion: 'Combo completo de manos y pies con esmaltado semipermanente de larga duración y secado LED.',
   },
   {
@@ -183,6 +197,7 @@ const SERVICIOS_DEFAULT: Servicio[] = [
     categoria: 'Semipermanente',
     duracion: 80,
     precio: 38000,
+    precioDiciembre: 43000,
     descripcion: 'Pedicure spa con esmaltado semipermanente de alto brillo y secado inmediato en lámpara LED.',
   },
   {
@@ -191,6 +206,7 @@ const SERVICIOS_DEFAULT: Servicio[] = [
     categoria: 'Semipermanente',
     duracion: 90,
     precio: 43000,
+    precioDiciembre: 48000,
     descripcion: 'Esmaltado en gel curado en lámpara LED con brillo espejo y duración de hasta 21 días intacto.',
   },
 
@@ -201,6 +217,7 @@ const SERVICIOS_DEFAULT: Servicio[] = [
     categoria: 'Acrílico esculpido',
     duracion: 20,
     precio: 6000,
+    precioDiciembre: 7000,
     descripcion: 'Reparación o montaje individual de una uña en acrílico o sistema esculpido.',
   },
   {
@@ -209,6 +226,7 @@ const SERVICIOS_DEFAULT: Servicio[] = [
     categoria: 'Acrílico esculpido',
     duracion: 60,
     precio: 10000,
+    precioDiciembre: 10000,
     descripcion: 'Retiro profesional y delicado de sistema acrílico cuidando la salud de tu uña natural.',
   },
   {
@@ -217,6 +235,7 @@ const SERVICIOS_DEFAULT: Servicio[] = [
     categoria: 'Acrílico esculpido',
     duracion: 60,
     precio: 15000,
+    precioDiciembre: 10000,
     descripcion: 'Retiro completo y seguro de sistemas artificiales con nutrición e hidratación profunda.',
   },
   {
@@ -225,6 +244,7 @@ const SERVICIOS_DEFAULT: Servicio[] = [
     categoria: 'Acrílico esculpido',
     duracion: 120,
     precio: 65000,
+    precioDiciembre: 70000,
     descripcion: 'Mantenimiento y relleno de crecimiento para sistema acrílico esculpido.',
   },
   {
@@ -233,6 +253,7 @@ const SERVICIOS_DEFAULT: Servicio[] = [
     categoria: 'Acrílico esculpido',
     duracion: 120,
     precio: 65000,
+    precioDiciembre: 75000,
     descripcion: 'Capa protectora de acrílico sobre el largo natural para aportar máxima firmeza y resistencia.',
   },
   {
@@ -241,7 +262,17 @@ const SERVICIOS_DEFAULT: Servicio[] = [
     categoria: 'Acrílico esculpido',
     duracion: 120,
     precio: 90000,
+    precioDiciembre: 95000,
     descripcion: 'Extensión completa artesanal de uñas acrílicas esculpidas con monómero y polímero para estructura perfecta.',
+  },
+  {
+    id: 21,
+    nombre: 'Polygel',
+    categoria: 'Acrílico esculpido',
+    duracion: 120,
+    precio: 90000,
+    precioDiciembre: 95000,
+    descripcion: 'Extensión y moldeado profesional en Polygel ligero, flexible y de alta durabilidad.',
   },
 ];
 
@@ -306,10 +337,16 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
     return todosLosServicios.reduce((acc, s) => acc + (s.duracion || 60), 0);
   }, [todosLosServicios]);
 
-  // Precio total combinado (COP)
+  // Formulario de reserva
+  const hoyStr = useMemo(() => {
+    return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+  }, []);
+  const [fecha, setFecha] = useState(hoyStr);
+
+  // Precio total combinado (COP) según fecha seleccionada (tarifa vigente desde el 1 de dic)
   const precioTotal = useMemo(() => {
-    return todosLosServicios.reduce((acc, s) => acc + (s.precio || 0), 0);
-  }, [todosLosServicios]);
+    return todosLosServicios.reduce((acc, s) => acc + obtenerPrecioServicioParaFecha(s, fecha), 0);
+  }, [todosLosServicios, fecha]);
 
   // Nombre de servicios combinados (ej. "Manos + Pies")
   const nombreServiciosCombinados = useMemo(() => {
@@ -328,12 +365,6 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
     setHoraSeleccionada(null);
   };
   const [faqAbierto, setFaqAbierto] = useState<number | null>(null);
-
-  // Formulario de reserva
-  const hoyStr = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
-  }, []);
-  const [fecha, setFecha] = useState(hoyStr);
   const [calendarioAbierto, setCalendarioAbierto] = useState(false);
   const contenedorCalendarioRef = useRef<HTMLDivElement>(null);
 
@@ -656,12 +687,26 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
   useEffect(() => {
     // 0. Cache instantáneo en sessionStorage para evitar layout shift o parpadeo
     try {
+      const enriquecerServicios = (lista: Servicio[]): Servicio[] => {
+        const porId = new Map(SERVICIOS_DEFAULT.map((s) => [s.id, s]));
+        const enriquecidos = lista.map((s) => {
+          const def = porId.get(s.id);
+          return def ? { ...s, precioDiciembre: s.precioDiciembre ?? def.precioDiciembre } : s;
+        });
+        for (const def of SERVICIOS_DEFAULT) {
+          if (!enriquecidos.some((s) => s.id === def.id)) {
+            enriquecidos.push(def);
+          }
+        }
+        return enriquecidos;
+      };
+
       const cached = sessionStorage.getItem('mimate_bootstrap');
       if (cached) {
         const parsed = JSON.parse(cached);
         if (parsed && Date.now() - (parsed._ts || 0) < 5 * 60 * 1000) {
           if (parsed.servicios && parsed.servicios.length > 0) {
-            setServicios(parsed.servicios);
+            setServicios(enriquecerServicios(parsed.servicios));
           }
           if (parsed.equipo && parsed.equipo.length > 0) {
             setEmpleadas(
@@ -685,7 +730,17 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
       .then((r) => r.json())
       .then((d) => {
         if (d.servicios && d.servicios.length > 0) {
-          setServicios(d.servicios);
+          const porId = new Map(SERVICIOS_DEFAULT.map((s) => [s.id, s]));
+          const enriquecidos = (d.servicios as Servicio[]).map((s) => {
+            const def = porId.get(s.id);
+            return def ? { ...s, precioDiciembre: s.precioDiciembre ?? def.precioDiciembre } : s;
+          });
+          for (const def of SERVICIOS_DEFAULT) {
+            if (!enriquecidos.some((s) => s.id === def.id)) {
+              enriquecidos.push(def);
+            }
+          }
+          setServicios(enriquecidos);
         }
         if (d.equipo && d.equipo.length > 0) {
           setEmpleadas(
@@ -1451,7 +1506,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
 
                 <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-[#FCE8EF]">
                   <span className="text-base font-extrabold text-[#8C243B] font-mono">
-                    ${s.precio.toLocaleString('es-CO')}
+                    ${obtenerPrecioServicioParaFecha(s).toLocaleString('es-CO')}
                   </span>
                   <button
                     onClick={() => abrirModal(s)}
@@ -1751,7 +1806,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                             <span className="text-[#A8324F]">✨</span>
                             <span className="font-bold">{servicioSeleccionado?.nombre}</span>
                             <span className="text-xs text-[#665158] font-medium bg-[#FFF5F7] px-2 py-0.5 rounded-md border border-[#F2C4D2]/60">
-                              {formatearDuracion(servicioSeleccionado?.duracion || 60)} · ${servicioSeleccionado?.precio.toLocaleString('es-CO')}
+                              {formatearDuracion(servicioSeleccionado?.duracion || 60)} · ${obtenerPrecioServicioParaFecha(servicioSeleccionado, fecha).toLocaleString('es-CO')}
                             </span>
                           </div>
 
@@ -1764,7 +1819,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                               <span className="font-bold">+</span>
                               <span className="font-bold">{extra.nombre}</span>
                               <span className="text-xs text-[#8C243B]/80 font-medium bg-white/80 px-2 py-0.5 rounded-md border border-[#F2C4D2]">
-                                +{extra.duracion} min · +${extra.precio.toLocaleString('es-CO')}
+                                +{extra.duracion} min · +${obtenerPrecioServicioParaFecha(extra, fecha).toLocaleString('es-CO')}
                               </span>
                               <button
                                 type="button"
@@ -1832,7 +1887,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                                     </div>
                                     <div className="flex items-center gap-3">
                                       <span className="font-mono font-bold text-sm sm:text-base text-[#8C243B]">
-                                        +${s.precio.toLocaleString('es-CO')}
+                                        +${obtenerPrecioServicioParaFecha(s, fecha).toLocaleString('es-CO')}
                                       </span>
                                       <span
                                         className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-sm transition ${
@@ -2257,12 +2312,21 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
 
                     {/* Resumen de servicios en Step 2 */}
                     <div className="bg-[#FFF5F7] border border-[#F2C4D2] rounded-2xl p-3 text-xs space-y-1.5">
-                      <span className="text-[11px] font-bold text-[#8C243B] block">Resumen de tu cita:</span>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-bold text-[#8C243B]">Resumen de tu cita:</span>
+                        {esTarifaDesdeDiciembre(fecha) && !esTarifaDesdeDiciembre(hoyStr) && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                            Tarifa desde el 1 de dic
+                          </span>
+                        )}
+                      </div>
                       <div className="space-y-1">
                         {todosLosServicios.map((s, idx) => (
                           <div key={s.id} className="flex justify-between items-center text-[11px] text-[#2D2529]">
                             <span>{idx === 0 ? '💅' : '✨'} {s.nombre} ({formatearDuracion(s.duracion)})</span>
-                            <span className="font-mono font-semibold">${s.precio.toLocaleString('es-CO')}</span>
+                            <span className="font-mono font-semibold">
+                              ${obtenerPrecioServicioParaFecha(s, fecha).toLocaleString('es-CO')}
+                            </span>
                           </div>
                         ))}
                       </div>
@@ -2501,7 +2565,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                       <div className="bg-white border border-[#F2C4D2] rounded-xl p-3 flex items-start gap-2 text-xs text-[#665158]">
                         <IconHeart className="w-4 h-4 text-[#A8324F] shrink-0 mt-0.5" />
                         <p className="leading-snug">
-                          <strong>Sin cobro anticipado:</strong> Cancelas el valor de tu servicio (${servicioSeleccionado?.precio.toLocaleString('es-CO')} COP) el día de tu cita directamente en el spa.
+                          <strong>Sin cobro anticipado:</strong> Cancelas el valor de tu servicio (${precioTotal.toLocaleString('es-CO')} COP) el día de tu cita directamente en el spa.
                         </p>
                       </div>
                     )}

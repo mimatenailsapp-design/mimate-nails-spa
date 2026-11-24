@@ -33,6 +33,7 @@ import {
   obtenerHeadersStaff,
 } from '../utils/security';
 import { formatearHora12, formatearRangoHoras12 } from '../utils/formatoHora';
+import { obtenerPrecioServicioParaFecha } from '../utils/tarifas';
 export { formatearHora12, formatearRangoHoras12 };
 import { BloquearHorarioModal } from './dashboard/BloquearHorarioModal';
 import { ConfigAnticipoModal } from './dashboard/ConfigAnticipoModal';
@@ -80,6 +81,7 @@ interface Servicio {
   categoria: string;
   duracion: number;
   precio: number;
+  precioDiciembre?: number;
   descripcion: string;
 }
 
@@ -179,7 +181,7 @@ function obtenerServicioCita(cita: Reserva): string {
     'semi manos y pies', 'manos y pies', 'semi pies', 'semipermanente',
     'pies hombre', 'manos hombre', 'semi hombre', 'base rubber', 'press on',
     'retoque press', 'dipping', 'retiro acrilico', 'retiro semi', 'retiro',
-    'acrilico', 'barrido', 'retoque', 'pies', 'manos'
+    'acrilico', 'polygel', 'barrido', 'retoque', 'pies', 'manos'
   ];
   const encontrados = serviciosConocidos.filter((nombre) => notasLower.includes(nombre));
   if (encontrados.length > 0) {
@@ -189,17 +191,27 @@ function obtenerServicioCita(cita: Reserva): string {
   // Deducción por valor monetario si las notas fueron formateadas externamente
   const v = Number(cita.valor_total || 0);
   if (v === 103000) return 'Manos y pies + Semi hombre + Semipermanente';
+  if (v === 95000) return 'Acrilico';
   if (v === 90000) return 'Acrilico';
+  if (v === 80000) return 'Semi Manos y Pies';
   if (v === 75000) return 'Semi Manos y Pies';
+  if (v === 70000) return 'Press on';
   if (v === 65000) return 'Press on';
+  if (v === 60000) return 'Base Rubber';
   if (v === 55000) return 'Base Rubber';
   if (v === 50000) return 'Retoque press';
+  if (v === 48000) return 'Semipermanente';
   if (v === 43000) return 'Semipermanente';
+  if (v === 40000) return 'Manos y pies';
   if (v === 38000) return 'Semi pies';
   if (v === 35000) return 'Manos y pies';
   if (v === 25000) return 'Semi hombre';
+  if (v === 22000) return 'Pies';
   if (v === 20000) return 'Pies';
+  if (v === 18000) return 'Manos';
+  if (v === 17000) return 'Pies hombre';
   if (v === 16000) return 'Manos';
+  if (v === 15000) return 'Manos hombre';
   if (v === 14000) return 'Manos hombre';
 
   return 'Servicio de Uñas';
@@ -1036,12 +1048,17 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     return durPrincipal + durExtras;
   }, [servicioSeleccionadoForm, serviciosExtrasForm]);
 
-  // Precio total combinado (principal + extras)
+  // Precio total combinado (principal + extras) según fecha de la cita (tarifa vigente desde 1 de dic)
   const precioTotalAdmin = useMemo(() => {
-    const prePrincipal = servicioSeleccionadoForm?.precio || 16000;
-    const preExtras = serviciosExtrasForm.reduce((acc, s) => acc + (s.precio || 0), 0);
+    const prePrincipal = servicioSeleccionadoForm
+      ? obtenerPrecioServicioParaFecha(servicioSeleccionadoForm, agendarFecha)
+      : 16000;
+    const preExtras = serviciosExtrasForm.reduce(
+      (acc, s) => acc + obtenerPrecioServicioParaFecha(s, agendarFecha),
+      0
+    );
     return prePrincipal + preExtras;
-  }, [servicioSeleccionadoForm, serviciosExtrasForm]);
+  }, [servicioSeleccionadoForm, serviciosExtrasForm, agendarFecha]);
 
   // Nombre de servicios combinados (ej. "Manos + Pies")
   const nombreServiciosAdmin = useMemo(() => {

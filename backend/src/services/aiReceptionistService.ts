@@ -295,7 +295,7 @@ export class AIReceptionistService {
       parqueadero: 'Disponibilidad de parqueadero cercano y bahías en la zona para mayor comodidad de nuestras clientas.',
       calzado: 'Instalaciones cómodas y climatizadas para tu mayor relajación.',
       servicios:
-        'Tradicional: Pies hombre ($14.000, 60 min), Manos hombre ($14.000, 60 min), Manos y pies ($35.000, 120 min), Pies ($20.000, 60 min), Manos ($16.000, 60 min). Rubber: Retoque press ($50.000, 90 min), Press on ($65.000, 120 min), Dipping ($55.000, 90 min), Base Rubber ($55.000, 90 min). Semipermanente: Retiro semi ($6.000, 15 min), Semi hombre ($25.000, 60 min), Semi Manos y Pies ($75.000, 150 min), Semi pies ($38.000, 80 min), Semipermanente ($43.000, 90 min). Acrílico esculpido: Uña ($6.000, 20 min), Retiro acrílico ($10.000, 60 min), Retiro ($15.000, 60 min), Retoque ($65.000, 120 min), Barrido ($65.000, 120 min), Acrílico ($90.000, 120 min).',
+        'Tradicional: Pies hombre ($14.000 / desde 1 dic $17.000, 60 min), Manos hombre ($14.000 / desde 1 dic $15.000, 60 min), Manos y pies ($35.000 / desde 1 dic $40.000, 120 min), Pies ($20.000 / desde 1 dic $22.000, 60 min), Manos ($16.000 / desde 1 dic $18.000, 60 min). Rubber: Retoque press ($50.000 / desde 1 dic $55.000, 90 min), Press on ($65.000 / desde 1 dic $70.000, 120 min), Dipping ($55.000, 90 min), Base Rubber ($55.000 / desde 1 dic $60.000, 90 min). Semipermanente: Retiro semi ($6.000 / desde 1 dic $8.000, 15 min), Semi hombre ($25.000, 60 min), Semi Manos y Pies ($75.000 / desde 1 dic $80.000, 150 min), Semi pies ($38.000 / desde 1 dic $43.000, 80 min), Semipermanente ($43.000 / desde 1 dic $48.000, 90 min). Acrílico esculpido y Polygel: Uña ($6.000 / desde 1 dic $7.000, 20 min), Retiro ($10.000, 60 min), Retoque ($65.000 / desde 1 dic $70.000, 120 min), Barrido ($65.000 / desde 1 dic $75.000, 120 min), Acrílico ($90.000 / desde 1 dic $95.000, 120 min), Polygel ($90.000 / desde 1 dic $95.000, 120 min).',
       eventos: 'Atención personalizada para citas individuales o grupos previa reserva.',
       telefono_admin: complejo.telefono_whatsapp,
     };
@@ -333,6 +333,60 @@ export class AIReceptionistService {
     const exigeAnticipo = Number(complejo.porcentaje_anticipo_minimo) > 0;
     const montoAbono = getMontoAnticipoFijo(complejo);
 
+    const hoyCol = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+    const yaEsDiciembre = hoyCol >= '2026-12-01';
+    const catalogoTarifasPrompt = yaEsDiciembre
+      ? `- Catálogo oficial completo de servicios, precios vigentes (desde el 1 de diciembre) y duraciones exactas (siempre en minutos):
+  * TRADICIONAL:
+    - Pies hombre: $17.000 COP (60 min)
+    - Manos hombre: $15.000 COP (60 min)
+    - Manos y pies tradicional: $40.000 COP (120 min)
+    - Pies tradicional: $22.000 COP (60 min)
+    - Manos tradicional: $18.000 COP (60 min)
+  * RUBBER / DIPPING / PRESS ON:
+    - Retoque press on: $55.000 COP (90 min)
+    - Uñas Press on: $70.000 COP (120 min)
+    - Dipping: $55.000 COP (90 min)
+    - Base Rubber (nivelación): $60.000 COP (90 min)
+  * SEMIPERMANENTE:
+    - Retiro semipermanente: $8.000 COP (15 min)
+    - Semipermanente hombre: $25.000 COP (60 min)
+    - Semipermanente Manos y Pies: $80.000 COP (150 min)
+    - Semipermanente pies: $43.000 COP (80 min)
+    - Semipermanente manos: $48.000 COP (90 min)
+  * ACRÍLICO ESCULPIDO Y POLYGEL:
+    - Reparación / Uña unidad: $7.000 COP (20 min)
+    - Retiro (acrílico / sistemas): $10.000 COP (60 min)
+    - Retoque acrílico: $70.000 COP (120 min)
+    - Barrido en acrílico: $75.000 COP (120 min)
+    - Uñas Acrílicas esculpidas completas: $95.000 COP (120 min)
+    - Uñas en Polygel: $95.000 COP (120 min)`
+      : `- Catálogo oficial completo de servicios, precios y duraciones exactas (NOTA IMPORTANTE: A partir del 1 de diciembre aplican las nuevas tarifas para TODA cita agendada en diciembre, incluso si se agenda desde ahora):
+  * TRADICIONAL:
+    - Pies hombre: $14.000 COP (desde 1 dic: $17.000) (60 min)
+    - Manos hombre: $14.000 COP (desde 1 dic: $15.000) (60 min)
+    - Manos y pies tradicional: $35.000 COP (desde 1 dic: $40.000) (120 min)
+    - Pies tradicional: $20.000 COP (desde 1 dic: $22.000) (60 min)
+    - Manos tradicional: $16.000 COP (desde 1 dic: $18.000) (60 min)
+  * RUBBER / DIPPING / PRESS ON:
+    - Retoque press on: $50.000 COP (desde 1 dic: $55.000) (90 min)
+    - Uñas Press on: $65.000 COP (desde 1 dic: $70.000) (120 min)
+    - Dipping: $55.000 COP (90 min)
+    - Base Rubber (nivelación): $55.000 COP (desde 1 dic: $60.000) (90 min)
+  * SEMIPERMANENTE:
+    - Retiro semipermanente: $6.000 COP (desde 1 dic: $8.000) (15 min)
+    - Semipermanente hombre: $25.000 COP (60 min)
+    - Semipermanente Manos y Pies: $75.000 COP (desde 1 dic: $80.000) (150 min)
+    - Semipermanente pies: $38.000 COP (desde 1 dic: $43.000) (80 min)
+    - Semipermanente manos: $43.000 COP (desde 1 dic: $48.000) (90 min)
+  * ACRÍLICO ESCULPIDO Y POLYGEL:
+    - Reparación / Uña unidad: $6.000 COP (desde 1 dic: $7.000) (20 min)
+    - Retiro (acrílico / sistemas): $10.000 COP (60 min)
+    - Retoque acrílico: $65.000 COP (desde 1 dic: $70.000) (120 min)
+    - Barrido en acrílico: $65.000 COP (desde 1 dic: $75.000) (120 min)
+    - Uñas Acrílicas esculpidas completas: $90.000 COP (desde 1 dic: $95.000) (120 min)
+    - Uñas en Polygel: $90.000 COP (desde 1 dic: $95.000) (120 min)`;
+
     const prompt = `Eres la recepcionista virtual oficial de "${complejo.nombre}", un exclusivo spa de uñas ubicado en ${direccion} (${ciudad}).
 Tu objetivo es responder cualquier duda o comentario del cliente en WhatsApp con inteligencia, calidez, precisión y concisión (máximo 3 a 4 oraciones cortas, usando emojis sutiles como 🌸💅✨).
 
@@ -343,31 +397,7 @@ DATOS OFICIALES Y CONTEXTO DEL SPA:
 - Horario de atención: Lunes a Sábado de ${apertura} a ${cierre}. ATENCIÓN DE DOMINGOS: En temporada de Diciembre SÍ se trabaja y se atienden todos los domingos; el resto del año los domingos se descansa.
 - Parqueadero: ${info.parqueadero}
 - Instalaciones: Climatizadas, cómodas, esterilización de herramientas en autoclave y protocolos de bioseguridad.
-- Catálogo oficial completo de servicios, precios y duraciones exactas (siempre en minutos):
-  * TRADICIONAL:
-    - Pies hombre: $14.000 COP (60 min)
-    - Manos hombre: $14.000 COP (60 min)
-    - Manos y pies tradicional: $35.000 COP (120 min)
-    - Pies tradicional: $20.000 COP (60 min)
-    - Manos tradicional: $16.000 COP (60 min)
-  * RUBBER / DIPPING / PRESS ON:
-    - Retoque press on: $50.000 COP (90 min)
-    - Uñas Press on: $65.000 COP (120 min)
-    - Dipping: $55.000 COP (90 min)
-    - Base Rubber (nivelación): $55.000 COP (90 min)
-  * SEMIPERMANENTE:
-    - Retiro semipermanente: $6.000 COP (15 min)
-    - Semipermanente hombre: $25.000 COP (60 min)
-    - Semipermanente Manos y Pies: $75.000 COP (150 min)
-    - Semipermanente pies: $38.000 COP (80 min)
-    - Semipermanente manos: $43.000 COP (90 min)
-  * ACRÍLICO ESCULPIDO:
-    - Reparación / Uña acrílica unidad: $6.000 COP (20 min)
-    - Retiro acrílico: $10.000 COP (60 min)
-    - Retiro general: $15.000 COP (60 min)
-    - Retoque acrílico: $65.000 COP (120 min)
-    - Barrido en acrílico: $65.000 COP (120 min)
-    - Uñas Acrílicas esculpidas completas: $90.000 COP (120 min)
+${catalogoTarifasPrompt}
 - Políticas de anticipo / abono:
   * Valor general configurado de anticipo: ${montoAbono.toLocaleString('es-CO')} COP.
   * Si el servicio solicitado vale menos que el anticipo (ej: $16.000 o $6.000), el abono requerido es únicamente el valor total del servicio (nunca se cobra de más).
@@ -521,8 +551,14 @@ REGLAS ESTRICTAS DE SEGURIDAD Y CERO ALUCINACIÓN (PROHIBIDO INVENTAR):
       );
     }
 
-    // 6. Consultas por SERVICIOS ESPECÍFICOS (Acrílico, Semipermanente, Rubber, Dipping, Press On, Tradicional, Hombre, Retiro)
-    const preguntaAcrilico = t.includes('acrilic') || t.includes('esculpid') || t.includes('barrido');
+    // 6. Consultas por SERVICIOS ESPECÍFICOS (Acrílico, Polygel, Semipermanente, Rubber, Dipping, Press On, Tradicional, Hombre, Retiro)
+    const hoyColReglas = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+    const usarTarifaDic = hoyColReglas >= '2026-12-01' || t.includes('diciembre') || /\bdic\b/.test(t);
+    const notaCambioDic = !usarTarifaDic
+      ? `\n\n📌 _Nota: Para citas a partir del 1 de diciembre aplican las nuevas tarifas de temporada._`
+      : '';
+
+    const preguntaAcrilico = t.includes('acrilic') || t.includes('esculpid') || t.includes('barrido') || t.includes('polygel') || /\bpoly\b/.test(t);
     const preguntaSemi = t.includes('semi');
     const preguntaRubber = t.includes('rubber') || t.includes('ruber') || t.includes('dipping') || t.includes('press');
     const preguntaTradicional = t.includes('tradicional') || t.includes('normal') || t.includes('sencill');
@@ -531,12 +567,14 @@ REGLAS ESTRICTAS DE SEGURIDAD Y CERO ALUCINACIÓN (PROHIBIDO INVENTAR):
 
     if (preguntaAcrilico && !preguntaSemi && !preguntaRubber) {
       return (
-        `💅 *Uñas Acrílicas Esculpidas en ${complejo.nombre}:*\n\n` +
-        `• *Acrílico esculpido completo:* $90.000 (120 min)\n` +
-        `• *Barrido en acrílico:* $65.000 (120 min)\n` +
-        `• *Retoque de acrílico:* $65.000 (120 min)\n` +
-        `• *Retiro de acrílico:* $10.000 (60 min) | *Retiro general:* $15.000 (60 min)\n` +
-        `• *Reparación de 1 uña acrílica:* $6.000 (20 min)` +
+        `💅 *Uñas Acrílicas Esculpidas y Polygel en ${complejo.nombre}:*\n\n` +
+        `• *Acrílico esculpido completo:* ${usarTarifaDic ? '$95.000' : '$90.000'} (120 min)\n` +
+        `• *Polygel:* ${usarTarifaDic ? '$95.000' : '$90.000'} (120 min)\n` +
+        `• *Barrido en acrílico:* ${usarTarifaDic ? '$75.000' : '$65.000'} (120 min)\n` +
+        `• *Retoque de acrílico:* ${usarTarifaDic ? '$70.000' : '$65.000'} (120 min)\n` +
+        `• *Retiro:* $10.000 (60 min)\n` +
+        `• *Reparación de 1 uña:* ${usarTarifaDic ? '$7.000' : '$6.000'} (20 min)` +
+        notaCambioDic +
         pie
       );
     }
@@ -544,11 +582,12 @@ REGLAS ESTRICTAS DE SEGURIDAD Y CERO ALUCINACIÓN (PROHIBIDO INVENTAR):
     if (preguntaSemi && !preguntaAcrilico && !preguntaRubber) {
       return (
         `✨ *Esmaltado Semipermanente en ${complejo.nombre}:*\n\n` +
-        `• *Semipermanente manos:* $43.000 (90 min)\n` +
-        `• *Semipermanente pies:* $38.000 (80 min)\n` +
-        `• *Combo Semipermanente Manos y Pies:* $75.000 (150 min)\n` +
+        `• *Semipermanente manos:* ${usarTarifaDic ? '$48.000' : '$43.000'} (90 min)\n` +
+        `• *Semipermanente pies:* ${usarTarifaDic ? '$43.000' : '$38.000'} (80 min)\n` +
+        `• *Combo Semipermanente Manos y Pies:* ${usarTarifaDic ? '$80.000' : '$75.000'} (150 min)\n` +
         `• *Semipermanente hombre:* $25.000 (60 min)\n` +
-        `• *Retiro de semipermanente:* $6.000 (15 min)` +
+        `• *Retiro de semipermanente:* ${usarTarifaDic ? '$8.000' : '$6.000'} (15 min)` +
+        notaCambioDic +
         pie
       );
     }
@@ -556,10 +595,11 @@ REGLAS ESTRICTAS DE SEGURIDAD Y CERO ALUCINACIÓN (PROHIBIDO INVENTAR):
     if (preguntaRubber && !preguntaAcrilico && !preguntaSemi) {
       return (
         `🌸 *Base Rubber, Dipping y Press On en ${complejo.nombre}:*\n\n` +
-        `• *Base Rubber (nivelación):* $55.000 (90 min)\n` +
+        `• *Base Rubber (nivelación):* ${usarTarifaDic ? '$60.000' : '$55.000'} (90 min)\n` +
         `• *Dipping System:* $55.000 (90 min)\n` +
-        `• *Uñas Press On:* $65.000 (120 min)\n` +
-        `• *Retoque Press On:* $50.000 (90 min)` +
+        `• *Uñas Press On:* ${usarTarifaDic ? '$70.000' : '$65.000'} (120 min)\n` +
+        `• *Retoque Press On:* ${usarTarifaDic ? '$55.000' : '$50.000'} (90 min)` +
+        notaCambioDic +
         pie
       );
     }
@@ -567,9 +607,10 @@ REGLAS ESTRICTAS DE SEGURIDAD Y CERO ALUCINACIÓN (PROHIBIDO INVENTAR):
     if (preguntaHombre) {
       return (
         `🤵 *Servicios para Caballero en ${complejo.nombre}:*\n\n` +
-        `• *Manos hombre tradicional:* $14.000 (60 min)\n` +
-        `• *Pies hombre tradicional:* $14.000 (60 min)\n` +
+        `• *Manos hombre tradicional:* ${usarTarifaDic ? '$15.000' : '$14.000'} (60 min)\n` +
+        `• *Pies hombre tradicional:* ${usarTarifaDic ? '$17.000' : '$14.000'} (60 min)\n` +
         `• *Semipermanente hombre:* $25.000 (60 min)` +
+        notaCambioDic +
         pie
       );
     }
@@ -577,9 +618,9 @@ REGLAS ESTRICTAS DE SEGURIDAD Y CERO ALUCINACIÓN (PROHIBIDO INVENTAR):
     if (preguntaRetiro) {
       return (
         `💅 *Servicios de Retiro Seguro en ${complejo.nombre}:*\n\n` +
-        `• *Retiro de semipermanente:* $6.000 (15 min)\n` +
-        `• *Retiro de acrílico:* $10.000 (60 min)\n` +
-        `• *Retiro general:* $15.000 (60 min)` +
+        `• *Retiro de semipermanente:* ${usarTarifaDic ? '$8.000' : '$6.000'} (15 min)\n` +
+        `• *Retiro de acrílico / sistemas:* $10.000 (60 min)` +
+        notaCambioDic +
         pie
       );
     }
@@ -587,10 +628,11 @@ REGLAS ESTRICTAS DE SEGURIDAD Y CERO ALUCINACIÓN (PROHIBIDO INVENTAR):
     if (preguntaTradicional) {
       return (
         `🌸 *Manicure y Pedicure Tradicional en ${complejo.nombre}:*\n\n` +
-        `• *Manos tradicional:* $16.000 (60 min)\n` +
-        `• *Pies tradicional:* $20.000 (60 min)\n` +
-        `• *Combo Manos y Pies tradicional:* $35.000 (120 min)\n` +
-        `• *Manos hombre:* $14.000 (60 min) | *Pies hombre:* $14.000 (60 min)` +
+        `• *Manos tradicional:* ${usarTarifaDic ? '$18.000' : '$16.000'} (60 min)\n` +
+        `• *Pies tradicional:* ${usarTarifaDic ? '$22.000' : '$20.000'} (60 min)\n` +
+        `• *Combo Manos y Pies tradicional:* ${usarTarifaDic ? '$40.000' : '$35.000'} (120 min)\n` +
+        `• *Manos hombre:* ${usarTarifaDic ? '$15.000' : '$14.000'} (60 min) | *Pies hombre:* ${usarTarifaDic ? '$17.000' : '$14.000'} (60 min)` +
+        notaCambioDic +
         pie
       );
     }
@@ -614,23 +656,23 @@ REGLAS ESTRICTAS DE SEGURIDAD Y CERO ALUCINACIÓN (PROHIBIDO INVENTAR):
       t.includes('demora')
     ) {
       return (
-        `💅 *Lista Oficial de Servicios y Precios - ${complejo.nombre}:*\n\n` +
+        `💅 *Lista Oficial de Servicios y Precios${usarTarifaDic ? ' (Tarifa Diciembre)' : ''} - ${complejo.nombre}:*\n\n` +
         `🌸 *Tradicional:*\n` +
-        `• Manos: *$16.000* (60 min) | Pies: *$20.000* (60 min)\n` +
-        `• Manos y Pies: *$35.000* (120 min)\n` +
-        `• Manos Hombre: *$14.000* (60 min) | Pies Hombre: *$14.000* (60 min)\n\n` +
+        `• Manos: *${usarTarifaDic ? '$18.000' : '$16.000'}* (60 min) | Pies: *${usarTarifaDic ? '$22.000' : '$20.000'}* (60 min)\n` +
+        `• Manos y Pies: *${usarTarifaDic ? '$40.000' : '$35.000'}* (120 min)\n` +
+        `• Manos Hombre: *${usarTarifaDic ? '$15.000' : '$14.000'}* (60 min) | Pies Hombre: *${usarTarifaDic ? '$17.000' : '$14.000'}* (60 min)\n\n` +
         `✨ *Rubber / Dipping / Press On:*\n` +
-        `• Base Rubber: *$55.000* (90 min) | Dipping: *$55.000* (90 min)\n` +
-        `• Press On: *$65.000* (120 min) | Retoque Press: *$50.000* (90 min)\n\n` +
+        `• Base Rubber: *${usarTarifaDic ? '$60.000' : '$55.000'}* (90 min) | Dipping: *$55.000* (90 min)\n` +
+        `• Press On: *${usarTarifaDic ? '$70.000' : '$65.000'}* (120 min) | Retoque Press: *${usarTarifaDic ? '$55.000' : '$50.000'}* (90 min)\n\n` +
         `💖 *Semipermanente:*\n` +
-        `• Semipermanente manos: *$43.000* (90 min)\n` +
-        `• Semi pies: *$38.000* (80 min) | Semi Manos y Pies: *$75.000* (150 min)\n` +
-        `• Semi hombre: *$25.000* (60 min) | Retiro semi: *$6.000* (15 min)\n\n` +
-        `💎 *Acrílico Esculpido:*\n` +
-        `• Acrílico esculpido: *$90.000* (120 min)\n` +
-        `• Barrido: *$65.000* (120 min) | Retoque: *$65.000* (120 min)\n` +
-        `• Retiro acrílico: *$10.000* (60 min) | Retiro: *$15.000* (60 min)\n` +
-        `• Reparación uña: *$6.000* (20 min)` +
+        `• Semipermanente manos: *${usarTarifaDic ? '$48.000' : '$43.000'}* (90 min)\n` +
+        `• Semi pies: *${usarTarifaDic ? '$43.000' : '$38.000'}* (80 min) | Semi Manos y Pies: *${usarTarifaDic ? '$80.000' : '$75.000'}* (150 min)\n` +
+        `• Semi hombre: *$25.000* (60 min) | Retiro semi: *${usarTarifaDic ? '$8.000' : '$6.000'}* (15 min)\n\n` +
+        `💎 *Acrílico Esculpido y Polygel:*\n` +
+        `• Acrílico esculpido: *${usarTarifaDic ? '$95.000' : '$90.000'}* (120 min) | Polygel: *${usarTarifaDic ? '$95.000' : '$90.000'}* (120 min)\n` +
+        `• Barrido: *${usarTarifaDic ? '$75.000' : '$65.000'}* (120 min) | Retoque: *${usarTarifaDic ? '$70.000' : '$65.000'}* (120 min)\n` +
+        `• Retiro: *$10.000* (60 min) | Reparación uña: *${usarTarifaDic ? '$7.000' : '$6.000'}* (20 min)` +
+        notaCambioDic +
         pie
       );
     }
@@ -647,7 +689,7 @@ REGLAS ESTRICTAS DE SEGURIDAD Y CERO ALUCINACIÓN (PROHIBIDO INVENTAR):
     return (
       `🌸 *¡Hola reina! Estamos para ayudarte en ${complejo.nombre}* 💕\n\n` +
       `• 📍 *Dirección:* ${direccion} (Lunes a Sábado de ${apertura} a ${cierre})\n` +
-      `• 💅 *Servicios:* Uñas acrílicas esculpidas ($90.000), Base Rubber ($55.000), Dipping ($55.000), Semipermanente ($43.000), Tradicional manos y pies ($35.000) y más.\n` +
+      `• 💅 *Servicios:* Uñas acrílicas esculpidas / Polygel (${usarTarifaDic ? '$95.000' : '$90.000'}), Base Rubber (${usarTarifaDic ? '$60.000' : '$55.000'}), Semipermanente (${usarTarifaDic ? '$48.000' : '$43.000'}), Tradicional manos y pies (${usarTarifaDic ? '$40.000' : '$35.000'}) y más.\n` +
       `• 💬 Si necesitas hablar con una encargada, escribe *ASESOR*.` +
       pie
     );
