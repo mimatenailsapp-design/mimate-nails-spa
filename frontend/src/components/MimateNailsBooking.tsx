@@ -1148,6 +1148,21 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
         const slotStartMs = dInicio.getTime();
         const slotEndMs = dFin.getTime();
 
+        // Validar estrictamente que las clientas solo agenden dentro del horario configurado del spa
+        const aperturaStrFb = (spaConfig.horaApertura || '08:00').slice(0, 5);
+        const cierreStrFb = (spaConfig.horaCierre || '19:00').slice(0, 5);
+        const horaAperturaFbMs = new Date(`${fecha}T${aperturaStrFb}:00-05:00`).getTime();
+        const horaCierreFbMs = new Date(`${fecha}T${cierreStrFb}:00-05:00`).getTime();
+        if (
+          !isNaN(horaAperturaFbMs) &&
+          !isNaN(horaCierreFbMs) &&
+          (slotStartMs < horaAperturaFbMs || slotEndMs > horaCierreFbMs)
+        ) {
+          alert('El horario seleccionado está fuera del horario de atención del spa. Por favor elige un turno disponible.');
+          cargarSlots(fecha, empleadaId, duracionTotal);
+          return;
+        }
+
         // Validar estrictamente que clientas no puedan traslapar citas ni en modo respaldo
         const winStart = new Date(slotStartMs - 12 * 60 * 60 * 1000).toISOString();
         const winEnd = new Date(slotEndMs + 12 * 60 * 60 * 1000).toISOString();

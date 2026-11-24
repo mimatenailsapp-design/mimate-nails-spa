@@ -2158,25 +2158,24 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
     }
 
     // 1B. Validar horario de atención según origen verificado con autenticación del equipo:
-    // - Clientas (origenReal !== 'panel'): bajo ninguna circunstancia pueden superar la hora de cierre del spa.
-    // - Admin / Especialistas autenticadas (origenReal === 'panel'): pueden agendar citas que terminen después del cierre si inician dentro del horario laboral.
+    // - Clientas (origenReal !== 'panel'): solo pueden agendar estrictamente dentro del horario y días configurados del spa.
+    // - Admin / Especialistas autenticadas (origenReal === 'panel'): pueden agendar libremente en cualquier horario.
     const origenReal = origen === 'panel' && esStaffAutenticado(req) ? 'panel' : 'web';
     const aperturaStr = complejo.hora_apertura ? String(complejo.hora_apertura).slice(0, 5) : '08:00';
     const cierreStr = complejo.hora_cierre ? String(complejo.hora_cierre).slice(0, 5) : '19:00';
     const horaAperturaMs = new Date(`${fecha}T${aperturaStr}:00-05:00`).getTime();
     const horaCierreMs = new Date(`${fecha}T${cierreStr}:00-05:00`).getTime();
 
-    if (!isNaN(horaAperturaMs) && !isNaN(horaCierreMs)) {
-      if (origenReal !== 'panel') {
+    if (origenReal !== 'panel') {
+      if (esDiaCerradoPorDomingo(fecha)) {
+        return res.status(400).json({
+          error: 'Los domingos regulares el spa está cerrado (en diciembre sí trabajamos domingos).',
+        });
+      }
+      if (!isNaN(horaAperturaMs) && !isNaN(horaCierreMs)) {
         if (dInicio.getTime() < horaAperturaMs || dFin.getTime() > horaCierreMs) {
           return res.status(400).json({
-            error: 'El horario seleccionado supera la hora de cierre del spa. Por favor elige un turno más temprano.',
-          });
-        }
-      } else {
-        if (dInicio.getTime() < horaAperturaMs || dInicio.getTime() >= horaCierreMs) {
-          return res.status(400).json({
-            error: 'La hora de inicio debe estar dentro del horario de apertura y cierre del spa.',
+            error: 'El horario seleccionado está fuera del horario de atención del spa. Por favor elige un turno disponible.',
           });
         }
       }

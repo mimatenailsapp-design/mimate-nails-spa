@@ -1073,27 +1073,38 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   }, [configAnticipo.horaApertura, configAnticipo.horaCierre]);
 
   // Horas para el timeline visual calculadas dinámicamente según horario de apertura y cierre
-  // Si hay citas activas de Admin/Especialistas que terminan después del cierre, se extiende automáticamente el timeline
+  // Si hay citas activas de Admin/Especialistas antes de la apertura o después del cierre, se extiende automáticamente el timeline
   const horasTimeline = useMemo(() => {
     const baseHoras = calcularHorasTimeline(configAnticipo.horaApertura, configAnticipo.horaCierre);
+    const minBase = baseHoras[0] ?? 8;
     const maxBase = baseHoras[baseHoras.length - 1] ?? 19;
+    let minHoraInicio = minBase;
     let maxHoraFin = maxBase;
 
     for (const r of reservas) {
-      if (r.estado === 'cancelada' || !r.fecha_fin) continue;
-      const hhmmFin = obtenerHoraMinutosBogota(r.fecha_fin);
-      const [hFin, mFin] = hhmmFin.split(':').map(Number);
-      if (!isNaN(hFin)) {
-        const horaTecho = mFin > 0 ? hFin + 1 : hFin;
-        if (horaTecho > maxHoraFin) {
-          maxHoraFin = Math.min(23, horaTecho);
+      if (r.estado === 'cancelada') continue;
+      if (r.fecha_inicio) {
+        const hhmmIni = obtenerHoraMinutosBogota(r.fecha_inicio);
+        const [hIni] = hhmmIni.split(':').map(Number);
+        if (!isNaN(hIni) && hIni < minHoraInicio) {
+          minHoraInicio = Math.max(0, hIni);
+        }
+      }
+      if (r.fecha_fin) {
+        const hhmmFin = obtenerHoraMinutosBogota(r.fecha_fin);
+        const [hFin, mFin] = hhmmFin.split(':').map(Number);
+        if (!isNaN(hFin)) {
+          const horaTecho = mFin > 0 ? hFin + 1 : hFin;
+          if (horaTecho > maxHoraFin) {
+            maxHoraFin = Math.min(23, horaTecho);
+          }
         }
       }
     }
 
-    if (maxHoraFin > maxBase) {
-      const extendidas = [...baseHoras];
-      for (let h = maxBase + 1; h <= maxHoraFin; h++) {
+    if (minHoraInicio < minBase || maxHoraFin > maxBase) {
+      const extendidas: number[] = [];
+      for (let h = minHoraInicio; h <= maxHoraFin; h++) {
         extendidas.push(h);
       }
       return extendidas;
@@ -1101,28 +1112,17 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     return baseHoras;
   }, [configAnticipo.horaApertura, configAnticipo.horaCierre, reservas]);
 
-  // Horas libres para el modal de Agendar Cita con cálculo dinámico por duración y fin de citas previas
+  // Horas libres para el modal de Agendar Cita (Admin y Especialistas pueden agendar libremente en cualquier horario)
   const horasDisponiblesAgendarAdmin = useMemo(() => {
     if (!agendarFecha || !agendarManicuristaId) return [];
-    const esDiciembre = agendarFecha ? /^\d{4}-12-/.test(agendarFecha.trim()) : false;
-    if (new Date(`${agendarFecha}T12:00:00-05:00`).getDay() === 0 && !esDiciembre) return [];
 
-    const aperturaStr = configAnticipo.horaApertura || '08:00';
-    const cierreStr = configAnticipo.horaCierre || '19:00';
     const duracionMinutos = duracionTotalAdmin;
-    const horaCierreMs = new Date(`${agendarFecha}T${cierreStr}:00-05:00`).getTime();
-    const horaAperturaMs = new Date(`${agendarFecha}T${aperturaStr}:00-05:00`).getTime();
     const ahoraMs = Date.now();
     const esHoy = agendarFecha === hoyStr;
 
-    // Generar franjas base cada 30 minutos desde la hora de apertura hasta la de cierre
-    const [aperH, aperM] = aperturaStr.split(':').map(Number);
-    const [cierH, cierM] = cierreStr.split(':').map(Number);
-    const startMin = (isNaN(aperH) ? 8 : aperH) * 60 + (isNaN(aperM) ? 0 : aperM);
-    const endMin = (isNaN(cierH) ? 19 : cierH) * 60 + (isNaN(cierM) ? 0 : cierM);
-
+    // Generar franjas base cada 30 minutos durante todo el día (00:00 a 23:30)
     const horasBaseAdmin: string[] = [];
-    for (let m = startMin; m < endMin; m += 30) {
+    for (let m = 0; m < 24 * 60; m += 30) {
       const hh = String(Math.floor(m / 60)).padStart(2, '0');
       const mm = String(m % 60).padStart(2, '0');
       horasBaseAdmin.push(`${hh}:${mm}`);
@@ -1146,8 +1146,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       if (r.fecha_fin) {
         try {
           const hhmmFin = obtenerHoraMinutosBogota(r.fecha_fin);
-          const finMs = new Date(`${agendarFecha}T${hhmmFin}:00-05:00`).getTime();
-          if (finMs >= horaAperturaMs && finMs < horaCierreMs) {
+          if (/^\d{2}:\d{2}$/.test(hhmmFin)) {
             candidatosSet.add(hhmmFin);
           }
         } catch {
@@ -1173,13 +1172,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
         continue;
       }
 
-      // 2. En el panel de Admin y Especialistas se permite que la cita finalice después de la hora de cierre
-      // siempre que inicie antes de la hora de cierre configurada (ej. inicia 6:00 PM y termina 8:00 PM con cierre 7:00 PM)
-      if (slotStartMs >= horaCierreMs) {
-        continue;
-      }
-
-      // 3. Validar si solapa con alguna reserva activa o bloqueada existente de esta manicurista
+      // 2. Validar si solapa con alguna reserva activa o bloqueada existente de esta manicurista
       const colisiona = reservasMani.some((r) => {
         const rStart = new Date(r.fecha_inicio).getTime();
         const rEnd = new Date(r.fecha_fin).getTime();
@@ -1192,38 +1185,37 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     }
 
     return libres;
-  }, [reservas, agendarFecha, agendarManicuristaId, duracionTotalAdmin, hoyStr, configAnticipo.horaApertura, configAnticipo.horaCierre]);
+  }, [reservas, agendarFecha, agendarManicuristaId, duracionTotalAdmin, hoyStr]);
 
   // Si cambia la manicurista, el servicio o la fecha en el modal de agendar, ajustar a una hora disponible
   useEffect(() => {
     if (modalAgendarAbierto) {
       if (horasDisponiblesAgendarAdmin.length > 0) {
         if (!horasDisponiblesAgendarAdmin.includes(agendarHora)) {
-          if (agendarHora && agendarHora.includes(':')) {
-            const [th, tm] = agendarHora.split(':').map(Number);
-            const targetMin = (isNaN(th) ? 0 : th) * 60 + (isNaN(tm) ? 0 : tm);
-            const parseMin = (hStr: string) => {
-              const [hh, mm] = hStr.split(':').map(Number);
-              return (isNaN(hh) ? 0 : hh) * 60 + (isNaN(mm) ? 0 : mm);
-            };
-            const posterior = horasDisponiblesAgendarAdmin.find((h) => parseMin(h) >= targetMin);
-            if (posterior) {
-              setAgendarHora(posterior);
-            } else {
-              const masCercana = [...horasDisponiblesAgendarAdmin].sort(
-                (a, b) => Math.abs(parseMin(a) - targetMin) - Math.abs(parseMin(b) - targetMin)
-              )[0];
-              setAgendarHora(masCercana);
-            }
+          const parseMin = (hStr: string) => {
+            const [hh, mm] = hStr.split(':').map(Number);
+            return (isNaN(hh) ? 0 : hh) * 60 + (isNaN(mm) ? 0 : mm);
+          };
+          const referenciaHora =
+            agendarHora && agendarHora.includes(':')
+              ? agendarHora
+              : (configAnticipo.horaApertura || '09:00');
+          const targetMin = parseMin(referenciaHora);
+          const posterior = horasDisponiblesAgendarAdmin.find((h) => parseMin(h) >= targetMin);
+          if (posterior) {
+            setAgendarHora(posterior);
           } else {
-            setAgendarHora(horasDisponiblesAgendarAdmin[0]);
+            const masCercana = [...horasDisponiblesAgendarAdmin].sort(
+              (a, b) => Math.abs(parseMin(a) - targetMin) - Math.abs(parseMin(b) - targetMin)
+            )[0];
+            setAgendarHora(masCercana);
           }
         }
       } else {
         setAgendarHora('');
       }
     }
-  }, [modalAgendarAbierto, agendarFecha, agendarManicuristaId, duracionTotalAdmin, horasDisponiblesAgendarAdmin]);
+  }, [modalAgendarAbierto, agendarFecha, agendarManicuristaId, duracionTotalAdmin, horasDisponiblesAgendarAdmin, configAnticipo.horaApertura]);
 
   // Horas ya ocupadas o bloqueadas para el modal de Bloquear Horario
   const horasYaOcupadasBloqueo = useMemo(() => {
@@ -2616,12 +2608,6 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       setPopoverCita(null);
     }
 
-    // Validar domingo cerrado (excepto diciembre)
-    if (esDomingoCerradoIso(fechaIso)) {
-      mostrarNotificacionRealtime('⚠️ Los domingos regulares el spa está cerrado (excepto en diciembre)');
-      return;
-    }
-
     // Validar fecha u hora pasada
     if (fechaIso < hoyStr) {
       mostrarNotificacionRealtime('⚠️ No es posible agendar citas en fechas pasadas');
@@ -2631,14 +2617,6 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     const slotStartMs = new Date(`${fechaIso}T${horaClick}:00-05:00`).getTime();
     if (fechaIso === hoyStr && slotStartMs <= Date.now()) {
       mostrarNotificacionRealtime('⚠️ Este horario ya pasó. Selecciona una franja futura');
-      return;
-    }
-
-    // Validar hora de cierre del spa
-    const cierreStr = (configAnticipo.horaCierre || '19:00').slice(0, 5);
-    const horaCierreMs = new Date(`${fechaIso}T${cierreStr}:00-05:00`).getTime();
-    if (slotStartMs >= horaCierreMs) {
-      mostrarNotificacionRealtime('⚠️ Este horario excede la hora de cierre del spa');
       return;
     }
 
@@ -2678,15 +2656,11 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     ahoraCheckMs: number,
     variante: 'diaria' | 'semanal'
   ) => {
-    const cerrado = esDomingoCerradoIso(fechaIso);
-    const cierreStr = (configAnticipo.horaCierre || '19:00').slice(0, 5);
-    const horaCierreMs = new Date(`${fechaIso}T${cierreStr}:00-05:00`).getTime();
-
     return (['00', '30'] as const).map((mm) => {
       const hStr = `${String(h).padStart(2, '0')}:${mm}`;
       const slotMs = new Date(`${fechaIso}T${hStr}:00-05:00`).getTime();
       const habilitado =
-        !cerrado && !(fechaIso < hoyStr || (esHoyCheck && slotMs <= ahoraCheckMs) || slotMs >= horaCierreMs);
+        !(fechaIso < hoyStr || (esHoyCheck && slotMs <= ahoraCheckMs));
 
       return (
         <div
