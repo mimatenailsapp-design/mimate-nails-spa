@@ -379,6 +379,13 @@ export class BookingService {
         return { ...h, disponible: false };
       }
 
+      // Bloquear siempre la franja de almuerzo (12:00 PM - 1:00 PM)
+      const hIni = (h.hora_inicio || '').slice(0, 5);
+      const hFin = (h.hora_fin || '').slice(0, 5);
+      if (hIni < '13:00' && hFin > '12:00') {
+        return { ...h, disponible: false };
+      }
+
       return h;
     });
   }

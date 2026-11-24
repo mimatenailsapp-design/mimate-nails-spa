@@ -447,6 +447,13 @@ function esDomingoCerradoIso(fechaIso: string): boolean {
   return new Date(`${fechaIso}T12:00:00-05:00`).getDay() === 0 && !/^\d{4}-12-/.test(fechaIso);
 }
 
+/** Indica si un rango [inicioMs, finMs) se solapa con la hora fija de almuerzo (12:00 PM - 1:00 PM). */
+function solapaHorarioAlmuerzo(inicioMs: number, finMs: number, fechaIso: string): boolean {
+  const almuerzoStartMs = new Date(`${fechaIso}T12:00:00-05:00`).getTime();
+  const almuerzoEndMs = new Date(`${fechaIso}T13:00:00-05:00`).getTime();
+  return inicioMs < almuerzoEndMs && finMs > almuerzoStartMs;
+}
+
 function calcularPosicionesCitas(citas: Reserva[], horaBaseApertura: number = 8): CitaPosicionada[] {
   if (!citas || citas.length === 0) return [];
 
@@ -1172,7 +1179,12 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
         continue;
       }
 
-      // 2. Validar si solapa con alguna reserva activa o bloqueada existente de esta manicurista
+      // 2. Bloquear siempre la franja de almuerzo (12:00 PM - 1:00 PM)
+      if (solapaHorarioAlmuerzo(slotStartMs, slotEndMs, agendarFecha)) {
+        continue;
+      }
+
+      // 3. Validar si solapa con alguna reserva activa o bloqueada existente de esta manicurista
       const colisiona = reservasMani.some((r) => {
         const rStart = new Date(r.fecha_inicio).getTime();
         const rEnd = new Date(r.fecha_fin).getTime();
@@ -1841,6 +1853,11 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     const horaCierreMs = new Date(`${targetFechaIso}T${cierreStr}:00-05:00`).getTime();
     if (slotStartMs >= horaCierreMs) {
       return { esValido: false, motivoInvalido: 'Inicia después del cierre' };
+    }
+
+    // 3B. Hora fija de almuerzo (12:00 PM - 1:00 PM)
+    if (solapaHorarioAlmuerzo(slotStartMs, slotEndMs, targetFechaIso)) {
+      return { esValido: false, motivoInvalido: 'Hora de almuerzo (12:00 - 1:00 PM)' };
     }
 
     // 4. Evaluar traslape parcial con citas activas de la misma especialista
@@ -2620,6 +2637,10 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       return;
     }
 
+    if (horaClick.startsWith('12:')) {
+      mostrarNotificacionRealtime('🍽️ El horario de 12:00 PM a 1:00 PM está bloqueado por hora de almuerzo');
+      return;
+    }
     // Determinar especialista a preseleccionar
     let maniId = '';
     if (!esAdmin && perfilActual?.canchaId) {
@@ -2656,11 +2677,14 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     ahoraCheckMs: number,
     variante: 'diaria' | 'semanal'
   ) => {
+    const cerrado = esDomingoCerradoIso(fechaIso);
+    const esHoraAlmuerzo = h === 12;
+
     return (['00', '30'] as const).map((mm) => {
       const hStr = `${String(h).padStart(2, '0')}:${mm}`;
       const slotMs = new Date(`${fechaIso}T${hStr}:00-05:00`).getTime();
       const habilitado =
-        !(fechaIso < hoyStr || (esHoyCheck && slotMs <= ahoraCheckMs));
+        !esHoraAlmuerzo && !(fechaIso < hoyStr || (esHoyCheck && slotMs <= ahoraCheckMs));
 
       return (
         <div
@@ -2670,9 +2694,26 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
             mm === '30' ? 'border-t border-dashed border-[#F2C4D2]/35' : ''
           } ${
             variante === 'semanal' ? 'justify-center' : 'pl-2 sm:pl-3'
-          } ${habilitado ? 'hover:bg-[#FCE8EF]/45 cursor-pointer' : ''}`}
-          title={habilitado ? `Clic para agendar a las ${hStr}` : undefined}
+          } ${
+            esHoraAlmuerzo && !cerrado
+              ? 'bg-amber-50/75 cursor-not-allowed'
+              : habilitado
+              ? 'hover:bg-[#FCE8EF]/45 cursor-pointer'
+              : ''
+          }`}
+          title={
+            esHoraAlmuerzo && !cerrado
+              ? 'Hora de almuerzo bloqueada (12:00 PM - 1:00 PM)'
+              : habilitado
+              ? `Clic para agendar a las ${hStr}`
+              : undefined
+          }
         >
+          {esHoraAlmuerzo && !cerrado && mm === '00' && (
+            <span className="text-[10px] font-bold text-amber-800/80 select-none truncate px-1">
+              🍽️ Almuerzo (12–1 pm)
+            </span>
+          )}
           {habilitado && (
             <span className="text-[10px] font-bold text-[#8C243B]/80 opacity-0 group-hover/slot:opacity-100 transition-opacity select-none">
               {variante === 'semanal' ? `+ ${hStr}` : `+ Agendar ${hStr}`}
@@ -2693,6 +2734,13 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
     if (!agendarHora) {
       setErrorAgendar('No hay un turno válido seleccionado para esta fecha y especialista.');
+      return;
+    }
+
+    const dInicioCheck = new Date(`${agendarFecha}T${agendarHora}:00-05:00`);
+    const dFinCheck = new Date(dInicioCheck.getTime() + (Number(duracionTotalAdmin) || 60) * 60 * 1000);
+    if (solapaHorarioAlmuerzo(dInicioCheck.getTime(), dFinCheck.getTime(), agendarFecha)) {
+      setErrorAgendar('El horario de 12:00 PM a 1:00 PM está bloqueado por hora de almuerzo.');
       return;
     }
 
@@ -3571,7 +3619,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
                         {/* Botones de acción rápida al pasar el cursor */}
                         <div className="absolute right-3 top-2 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition z-10 pointer-events-auto">
-                          {canchaId && !esHoraPasadaTimeline && slot00Ms < horaCierreMs && (
+                          {canchaId && h !== 12 && !esHoraPasadaTimeline && slot00Ms < horaCierreMs && (
                             <button
                               type="button"
                               onClick={(e) => {
@@ -3585,7 +3633,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                               <span>Bloquear</span>
                             </button>
                           )}
-                          {puedeAgendar && !esHoraPasadaTimeline && slot00Ms < horaCierreMs && (
+                          {puedeAgendar && h !== 12 && !esHoraPasadaTimeline && slot00Ms < horaCierreMs && (
                             <button
                               type="button"
                               onClick={(e) => {

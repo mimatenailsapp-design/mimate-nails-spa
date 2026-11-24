@@ -1353,6 +1353,12 @@ app.patch('/api/reservas/:id/horario', requireStaffAuth, async (req: Request, re
       return res.status(400).json({ error: 'Los domingos regulares el spa está cerrado' });
     }
 
+    if (solapaHorarioAlmuerzo(dInicio.getTime(), dFin.getTime(), fechaBogotaIso)) {
+      return res.status(409).json({
+        error: 'El horario de 12:00 PM a 1:00 PM está bloqueado por hora de almuerzo.',
+      });
+    }
+
     const inicioVentana = new Date(dInicio.getTime() - 24 * 60 * 60 * 1000).toISOString();
     const finVentana = new Date(dFin.getTime() + 24 * 60 * 60 * 1000).toISOString();
 
@@ -1942,6 +1948,16 @@ app.get('/api/spa/bootstrap', (req: Request, res: Response) => {
   res.redirect(307, '/api/spa/info');
 });
 
+// Franja fija de almuerzo: 12:00 PM a 1:00 PM (hora Colombia)
+function solapaHorarioAlmuerzo(inicioMs: number, finMs: number, fechaBogotaIso?: string): boolean {
+  const fechaRef =
+    fechaBogotaIso ||
+    new Date(inicioMs).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+  const almuerzoStartMs = new Date(`${fechaRef}T12:00:00-05:00`).getTime();
+  const almuerzoEndMs = new Date(`${fechaRef}T13:00:00-05:00`).getTime();
+  return inicioMs < almuerzoEndMs && finMs > almuerzoStartMs;
+}
+
 // Obtener horarios (slots) disponibles para una fecha y duración específica (Lunes a Sábado, 9:30 am a 5:30 pm)
 app.get('/api/spa/slots', async (req: Request, res: Response) => {
   const { date, cancha_id, duracion_minutos } = req.query;
@@ -2050,6 +2066,11 @@ app.get('/api/spa/slots', async (req: Request, res: Response) => {
 
       // Si el servicio termina después de la hora de cierre del local, descartar
       if (slotEndMs > horaCierreMs) {
+        continue;
+      }
+
+      // Bloquear siempre la hora de almuerzo (12:00 PM - 1:00 PM)
+      if (solapaHorarioAlmuerzo(slotStartMs, slotEndMs, cleanDate)) {
         continue;
       }
 
@@ -2179,6 +2200,12 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
           });
         }
       }
+    }
+
+    if (solapaHorarioAlmuerzo(dInicio.getTime(), dFin.getTime(), fecha)) {
+      return res.status(400).json({
+        error: 'El horario de 12:00 PM a 1:00 PM está bloqueado por hora de almuerzo.',
+      });
     }
 
     // 2. Buscar reservas activas solapadas en esta franja usando horario real (excluyendo cita anterior si es reagendamiento)

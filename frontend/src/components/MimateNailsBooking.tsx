@@ -970,6 +970,13 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
           continue;
         }
 
+        // Bloquear siempre la hora de almuerzo (12:00 PM - 1:00 PM)
+        const almuerzoStartMs = new Date(`${f}T12:00:00-05:00`).getTime();
+        const almuerzoEndMs = new Date(`${f}T13:00:00-05:00`).getTime();
+        if (slotStartMs < almuerzoEndMs && slotEndMs > almuerzoStartMs) {
+          continue;
+        }
+
         // Buscar qué manicuristas están ocupadas (cita agendada o bloqueo de horario)
         const ocupadasEnHora = ocupadas
           .filter((r) => {
