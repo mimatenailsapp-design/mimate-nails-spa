@@ -1529,8 +1529,28 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   const feedbackSwipeTimerRef = useRef<any>(null);
   const touchInicioRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const scrollSemanalRef = useRef<HTMLDivElement | null>(null);
-  const headerScrollSemanalRef = useRef<HTMLDivElement | null>(null);
-  const syncingSemanalScrollRef = useRef<'header' | 'body' | null>(null);
+  const headerTrackSemanalRef = useRef<HTMLDivElement | null>(null);
+  const headerTouchDragRef = useRef<{
+    startX: number;
+    startY: number;
+    scrollLeftStart: number;
+    esHorizontal: boolean | null;
+  } | null>(null);
+
+  const sincronizarHeaderSemanalX = (scrollLeft: number) => {
+    const track = headerTrackSemanalRef.current;
+    if (track) {
+      track.style.transform = `translate3d(${-scrollLeft}px, 0px, 0px)`;
+    }
+  };
+
+  const setHeaderTrackSemanalRef = (el: HTMLDivElement | null) => {
+    headerTrackSemanalRef.current = el;
+    if (el) {
+      const sl = scrollSemanalRef.current?.scrollLeft || 0;
+      el.style.transform = `translate3d(${-sl}px, 0px, 0px)`;
+    }
+  };
   const desktopHeaderRef = useRef<HTMLElement | null>(null);
   const mobileStickyBarRef = useRef<HTMLDivElement | null>(null);
   const [stickyTopOffset, setStickyTopOffset] = useState<number>(49);
@@ -1591,28 +1611,75 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     };
   }, [perfilActual, tabAdmin, vistaAgenda]);
 
-  const handleScrollHeaderSemanal = () => {
-    if (syncingSemanalScrollRef.current === 'body') return;
-    const hEl = headerScrollSemanalRef.current;
+  const handleScrollBodySemanal = () => {
     const bEl = scrollSemanalRef.current;
-    if (!hEl || !bEl) return;
-    syncingSemanalScrollRef.current = 'header';
-    bEl.scrollLeft = hEl.scrollLeft;
-    requestAnimationFrame(() => {
-      syncingSemanalScrollRef.current = null;
-    });
+    if (!bEl) return;
+    sincronizarHeaderSemanalX(bEl.scrollLeft);
   };
 
-  const handleScrollBodySemanal = () => {
-    if (syncingSemanalScrollRef.current === 'header') return;
-    const hEl = headerScrollSemanalRef.current;
+  useEffect(() => {
     const bEl = scrollSemanalRef.current;
-    if (!hEl || !bEl) return;
-    syncingSemanalScrollRef.current = 'body';
-    hEl.scrollLeft = bEl.scrollLeft;
-    requestAnimationFrame(() => {
-      syncingSemanalScrollRef.current = null;
-    });
+    if (!bEl) return;
+    const onNativeScroll = () => {
+      sincronizarHeaderSemanalX(bEl.scrollLeft);
+    };
+    sincronizarHeaderSemanalX(bEl.scrollLeft);
+    bEl.addEventListener('scroll', onNativeScroll, { passive: true });
+    window.addEventListener('resize', onNativeScroll, { passive: true });
+    return () => {
+      bEl.removeEventListener('scroll', onNativeScroll);
+      window.removeEventListener('resize', onNativeScroll);
+    };
+  }, [vistaAgenda, tabAdmin, fechaSeleccionada, especialistaSeleccionadaId]);
+
+  const handleTouchStartHeaderSemanal = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length !== 1 || dragCitaSemanalRef.current || pointerHoldInfoRef.current?.dragging) return;
+    const bEl = scrollSemanalRef.current;
+    const sl = bEl?.scrollLeft || 0;
+    headerTouchDragRef.current = {
+      startX: e.touches[0].clientX,
+      startY: e.touches[0].clientY,
+      scrollLeftStart: sl,
+      esHorizontal: null,
+    };
+    touchSemanalRef.current = {
+      startX: e.touches[0].clientX,
+      startY: e.touches[0].clientY,
+      scrollLeftStart: sl,
+      time: Date.now(),
+    };
+  };
+
+  const handleTouchMoveHeaderSemanal = (e: React.TouchEvent<HTMLDivElement>) => {
+    const drag = headerTouchDragRef.current;
+    const bEl = scrollSemanalRef.current;
+    if (!drag || !bEl || e.touches.length !== 1) return;
+    const dx = e.touches[0].clientX - drag.startX;
+    const dy = e.touches[0].clientY - drag.startY;
+    if (drag.esHorizontal === null && Math.hypot(dx, dy) > 5) {
+      drag.esHorizontal = Math.abs(dx) > Math.abs(dy);
+    }
+    if (drag.esHorizontal) {
+      bEl.scrollLeft = drag.scrollLeftStart - dx;
+      sincronizarHeaderSemanalX(bEl.scrollLeft);
+    }
+  };
+
+  const handleTouchEndHeaderSemanal = (e: React.TouchEvent<HTMLDivElement>) => {
+    headerTouchDragRef.current = null;
+    const bEl = scrollSemanalRef.current;
+    if (!bEl) {
+      touchSemanalRef.current = null;
+      return;
+    }
+    ejecutarCambioSemanaEnTope(bEl, e.changedTouches[0]);
+  };
+
+  const handleWheelHeaderSemanal = (e: React.WheelEvent<HTMLDivElement>) => {
+    const bEl = scrollSemanalRef.current;
+    if (!bEl || Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
+    bEl.scrollLeft += e.deltaX;
+    sincronizarHeaderSemanalX(bEl.scrollLeft);
   };
 
   const mostrarFeedbackSwipe = (texto: string) => {
@@ -1706,7 +1773,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     };
   };
 
-  const handleTouchEndSemanalBody = (e: React.TouchEvent<HTMLDivElement>) => {
+  const ejecutarCambioSemanaEnTope = (container: HTMLDivElement, touchEnd: React.Touch) => {
     if (
       !touchSemanalRef.current ||
       dragCitaSemanalRef.current ||
@@ -1716,8 +1783,6 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       touchSemanalRef.current = null;
       return;
     }
-    const container = e.currentTarget;
-    const touchEnd = e.changedTouches[0];
     const deltaX = touchEnd.clientX - touchSemanalRef.current.startX;
     const deltaY = touchEnd.clientY - touchSemanalRef.current.startY;
     const duracionMs = Date.now() - touchSemanalRef.current.time;
@@ -1725,9 +1790,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     const maxScrollLeft = Math.max(0, container.scrollWidth - container.clientWidth);
     touchSemanalRef.current = null;
 
-    // Solo evaluar gestos deliberadamente horizontales
     if (duracionMs < 800 && Math.abs(deltaX) >= 50 && Math.abs(deltaX) > Math.abs(deltaY) * 1.4) {
-      // Si la grilla completa cabe en pantalla (sin scroll horizontal necesario):
       if (maxScrollLeft <= 10) {
         if (deltaX < 0) {
           cambiarSemana(1);
@@ -1739,8 +1802,6 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
         return;
       }
 
-      // Si tiene scroll horizontal activo:
-      // A. Tope derecho (Domingo): si estaba en el límite derecho y desliza hacia la izquierda
       const estabaEnTopeDerecho = scrollLeftStart >= maxScrollLeft - 20;
       const estaEnTopeDerecho = container.scrollLeft >= maxScrollLeft - 20;
       if (deltaX < 0 && (estabaEnTopeDerecho || estaEnTopeDerecho)) {
@@ -1748,12 +1809,11 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
         mostrarFeedbackSwipe('👉 Semana siguiente');
         setTimeout(() => {
           if (scrollSemanalRef.current) scrollSemanalRef.current.scrollLeft = 0;
-          if (headerScrollSemanalRef.current) headerScrollSemanalRef.current.scrollLeft = 0;
+          sincronizarHeaderSemanalX(0);
         }, 60);
         return;
       }
 
-      // B. Tope izquierdo (Lunes): si estaba en el límite izquierdo y desliza hacia la derecha
       const estabaEnTopeIzquierdo = scrollLeftStart <= 20;
       const estaEnTopeIzquierdo = container.scrollLeft <= 20;
       if (deltaX > 0 && (estabaEnTopeIzquierdo || estaEnTopeIzquierdo)) {
@@ -1761,14 +1821,15 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
         mostrarFeedbackSwipe('👈 Semana anterior');
         setTimeout(() => {
           if (scrollSemanalRef.current) scrollSemanalRef.current.scrollLeft = 0;
-          if (headerScrollSemanalRef.current) headerScrollSemanalRef.current.scrollLeft = 0;
+          sincronizarHeaderSemanalX(0);
         }, 60);
         return;
       }
-
-      // En cualquier otro caso: el usuario estaba deslizándose por los días intermedios (Martes a Sábado)
-      // El scroll nativo se encarga fluidamente y NO cambia la semana.
     }
+  };
+
+  const handleTouchEndSemanalBody = (e: React.TouchEvent<HTMLDivElement>) => {
+    ejecutarCambioSemanaEnTope(e.currentTarget, e.changedTouches[0]);
   };
 
   // Cálculo de los 7 días de la semana activa (Lunes a Domingo)
@@ -2186,7 +2247,10 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
       if (container) {
         const rect = container.getBoundingClientRect();
-        const leftStickyWidth = typeof window !== 'undefined' && window.innerWidth < 640 ? 64 : 96;
+        const leftStickyWidth =
+          info.modo === 'semanal'
+            ? (typeof window !== 'undefined' && window.innerWidth < 640 ? 74 : 116)
+            : (typeof window !== 'undefined' && window.innerWidth < 640 ? 64 : 96);
         const topStickyHeight = info.modo === 'diaria' ? 0 : 68;
         const edge = 42;
         let dx = 0;
@@ -2232,8 +2296,8 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
           container.scrollTop += dy;
           if (container.scrollLeft !== prevL || container.scrollTop !== prevT) {
             scrolled = true;
-            if (info.modo === 'semanal' && headerScrollSemanalRef.current) {
-              headerScrollSemanalRef.current.scrollLeft = container.scrollLeft;
+            if (info.modo === 'semanal') {
+              sincronizarHeaderSemanalX(container.scrollLeft);
             }
           }
         }
@@ -4104,26 +4168,29 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
           <span>Desliza para ver días · En los topes cambia de semana</span>
         </div>
 
-        {/* ENCABEZADOS DE LOS 7 DÍAS (STICKY AL VIEWPORT AL HACER SCROLL VERTICAL EN LA PÁGINA) */}
+        {/* ENCABEZADOS DE LOS 7 DÍAS (STICKY AL VIEWPORT CON TRACK GPU TRANSLATE3D CERO LAG) */}
         <div
           style={{ top: `${stickyTopOffset}px` }}
-          className="sticky z-30 bg-white/95 backdrop-blur-md border-b border-[#F2C4D2] shadow-xs"
+          onTouchStart={handleTouchStartHeaderSemanal}
+          onTouchMove={handleTouchMoveHeaderSemanal}
+          onTouchEnd={handleTouchEndHeaderSemanal}
+          onWheel={handleWheelHeaderSemanal}
+          className="sticky z-30 bg-white border-b border-[#F2C4D2] shadow-xs overflow-hidden touch-pan-y select-none"
         >
-          <div
-            ref={headerScrollSemanalRef}
-            onScroll={handleScrollHeaderSemanal}
-            onTouchStart={handleTouchStartSemanalBody}
-            onTouchEnd={handleTouchEndSemanalBody}
-            className="overflow-x-auto no-scrollbar touch-pan-x touch-pan-y"
-          >
-            <div className="min-w-[980px] sm:min-w-[1050px] w-full px-2.5 sm:px-5 pr-4 sm:pr-6 pt-2 pb-2.5 flex items-center">
-              <div className="w-16 sm:w-24 pr-3 flex-shrink-0 text-right select-none sticky left-0 z-30 bg-white border-r border-[#F2C4D2]/60 self-stretch flex items-center justify-end">
-                <span className="text-[11px] font-extrabold text-[#8C243B] uppercase tracking-wider">
-                  HORA
-                </span>
-              </div>
+          {/* Celda HORA fija a la izquierda (sin recálculo de sticky horizontal) */}
+          <div className="absolute left-0 top-0 bottom-0 w-[74px] sm:w-[116px] pl-2.5 sm:pl-5 pr-3 bg-white border-r border-[#F2C4D2]/60 z-20 flex items-center justify-end pointer-events-none">
+            <span className="text-[11px] font-extrabold text-[#8C243B] uppercase tracking-wider">
+              HORA
+            </span>
+          </div>
 
-              <div className="flex-1 grid grid-cols-7 divide-x divide-[#F2C4D2]/60 border-r border-[#F2C4D2]/60">
+          <div
+            ref={setHeaderTrackSemanalRef}
+            className="min-w-[980px] sm:min-w-[1050px] w-full pl-0 pr-4 sm:pr-6 pt-2 pb-2.5 flex items-center will-change-transform"
+          >
+            <div className="w-[74px] sm:w-[116px] flex-shrink-0" />
+
+            <div className="flex-1 grid grid-cols-7 divide-x divide-[#F2C4D2]/60 border-r border-[#F2C4D2]/60">
                 {diasDeLaSemana.map((d) => {
                   const citasDelDia = citasFiltradas.filter((r) => {
                     if (!r.fecha_inicio) return false;
@@ -4180,7 +4247,6 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                     </div>
                   );
                 })}
-              </div>
             </div>
           </div>
         </div>
@@ -4193,11 +4259,11 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
           onTouchEnd={handleTouchEndSemanalBody}
           className="relative overflow-x-auto touch-pan-x touch-pan-y rounded-b-3xl bg-white"
         >
-          <div className="min-w-[980px] sm:min-w-[1050px] w-full px-2.5 sm:px-5 pr-4 sm:pr-6 pt-3 pb-2.5 sm:pb-5">
+          <div className="min-w-[980px] sm:min-w-[1050px] w-full pl-0 pr-4 sm:pr-6 pt-3 pb-2.5 sm:pb-5">
             {/* CUERPO DEL TIMELINE CONTINUO POR COLUMNAS DE DÍAS (LUNES A DOMINGO) */}
             <div className="flex relative" style={{ height: `${ALTURA_TOTAL_TIMELINE}px` }}>
-              {/* Columna de Horas a la izquierda (z-30 sólido para que ninguna cita la tape al deslizar días) */}
-              <div className="w-16 sm:w-24 pr-3 flex-shrink-0 relative select-none sticky left-0 z-30 bg-white border-r border-[#F2C4D2]/60">
+              {/* Columna de Horas a la izquierda (z-30 sólido y ancho idéntico al encabezado fijo HORA) */}
+              <div className="w-[74px] sm:w-[116px] pl-2.5 sm:pl-5 pr-3 flex-shrink-0 relative select-none sticky left-0 z-30 bg-white border-r border-[#F2C4D2]/60">
                 {horasTimeline.map((h, index) => (
                   <div
                     key={h}

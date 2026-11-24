@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { IconClock, IconCheck, IconX, IconLoader2 } from '@tabler/icons-react';
+import { IconClock, IconCheck, IconX, IconLoader2, IconChevronDown } from '@tabler/icons-react';
 import { formatearHora12 } from '../../utils/formatoHora';
 
 export interface ConfigAnticipoData {
@@ -24,6 +24,16 @@ interface ConfigAnticipoModalProps {
   guardando: boolean;
 }
 
+const HORAS_BASE_CONFIG: string[] = (() => {
+  const lista: string[] = [];
+  for (let m = 5 * 60; m <= 23 * 60; m += 30) {
+    const hh = String(Math.floor(m / 60)).padStart(2, '0');
+    const mm = String(m % 60).padStart(2, '0');
+    lista.push(`${hh}:${mm}`);
+  }
+  return lista;
+})();
+
 export const ConfigAnticipoModal: React.FC<ConfigAnticipoModalProps> = ({
   abierto,
   onClose,
@@ -32,24 +42,71 @@ export const ConfigAnticipoModal: React.FC<ConfigAnticipoModalProps> = ({
   onSubmit,
   guardando,
 }) => {
+  const [menuAbierto, setMenuAbierto] = useState<'apertura' | 'cierre' | null>(null);
+  const selectorHorarioRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!abierto) {
+      setMenuAbierto(null);
+    }
+  }, [abierto]);
+
+  useEffect(() => {
+    if (!menuAbierto) return;
+    const handleClickAfuera = (event: MouseEvent | TouchEvent) => {
+      if (
+        selectorHorarioRef.current &&
+        !selectorHorarioRef.current.contains(event.target as Node)
+      ) {
+        setMenuAbierto(null);
+      }
+    };
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuAbierto(null);
+    };
+    document.addEventListener('mousedown', handleClickAfuera);
+    document.addEventListener('touchstart', handleClickAfuera);
+    window.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleClickAfuera);
+      document.removeEventListener('touchstart', handleClickAfuera);
+      window.removeEventListener('keydown', handleEscape);
+    };
+  }, [menuAbierto]);
+
+  const horaAperturaVal = (configAnticipo.horaApertura || '08:00').slice(0, 5);
+  const horaCierreVal = (configAnticipo.horaCierre || '19:00').slice(0, 5);
+
+  const opcionesApertura = useMemo(() => {
+    const set = new Set(HORAS_BASE_CONFIG);
+    if (horaAperturaVal) set.add(horaAperturaVal);
+    return Array.from(set).sort();
+  }, [horaAperturaVal]);
+
+  const opcionesCierre = useMemo(() => {
+    const set = new Set(HORAS_BASE_CONFIG);
+    if (horaCierreVal) set.add(horaCierreVal);
+    return Array.from(set).sort();
+  }, [horaCierreVal]);
+
   return (
     <AnimatePresence>
       {abierto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/50 backdrop-blur-xs">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="bg-white rounded-3xl max-w-md w-full p-4 sm:p-6 border border-[#F2C4D2] shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto"
+            className="bg-white rounded-3xl max-w-md w-full p-4 sm:p-6 border border-[#F2C4D2] shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto overflow-x-hidden"
           >
             <div className="flex items-center justify-between border-b border-[#FCE8EF] pb-3">
-              <div className="flex items-center gap-2">
-                <span className="text-2xl">⚙️</span>
-                <div>
-                  <h3 className="font-bold text-base text-[#2D2529] font-serif">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-2xl shrink-0">⚙️</span>
+                <div className="min-w-0">
+                  <h3 className="font-bold text-base text-[#2D2529] font-serif truncate">
                     Configuración del Spa
                   </h3>
-                  <p className="text-[11px] text-[#7D6870]">
+                  <p className="text-[11px] text-[#7D6870] truncate">
                     Horario de trabajo por temporada y anticipos web
                   </p>
                 </div>
@@ -57,19 +114,22 @@ export const ConfigAnticipoModal: React.FC<ConfigAnticipoModalProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="p-1 rounded-full text-[#7D6870] hover:text-[#2D2529] cursor-pointer"
+                className="p-1 rounded-full text-[#7D6870] hover:text-[#2D2529] cursor-pointer shrink-0"
               >
                 <IconX className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={onSubmit} className="space-y-4 text-xs">
+            <form onSubmit={onSubmit} className="space-y-4 text-xs min-w-0">
               {/* 1. SECCIÓN: HORARIO DE TRABAJO (EXTENSIÓN POR TEMPORADA) */}
-              <div className="p-3.5 rounded-2xl bg-[#FFF5F7] border border-[#F2C4D2] space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <div>
+              <div
+                ref={selectorHorarioRef}
+                className="p-3.5 rounded-2xl bg-[#FFF5F7] border border-[#F2C4D2] space-y-2.5 min-w-0"
+              >
+                <div className="flex items-center justify-between min-w-0">
+                  <div className="min-w-0">
                     <p className="font-bold text-[#8C243B] text-xs flex items-center gap-1.5">
-                      <IconClock className="w-3.5 h-3.5 text-[#C74B66]" />
+                      <IconClock className="w-3.5 h-3.5 text-[#C74B66] shrink-0" />
                       <span>Horario de Trabajo (Temporada)</span>
                     </p>
                     <p className="text-[11px] text-[#7D6870] leading-snug">
@@ -78,50 +138,147 @@ export const ConfigAnticipoModal: React.FC<ConfigAnticipoModalProps> = ({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                  <div className="bg-white p-2.5 rounded-xl border border-[#F2C4D2]/80 shadow-2xs">
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="font-bold text-[#7D6870] text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 min-w-0">
+                  {/* HORA APERTURA */}
+                  <div className="bg-white p-2.5 rounded-xl border border-[#F2C4D2]/80 shadow-2xs min-w-0 relative">
+                    <div className="flex items-center justify-between gap-2 mb-1.5 min-w-0">
+                      <label className="font-bold text-[#7D6870] text-xs truncate">
                         Hora Apertura
                       </label>
-                      <span className="text-[11px] font-extrabold text-[#8C243B] bg-[#FFF5F7] px-2 py-0.5 rounded-md border border-[#F2C4D2]">
-                        {formatearHora12(configAnticipo.horaApertura || '08:00')}
+                      <span className="text-[11px] font-extrabold text-[#8C243B] bg-[#FFF5F7] px-2 py-0.5 rounded-md border border-[#F2C4D2] shrink-0">
+                        {formatearHora12(horaAperturaVal)}
                       </span>
                     </div>
-                    <input
-                      type="time"
-                      value={configAnticipo.horaApertura || '08:00'}
-                      onChange={(e) =>
-                        setConfigAnticipo((prev) => ({
-                          ...prev,
-                          horaApertura: e.target.value,
-                        }))
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setMenuAbierto((prev) => (prev === 'apertura' ? null : 'apertura'))
                       }
-                      className="w-full px-3 py-2 bg-[#FFF5F7]/40 border border-[#F2C4D2] rounded-xl font-bold text-[#2D2529] outline-none focus:border-[#8C243B] focus:bg-white text-sm"
-                      required
-                    />
+                      className={`w-full min-w-0 max-w-full box-border px-3 py-2 bg-[#FFF5F7]/50 hover:bg-[#FFF5F7] border rounded-xl font-bold text-[#2D2529] flex items-center justify-between gap-2 transition cursor-pointer text-sm ${
+                        menuAbierto === 'apertura'
+                          ? 'border-[#8C243B] bg-white ring-2 ring-[#C74B66]/20'
+                          : 'border-[#F2C4D2] hover:border-[#8C243B]'
+                      }`}
+                    >
+                      <span className="flex items-center gap-1.5 truncate text-[#2D2529]">
+                        <IconClock className="w-4 h-4 text-[#C74B66] shrink-0" />
+                        <span className="truncate">{formatearHora12(horaAperturaVal)}</span>
+                      </span>
+                      <IconChevronDown
+                        className={`w-4 h-4 text-[#8C243B] shrink-0 transition-transform duration-150 ${
+                          menuAbierto === 'apertura' ? 'rotate-180' : ''
+                        }`}
+                      />
+                    </button>
+
+                    <AnimatePresence>
+                      {menuAbierto === 'apertura' && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -4 }}
+                          transition={{ duration: 0.12 }}
+                          className="absolute left-0 right-0 top-full mt-1.5 z-30 bg-white border border-[#F2C4D2] rounded-2xl shadow-xl p-1.5 max-h-48 overflow-y-auto space-y-0.5"
+                        >
+                          {opcionesApertura.map((h) => {
+                            const seleccionada = h === horaAperturaVal;
+                            return (
+                              <button
+                                key={h}
+                                type="button"
+                                onClick={() => {
+                                  setConfigAnticipo((prev) => ({
+                                    ...prev,
+                                    horaApertura: h,
+                                  }));
+                                  setMenuAbierto(null);
+                                }}
+                                className={`w-full px-3 py-2 rounded-xl flex items-center justify-between text-xs cursor-pointer transition ${
+                                  seleccionada
+                                    ? 'bg-[#FCE8EF] text-[#8C243B] font-extrabold'
+                                    : 'hover:bg-[#FFF5F7] text-[#2D2529] font-semibold'
+                                }`}
+                              >
+                                <span>{formatearHora12(h)}</span>
+                                {seleccionada && <IconCheck className="w-4 h-4 text-[#8C243B] shrink-0" />}
+                              </button>
+                            );
+                          })}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
-                  <div className="bg-white p-2.5 rounded-xl border border-[#F2C4D2]/80 shadow-2xs">
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="font-bold text-[#7D6870] text-xs">
+
+                  {/* HORA CIERRE */}
+                  <div className="bg-white p-2.5 rounded-xl border border-[#F2C4D2]/80 shadow-2xs min-w-0 relative">
+                    <div className="flex items-center justify-between gap-2 mb-1.5 min-w-0">
+                      <label className="font-bold text-[#7D6870] text-xs truncate">
                         Hora Cierre
                       </label>
-                      <span className="text-[11px] font-extrabold text-[#8C243B] bg-[#FFF5F7] px-2 py-0.5 rounded-md border border-[#F2C4D2]">
-                        {formatearHora12(configAnticipo.horaCierre || '19:00')}
+                      <span className="text-[11px] font-extrabold text-[#8C243B] bg-[#FFF5F7] px-2 py-0.5 rounded-md border border-[#F2C4D2] shrink-0">
+                        {formatearHora12(horaCierreVal)}
                       </span>
                     </div>
-                    <input
-                      type="time"
-                      value={configAnticipo.horaCierre || '19:00'}
-                      onChange={(e) =>
-                        setConfigAnticipo((prev) => ({
-                          ...prev,
-                          horaCierre: e.target.value,
-                        }))
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setMenuAbierto((prev) => (prev === 'cierre' ? null : 'cierre'))
                       }
-                      className="w-full px-3 py-2 bg-[#FFF5F7]/40 border border-[#F2C4D2] rounded-xl font-bold text-[#2D2529] outline-none focus:border-[#8C243B] focus:bg-white text-sm"
-                      required
-                    />
+                      className={`w-full min-w-0 max-w-full box-border px-3 py-2 bg-[#FFF5F7]/50 hover:bg-[#FFF5F7] border rounded-xl font-bold text-[#2D2529] flex items-center justify-between gap-2 transition cursor-pointer text-sm ${
+                        menuAbierto === 'cierre'
+                          ? 'border-[#8C243B] bg-white ring-2 ring-[#C74B66]/20'
+                          : 'border-[#F2C4D2] hover:border-[#8C243B]'
+                      }`}
+                    >
+                      <span className="flex items-center gap-1.5 truncate text-[#2D2529]">
+                        <IconClock className="w-4 h-4 text-[#C74B66] shrink-0" />
+                        <span className="truncate">{formatearHora12(horaCierreVal)}</span>
+                      </span>
+                      <IconChevronDown
+                        className={`w-4 h-4 text-[#8C243B] shrink-0 transition-transform duration-150 ${
+                          menuAbierto === 'cierre' ? 'rotate-180' : ''
+                        }`}
+                      />
+                    </button>
+
+                    <AnimatePresence>
+                      {menuAbierto === 'cierre' && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -4 }}
+                          transition={{ duration: 0.12 }}
+                          className="absolute left-0 right-0 top-full mt-1.5 z-30 bg-white border border-[#F2C4D2] rounded-2xl shadow-xl p-1.5 max-h-48 overflow-y-auto space-y-0.5"
+                        >
+                          {opcionesCierre.map((h) => {
+                            const seleccionada = h === horaCierreVal;
+                            return (
+                              <button
+                                key={h}
+                                type="button"
+                                onClick={() => {
+                                  setConfigAnticipo((prev) => ({
+                                    ...prev,
+                                    horaCierre: h,
+                                  }));
+                                  setMenuAbierto(null);
+                                }}
+                                className={`w-full px-3 py-2 rounded-xl flex items-center justify-between text-xs cursor-pointer transition ${
+                                  seleccionada
+                                    ? 'bg-[#FCE8EF] text-[#8C243B] font-extrabold'
+                                    : 'hover:bg-[#FFF5F7] text-[#2D2529] font-semibold'
+                                }`}
+                              >
+                                <span>{formatearHora12(h)}</span>
+                                {seleccionada && <IconCheck className="w-4 h-4 text-[#8C243B] shrink-0" />}
+                              </button>
+                            );
+                          })}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
                 </div>
                 <p className="text-[10px] text-[#7D6870]">
@@ -131,7 +288,7 @@ export const ConfigAnticipoModal: React.FC<ConfigAnticipoModalProps> = ({
 
               {/* 2. SWITCH PRINCIPAL ACTIVAR / DESACTIVAR ANTICIPO */}
               <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-3">
-                <div className="space-y-0.5">
+                <div className="space-y-0.5 min-w-0">
                   <p className="font-bold text-[#8C243B] text-xs">
                     ¿Exigir anticipo para reservas?
                   </p>
@@ -160,7 +317,7 @@ export const ConfigAnticipoModal: React.FC<ConfigAnticipoModalProps> = ({
               </div>
 
               {/* CAMPOS EDITABLES DE MONTO Y CUENTAS (SIEMPRE VISIBLES POR REGLA DE DICIEMBRE) */}
-              <div className="space-y-3 pt-1 border-t border-[#FCE8EF]">
+              <div className="space-y-3 pt-1 border-t border-[#FCE8EF] min-w-0">
                 {!configAnticipo.exigeAnticipo && (
                   <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900 leading-snug">
                     🎄 <strong>Regla automática de Diciembre:</strong> Aunque el switch general esté desactivado, cualquier cita agendada para el mes de <strong>diciembre</strong> exigirá automáticamente el abono y las cuentas configuradas aquí abajo.
@@ -188,7 +345,7 @@ export const ConfigAnticipoModal: React.FC<ConfigAnticipoModalProps> = ({
                           porcentajeAnticipo: val,
                         }));
                       }}
-                      className="w-full pl-7 pr-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl font-bold text-[#2D2529] outline-none focus:border-[#8C243B]"
+                      className="w-full min-w-0 pl-7 pr-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl font-bold text-[#2D2529] outline-none focus:border-[#8C243B]"
                       placeholder="20000"
                       required
                     />
@@ -212,7 +369,7 @@ export const ConfigAnticipoModal: React.FC<ConfigAnticipoModalProps> = ({
                       }))
                     }
                     placeholder="321 961 0896"
-                    className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl font-medium text-[#2D2529] outline-none focus:border-[#8C243B]"
+                    className="w-full min-w-0 px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl font-medium text-[#2D2529] outline-none focus:border-[#8C243B]"
                     required
                   />
                 </div>
@@ -231,7 +388,7 @@ export const ConfigAnticipoModal: React.FC<ConfigAnticipoModalProps> = ({
                       }))
                     }
                     placeholder="Ahorros 245-000123-88"
-                    className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl font-medium text-[#2D2529] outline-none focus:border-[#8C243B]"
+                    className="w-full min-w-0 px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl font-medium text-[#2D2529] outline-none focus:border-[#8C243B]"
                   />
                 </div>
 
@@ -249,7 +406,7 @@ export const ConfigAnticipoModal: React.FC<ConfigAnticipoModalProps> = ({
                       }))
                     }
                     placeholder="Número o identificador de llave"
-                    className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl font-medium text-[#2D2529] outline-none focus:border-[#8C243B]"
+                    className="w-full min-w-0 px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl font-medium text-[#2D2529] outline-none focus:border-[#8C243B]"
                   />
                 </div>
 
@@ -267,7 +424,7 @@ export const ConfigAnticipoModal: React.FC<ConfigAnticipoModalProps> = ({
                       }))
                     }
                     placeholder="Nombre y apellido del titular"
-                    className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl font-medium text-[#2D2529] outline-none focus:border-[#8C243B]"
+                    className="w-full min-w-0 px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl font-medium text-[#2D2529] outline-none focus:border-[#8C243B]"
                     required
                   />
                 </div>
