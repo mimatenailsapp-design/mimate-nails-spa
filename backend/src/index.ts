@@ -1353,12 +1353,6 @@ app.patch('/api/reservas/:id/horario', requireStaffAuth, async (req: Request, re
       return res.status(400).json({ error: 'Los domingos regulares el spa está cerrado' });
     }
 
-    if (solapaHorarioAlmuerzo(dInicio.getTime(), dFin.getTime(), fechaBogotaIso)) {
-      return res.status(409).json({
-        error: 'El horario de 12:00 PM a 1:00 PM está bloqueado por hora de almuerzo.',
-      });
-    }
-
     const inicioVentana = new Date(dInicio.getTime() - 24 * 60 * 60 * 1000).toISOString();
     const finVentana = new Date(dFin.getTime() + 24 * 60 * 60 * 1000).toISOString();
 
@@ -2202,7 +2196,7 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
       }
     }
 
-    if (solapaHorarioAlmuerzo(dInicio.getTime(), dFin.getTime(), fecha)) {
+    if (origenReal !== 'panel' && solapaHorarioAlmuerzo(dInicio.getTime(), dFin.getTime(), fecha)) {
       return res.status(400).json({
         error: 'El horario de 12:00 PM a 1:00 PM está bloqueado por hora de almuerzo.',
       });
