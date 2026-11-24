@@ -33,7 +33,12 @@ import {
   obtenerHeadersStaff,
 } from '../utils/security';
 import { formatearHora12, formatearRangoHoras12 } from '../utils/formatoHora';
-import { obtenerPrecioServicioParaFecha } from '../utils/tarifas';
+import {
+  esTarifaDesdeDiciembre,
+  normalizarNombreServicioTarifa,
+  obtenerFechaBogotaIso,
+  obtenerPrecioServicioParaFecha,
+} from '../utils/tarifas';
 export { formatearHora12, formatearRangoHoras12 };
 import { BloquearHorarioModal } from './dashboard/BloquearHorarioModal';
 import { ConfigAnticipoModal } from './dashboard/ConfigAnticipoModal';
@@ -1967,14 +1972,43 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       fecha_fin: drag.cita.fecha_fin,
       db_fecha_inicio: drag.cita.db_fecha_inicio,
       db_fecha_fin: drag.cita.db_fecha_fin,
+      valor_total: drag.cita.valor_total,
       notas: drag.cita.notas,
     };
+
+    const calcularTotalServiciosCitaParaFecha = (notasCita: string | undefined, fechaIsoRef: string): number | null => {
+      if (!notasCita || servicios.length === 0) return null;
+      const matchSvc = notasCita.match(/Servicio:\s*([^|[\n]+)/i);
+      if (!matchSvc || !matchSvc[1]) return null;
+      const partes = matchSvc[1].split('+').map((p) => normalizarNombreServicioTarifa(p)).filter(Boolean);
+      if (partes.length === 0) return null;
+      let sumaBase = 0;
+      for (const pNorm of partes) {
+        const svc = servicios.find((s) => normalizarNombreServicioTarifa(s.nombre) === pNorm);
+        if (!svc) return null;
+        sumaBase += obtenerPrecioServicioParaFecha(svc, fechaIsoRef);
+      }
+      return sumaBase + sumarAdicionalesCita(notasCita);
+    };
+
+    const fechaOrigenCitaIso = obtenerFechaBogotaIso(drag.cita.fecha_inicio);
+    const cruzaTarifaDic = esTarifaDesdeDiciembre(fechaOrigenCitaIso) !== esTarifaDesdeDiciembre(drag.targetFechaIso);
+    const totalPreDicCita = calcularTotalServiciosCitaParaFecha(drag.cita.notas, '2026-11-01');
+    const totalDestinoCita = calcularTotalServiciosCitaParaFecha(drag.cita.notas, drag.targetFechaIso);
+    const nuevoValorTotalOptimista =
+      totalDestinoCita !== null &&
+      (cruzaTarifaDic ||
+        (esTarifaDesdeDiciembre(drag.targetFechaIso) &&
+          totalPreDicCita !== null &&
+          Number(drag.cita.valor_total || 0) === totalPreDicCita))
+        ? totalDestinoCita
+        : drag.cita.valor_total;
 
     // Actualización optimista inmediata: libera el horario anterior y ocupa el nuevo
     setReservas((prev) =>
       prev.map((r) =>
         r.id === drag.cita.id
-          ? { ...r, fecha_inicio: nuevoInicioIso, fecha_fin: nuevoFinIso }
+          ? { ...r, fecha_inicio: nuevoInicioIso, fecha_fin: nuevoFinIso, valor_total: nuevoValorTotalOptimista }
           : r
       )
     );
@@ -2030,6 +2064,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
           .update({
             fecha_inicio: persistencia.dbFechaInicio,
             fecha_fin: persistencia.dbFechaFin,
+            valor_total: nuevoValorTotalOptimista,
             notas: persistencia.notasFinal,
             actualizado_en: new Date().toISOString(),
           })
@@ -2051,6 +2086,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                   fecha_fin: nuevoFinIso,
                   db_fecha_inicio: persistencia.dbFechaInicio,
                   db_fecha_fin: persistencia.dbFechaFin,
+                  valor_total: nuevoValorTotalOptimista,
                   notas: persistencia.notasFinal,
                 }
               : r
@@ -2078,6 +2114,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                 fecha_fin: estadoPrevio.fecha_fin,
                 db_fecha_inicio: estadoPrevio.db_fecha_inicio,
                 db_fecha_fin: estadoPrevio.db_fecha_fin,
+                valor_total: estadoPrevio.valor_total,
                 notas: estadoPrevio.notas,
               }
             : r
@@ -3177,16 +3214,17 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     const extraerServiciosDeCita = (r: Reserva): Servicio[] => {
       if (servicios.length === 0) return [];
       const notas = r.notas || '';
+      const fechaCitaIso = obtenerFechaBogotaIso(r.fecha_inicio);
       const matchSvc = notas.match(/Servicio:\s*([^|[\n]+)/i);
 
       if (matchSvc && matchSvc[1]) {
         const partes = matchSvc[1]
           .split('+')
-          .map((p) => normalizarTexto(p))
+          .map((p) => normalizarNombreServicioTarifa(p))
           .filter(Boolean);
         const encontrados: Servicio[] = [];
         for (const parte of partes) {
-          let svc = servicios.find((s) => normalizarTexto(s.nombre) === parte);
+          let svc = servicios.find((s) => normalizarNombreServicioTarifa(s.nombre) === parte);
           if (!svc) {
             svc = serviciosPorLongitud.find((s) => parte.includes(normalizarTexto(s.nombre)));
           }
@@ -3207,9 +3245,15 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
       const monto = Number(r.valor_total || 0);
       if (monto > 0) {
-        const svcPorPrecio = servicios.find((s) => s.precio === monto);
+        const svcPorPrecio = servicios.find(
+          (s) => obtenerPrecioServicioParaFecha(s, fechaCitaIso) === monto || s.precio === monto
+        );
         if (svcPorPrecio) return [svcPorPrecio];
-        const svcMasCercano = [...servicios].sort((a, b) => Math.abs(a.precio - monto) - Math.abs(b.precio - monto))[0];
+        const svcMasCercano = [...servicios].sort(
+          (a, b) =>
+            Math.abs(obtenerPrecioServicioParaFecha(a, fechaCitaIso) - monto) -
+            Math.abs(obtenerPrecioServicioParaFecha(b, fechaCitaIso) - monto)
+        )[0];
         if (svcMasCercano) return [svcMasCercano];
       }
 
@@ -3219,8 +3263,9 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     const obtenerValorReserva = (r: Reserva): number => {
       const monto = Number(r.valor_total || 0);
       if (monto > 0) return monto;
+      const fechaCitaIso = obtenerFechaBogotaIso(r.fecha_inicio);
       const svcs = extraerServiciosDeCita(r);
-      return svcs.reduce((sum, s) => sum + Number(s.precio || 0), 0);
+      return svcs.reduce((sum, s) => sum + obtenerPrecioServicioParaFecha(s, fechaCitaIso), 0);
     };
 
     const lista = reservasFiltradasMetricas;
@@ -3276,17 +3321,22 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
           item.ingresos += valorCita;
         }
       } else if (svcsCita.length > 1) {
-        const sumaCatalogo = svcsCita.reduce((acc, s) => acc + Number(s.precio || 0), 0);
+        const fechaCitaIso = obtenerFechaBogotaIso(r.fecha_inicio);
+        const sumaCatalogo = svcsCita.reduce(
+          (acc, s) => acc + obtenerPrecioServicioParaFecha(s, fechaCitaIso),
+          0
+        );
         let acumulado = 0;
         svcsCita.forEach((svc, idx) => {
           const item = mapaServicios.get(svc.id);
           if (item) {
             item.cantidad += 1;
+            const precioSvc = obtenerPrecioServicioParaFecha(svc, fechaCitaIso);
             const aporte =
               idx === svcsCita.length - 1
                 ? Math.max(0, valorCita - acumulado)
                 : sumaCatalogo > 0
-                ? Math.round((svc.precio / sumaCatalogo) * valorCita)
+                ? Math.round((precioSvc / sumaCatalogo) * valorCita)
                 : Math.round(valorCita / svcsCita.length);
             acumulado += aporte;
             item.ingresos += aporte;

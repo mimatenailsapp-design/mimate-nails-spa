@@ -14,12 +14,41 @@ export function esTarifaDesdeDiciembre(fechaIso?: string | null): boolean {
   return ref >= FECHA_CAMBIO_TARIFAS;
 }
 
+export const ALIAS_SERVICIOS_TARIFA: Record<string, string> = {
+  'semi myp': 'semi manos y pies',
+  'semi m y p': 'semi manos y pies',
+  'myp': 'manos y pies',
+  'm y p': 'manos y pies',
+  'dippign': 'dipping',
+  'diping': 'dipping',
+  'rubber': 'base rubber',
+};
+
+export function normalizarNombreServicioTarifa(texto?: string | null): string {
+  const limpio = String(texto || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+  return ALIAS_SERVICIOS_TARIFA[limpio] || limpio;
+}
+
+export function obtenerFechaBogotaIso(fechaIso?: string | null): string {
+  if (!fechaIso) return obtenerHoyColombiaIso();
+  const limpio = fechaIso.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(limpio)) return limpio;
+  const d = new Date(limpio);
+  if (isNaN(d.getTime())) return limpio.slice(0, 10);
+  return d.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+}
+
 export function obtenerPrecioServicioParaFecha(
   servicio: { precio: number; precioDiciembre?: number } | null | undefined,
   fechaIso?: string | null
 ): number {
   if (!servicio) return 0;
-  if (esTarifaDesdeDiciembre(fechaIso) && typeof servicio.precioDiciembre === 'number') {
+  const isoBogota = fechaIso ? obtenerFechaBogotaIso(fechaIso) : obtenerHoyColombiaIso();
+  if (esTarifaDesdeDiciembre(isoBogota) && typeof servicio.precioDiciembre === 'number') {
     return servicio.precioDiciembre;
   }
   return servicio.precio;

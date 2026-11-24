@@ -1320,7 +1320,7 @@ app.patch('/api/reservas/:id/horario', requireStaffAuth, async (req: Request, re
   try {
     const { data: reservaRaw, error: fetchError } = await supabase
       .from('reservas')
-      .select('id, cancha_id, fecha_inicio, fecha_fin, estado, notas')
+      .select('id, cancha_id, fecha_inicio, fecha_fin, estado, valor_total, valor_anticipo_requerido, notas')
       .eq('id', id)
       .maybeSingle();
 
@@ -1379,12 +1379,36 @@ app.patch('/api/reservas/:id/horario', requireStaffAuth, async (req: Request, re
       return res.status(409).json({ error: validacion.error });
     }
 
+    const fechaOrigenIso = new Date(reserva.fecha_inicio).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+    let nuevoValorTotal = Number(reserva.valor_total || 0);
+    let notasActualizadas = validacion.notasFinal || '';
+
+    const cruzaCambioTarifa = esTarifaDesdeDiciembre(fechaOrigenIso) !== esTarifaDesdeDiciembre(fechaBogotaIso);
+    const totalPreDic = recalcularValorTotalReservaParaFecha(notasActualizadas, '2026-11-01');
+    const totalDestino = recalcularValorTotalReservaParaFecha(notasActualizadas, fechaBogotaIso);
+
+    if (
+      totalDestino !== null &&
+      (cruzaCambioTarifa || (esTarifaDesdeDiciembre(fechaBogotaIso) && totalPreDic !== null && nuevoValorTotal === totalPreDic))
+    ) {
+      nuevoValorTotal = totalDestino;
+      if (/Excedente en spa:\s*\$[\d.]+/i.test(notasActualizadas)) {
+        const abono = Number((reserva as any).valor_anticipo_requerido || 0);
+        const nuevoExcedente = Math.max(0, nuevoValorTotal - abono);
+        notasActualizadas = notasActualizadas.replace(
+          /Excedente en spa:\s*\$[\d.]+/gi,
+          `Excedente en spa: ${nuevoExcedente.toLocaleString('es-CO')}`
+        );
+      }
+    }
+
     const { data, error } = await supabase
       .from('reservas')
       .update({
         fecha_inicio: validacion.dbFechaInicio,
         fecha_fin: validacion.dbFechaFin,
-        notas: validacion.notasFinal,
+        valor_total: nuevoValorTotal,
+        notas: notasActualizadas,
         actualizado_en: new Date().toISOString(),
       })
       .eq('id', id)
@@ -1845,22 +1869,98 @@ const SERVICIOS_MIMATE_NAILS = [
   },
 ];
 
+const ALIAS_SERVICIOS_TARIFA: Record<string, string> = {
+  'semi myp': 'semi manos y pies',
+  'semi m y p': 'semi manos y pies',
+  'myp': 'manos y pies',
+  'm y p': 'manos y pies',
+  'dippign': 'dipping',
+  'diping': 'dipping',
+  'rubber': 'base rubber',
+};
+
+function normalizarNombreServicio(txt: string): string {
+  const limpio = txt.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  return ALIAS_SERVICIOS_TARIFA[limpio] || limpio;
+}
+
 function calcularPrecioServiciosParaFecha(servicioNombre?: string, fechaIso?: string): number | null {
   if (!servicioNombre || !servicioNombre.trim()) return null;
-  const normalizar = (txt: string) =>
-    txt.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
   const partes = servicioNombre.split('+').map((p) => p.trim()).filter(Boolean);
   if (partes.length === 0) return null;
 
   const aplicarDic = esTarifaDesdeDiciembre(fechaIso);
   let total = 0;
   for (const parte of partes) {
-    const pNorm = normalizar(parte);
-    const svc = SERVICIOS_MIMATE_NAILS.find((s) => normalizar(s.nombre) === pNorm);
+    const pNorm = normalizarNombreServicio(parte);
+    const svc = SERVICIOS_MIMATE_NAILS.find((s) => normalizarNombreServicio(s.nombre) === pNorm);
     if (!svc) return null;
     total += aplicarDic ? svc.precioDiciembre : svc.precio;
   }
   return total > 0 ? total : null;
+}
+
+function sumarAdicionalesEnNotas(notas?: string | null): number {
+  if (!notas) return 0;
+  let total = 0;
+  for (const m of String(notas).matchAll(/\[ADICIONAL:(\d+)\]/g)) {
+    const val = parseInt(m[1], 10);
+    if (!isNaN(val) && val > 0) total += val;
+  }
+  return total;
+}
+
+function recalcularValorTotalReservaParaFecha(notas?: string | null, fechaIso?: string): number | null {
+  if (!notas) return null;
+  const matchSvc = String(notas).match(/Servicio:\s*([^|[\n]+)/i);
+  if (!matchSvc || !matchSvc[1]) return null;
+  const base = calcularPrecioServiciosParaFecha(matchSvc[1], fechaIso);
+  if (base === null) return null;
+  return base + sumarAdicionalesEnNotas(notas);
+}
+
+async function sincronizarPreciosCitasDiciembre(): Promise<void> {
+  try {
+    const { data, error } = await supabase
+      .from('reservas')
+      .select('id, fecha_inicio, estado, valor_total, valor_anticipo_requerido, notas')
+      .neq('estado', 'bloqueada')
+      .gte('fecha_inicio', '2026-11-30T00:00:00Z');
+
+    if (error || !data) return;
+
+    let actualizadas = 0;
+    for (const r of data) {
+      const fCol = new Date(r.fecha_inicio).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+      if (!esTarifaDesdeDiciembre(fCol)) continue;
+
+      const totalDic = recalcularValorTotalReservaParaFecha(r.notas, fCol);
+      const totalNov = recalcularValorTotalReservaParaFecha(r.notas, '2026-11-01');
+      const actual = Number(r.valor_total || 0);
+
+      if (totalDic !== null && actual !== totalDic && (actual === 0 || actual === totalNov)) {
+        let nuevasNotas = r.notas || '';
+        if (/Excedente en spa:\s*\$[\d.]+/i.test(nuevasNotas)) {
+          const abono = Number(r.valor_anticipo_requerido || 0);
+          const nuevoExcedente = Math.max(0, totalDic - abono);
+          nuevasNotas = nuevasNotas.replace(
+            /Excedente en spa:\s*\$[\d.]+/gi,
+            `Excedente en spa: ${nuevoExcedente.toLocaleString('es-CO')}`
+          );
+        }
+        const payload: Record<string, any> = { valor_total: totalDic };
+        if (nuevasNotas !== (r.notas || '')) payload.notas = nuevasNotas;
+        const { error: updErr } = await supabase.from('reservas').update(payload).eq('id', r.id);
+        if (!updErr) actualizadas++;
+      }
+    }
+    if (actualizadas > 0) {
+      spaBootstrapCache = null;
+      console.log(`🎄 Tarifa Diciembre sincronizada automáticamente en ${actualizadas} cita(s).`);
+    }
+  } catch (err) {
+    console.warn('⚠️ Error verificando tarifas de diciembre al iniciar:', err);
+  }
 }
 
 // Obtener info del spa, empleadas y catálogo de servicios (con caché de 15s y sin exponer credenciales)
@@ -2672,6 +2772,8 @@ app.listen(PORT, async () => {
   console.log(`📲 Vinculación de WhatsApp (QR) disponible en: http://localhost:${PORT}/qr`);
   console.log(`💬 Simulador del Bot listo en: POST http://localhost:${PORT}/api/bot/simulate`);
   console.log(`⏰ Cron Recordatorios listo en: POST http://localhost:${PORT}/api/cron/recordatorios`);
+
+  await sincronizarPreciosCitasDiciembre();
 
   // Inicializar Baileys como proveedor único y exclusivo de WhatsApp
   try {
