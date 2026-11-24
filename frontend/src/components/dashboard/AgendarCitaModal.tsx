@@ -12,28 +12,37 @@ import {
   IconAlertCircle,
   IconLoader2,
   IconSparkles,
+  IconPhone,
 } from '@tabler/icons-react';
 
-interface ClienteSugerido {
+interface OpcionClienteMatch {
   id: string;
   nombre: string;
-  telefono: string;
+  telefonoLocal: string;
+  telefonoVisual: string;
 }
 
-const normalizarTextoCliente = (texto: string): string =>
+const normalizarTextoCliente = (texto: string) =>
   texto
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .trim()
+    .toLowerCase()
     .replace(/\s+/g, ' ')
-    .toLowerCase();
+    .trim();
 
-const formatearTelefonoLocal = (telefono: string): string => {
+const normalizarTelefonoLocal = (telefono: string) => {
   const digits = telefono.replace(/\D/g, '');
   if (digits.length === 12 && digits.startsWith('573')) {
     return digits.substring(2);
   }
-  return digits || telefono.trim();
+  return digits;
+};
+
+const formatearTelefonoVisual = (telLocal: string) => {
+  if (telLocal.length === 10) {
+    return `${telLocal.slice(0, 3)} ${telLocal.slice(3, 6)} ${telLocal.slice(6)}`;
+  }
+  return telLocal;
 };
 
 export interface AgendarCitaModalProps {
@@ -124,107 +133,147 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
 }) => {
   const [menuExtrasAbierto, setMenuExtrasAbierto] = useState(false);
   const [buscandoCliente, setBuscandoCliente] = useState(false);
-  const [clienteEncontrado, setClienteEncontrado] = useState<ClienteSugerido | null>(null);
-  const [sugerenciasClientes, setSugerenciasClientes] = useState<ClienteSugerido[]>([]);
+  const [clienteEncontrado, setClienteEncontrado] = useState<OpcionClienteMatch | null>(null);
+  const [opcionesClientes, setOpcionesClientes] = useState<OpcionClienteMatch[]>([]);
+  const [esCoincidenciaExactaMultiple, setEsCoincidenciaExactaMultiple] = useState(false);
   const ultimoNombreBuscado = useRef<string>('');
-  const nombreSeleccionadoManual = useRef<string>('');
 
   // Resetear estados al cerrar modal
   useEffect(() => {
     if (!abierto) {
       setClienteEncontrado(null);
-      setSugerenciasClientes([]);
+      setOpcionesClientes([]);
+      setEsCoincidenciaExactaMultiple(false);
       setBuscandoCliente(false);
       ultimoNombreBuscado.current = '';
-      nombreSeleccionadoManual.current = '';
     }
   }, [abierto]);
 
-  const seleccionarClienteSugerido = (cliente: ClienteSugerido) => {
-    const clave = normalizarTextoCliente(cliente.nombre);
-    nombreSeleccionadoManual.current = clave;
-    ultimoNombreBuscado.current = clave;
-    setAgendarNombre(cliente.nombre);
-    setAgendarTelefono(cliente.telefono);
-    setClienteEncontrado(cliente);
-    setSugerenciasClientes([]);
+  const seleccionarOpcionCliente = (opcion: OpcionClienteMatch) => {
+    ultimoNombreBuscado.current = normalizarTextoCliente(opcion.nombre);
+    setAgendarNombre(opcion.nombre);
+    setAgendarTelefono(opcion.telefonoLocal);
+    setClienteEncontrado(opcion);
+    setOpcionesClientes([]);
+    setEsCoincidenciaExactaMultiple(false);
   };
 
-  // Asociación automática de nombre -> teléfono en la base de datos (solo en vista de administradoras y especialistas)
+  // Asociación automática de nombre -> teléfono(s) en la base de datos (solo en vista de administradoras y especialistas)
   useEffect(() => {
     if (!abierto) return;
     const raw = agendarNombre.trim();
-    const clave = normalizarTextoCliente(raw);
+    const nombreNorm = normalizarTextoCliente(raw);
 
-    if (clave.length < 2) {
+    if (nombreNorm.length < 2) {
       setClienteEncontrado(null);
-      setSugerenciasClientes([]);
+      setOpcionesClientes([]);
+      setEsCoincidenciaExactaMultiple(false);
       setBuscandoCliente(false);
       ultimoNombreBuscado.current = '';
-      nombreSeleccionadoManual.current = '';
       return;
     }
 
-    if (nombreSeleccionadoManual.current && nombreSeleccionadoManual.current === clave) {
-      return;
-    }
+    if (ultimoNombreBuscado.current === nombreNorm) return;
 
-    if (ultimoNombreBuscado.current === clave) return;
+    let cancelado = false;
 
     const timer = setTimeout(async () => {
-      ultimoNombreBuscado.current = clave;
+      ultimoNombreBuscado.current = nombreNorm;
       setBuscandoCliente(true);
       try {
-        const qEscapado = raw.replace(/[%_]/g, '\\$&');
+        // Escapar comodines de LIKE/ILIKE para evitar coincidencias accidentales
+        const terminoSeguro = raw.replace(/[%_]/g, '\\$&');
         const { data } = await supabase
           .from('clientes')
           .select('id, nombre, telefono_wa')
-          .ilike('nombre', `%${qEscapado}%`)
-          .not('telefono_wa', 'is', null)
-          .limit(25);
+          .ilike('nombre', `%${terminoSeguro}%`)
+          .order('nombre', { ascending: true })
+          .limit(40);
 
-        const unicosMap = new Map<string, ClienteSugerido>();
-        for (const row of data || []) {
-          const nombreRow = (row.nombre || '').trim();
-          const telLocal = formatearTelefonoLocal(row.telefono_wa || '');
-          if (!nombreRow || !telLocal) continue;
-          const dedupKey = `${normalizarTextoCliente(nombreRow)}::${telLocal}`;
-          if (!unicosMap.has(dedupKey)) {
-            unicosMap.set(dedupKey, {
-              id: String(row.id),
-              nombre: nombreRow,
-              telefono: telLocal,
-            });
+        if (cancelado) return;
+
+        let filas = Array.isArray(data) ? data : [];
+
+        // Respaldo tolerante a tildes/acentos si la búsqueda directa ILIKE no devuelve resultados
+        if (filas.length === 0) {
+          const { data: todosClientes } = await supabase
+            .from('clientes')
+            .select('id, nombre, telefono_wa')
+            .order('nombre', { ascending: true })
+            .limit(1000);
+
+          if (cancelado) return;
+
+          if (Array.isArray(todosClientes)) {
+            filas = todosClientes.filter((row) =>
+              normalizarTextoCliente(row.nombre || '').includes(nombreNorm)
+            );
           }
         }
+        const vistosPorNombreYTel = new Set<string>();
+        const coincidenciasValidas: OpcionClienteMatch[] = [];
 
-        const todos = Array.from(unicosMap.values());
-        // Si hay coincidencias exactas con ese nombre, mostrar exclusivamente las opciones asociadas a ese nombre
-        const exactos = todos.filter((c) => normalizarTextoCliente(c.nombre) === clave);
-        const candidatos = exactos.length > 0 ? exactos : todos;
+        for (const row of filas) {
+          const nombreLimpio = (row.nombre || '').trim();
+          const telLocal = normalizarTelefonoLocal(row.telefono_wa || '');
+          if (!nombreLimpio || telLocal.length < 7) continue;
 
-        if (candidatos.length === 1) {
-          const unico = candidatos[0];
-          setAgendarTelefono(unico.telefono);
+          const clave = `${normalizarTextoCliente(nombreLimpio)}|${telLocal}`;
+          if (vistosPorNombreYTel.has(clave)) continue;
+          vistosPorNombreYTel.add(clave);
+
+          coincidenciasValidas.push({
+            id: String(row.id),
+            nombre: nombreLimpio,
+            telefonoLocal: telLocal,
+            telefonoVisual: formatearTelefonoVisual(telLocal),
+          });
+        }
+
+        // Si existen coincidencias exactas por ese nombre, filtrar estrictamente solo las asociadas a ese nombre
+        const exactos = coincidenciasValidas.filter(
+          (c) => normalizarTextoCliente(c.nombre) === nombreNorm
+        );
+
+        if (exactos.length === 1) {
+          const unico = exactos[0];
           setClienteEncontrado(unico);
-          setSugerenciasClientes([]);
-        } else if (candidatos.length > 1) {
+          setOpcionesClientes([]);
+          setEsCoincidenciaExactaMultiple(false);
+          setAgendarTelefono(unico.telefonoLocal);
+        } else if (exactos.length > 1) {
+          // Mismo nombre con múltiples números distintos: mostrar todas las opciones asociadas solo a ese nombre
           setClienteEncontrado(null);
-          setSugerenciasClientes(candidatos);
+          setOpcionesClientes(exactos);
+          setEsCoincidenciaExactaMultiple(true);
+        } else if (coincidenciasValidas.length > 0) {
+          // Coincidencias parciales mientras escribe: mostrar sugerencias seleccionables
+          setClienteEncontrado(null);
+          setOpcionesClientes(coincidenciasValidas);
+          setEsCoincidenciaExactaMultiple(false);
         } else {
           setClienteEncontrado(null);
-          setSugerenciasClientes([]);
+          setOpcionesClientes([]);
+          setEsCoincidenciaExactaMultiple(false);
         }
       } catch (err) {
-        console.error('Error buscando clienta por nombre:', err);
-        setClienteEncontrado(null);
-        setSugerenciasClientes([]);
+        if (!cancelado) {
+          console.error('Error buscando clienta por nombre:', err);
+          setClienteEncontrado(null);
+          setOpcionesClientes([]);
+          setEsCoincidenciaExactaMultiple(false);
+        }
       } finally {
-        setBuscandoCliente(false);
+        if (!cancelado) {
+          setBuscandoCliente(false);
+        }
       }
     }, 300);
 
-    return () => clearTimeout(timer);
+    return () => {
+      cancelado = true;
+      clearTimeout(timer);
+    };
   }, [abierto, agendarNombre, setAgendarTelefono]);
 
   return (
@@ -635,7 +684,7 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                 </div>
               </div>
 
-              {/* 4. DATOS DE LA CLIENTA (ASOCIACIÓN AUTOMÁTICA NOMBRE -> TELÉFONO EN VISTA DE ADMINISTRADORAS / ESPECIALISTAS) */}
+              {/* 4. DATOS DE LA CLIENTA (CON ASOCIACIÓN AUTOMÁTICA NOMBRE -> TELÉFONO EN VISTA DE ADMINISTRADORAS / ESPECIALISTAS) */}
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="font-bold text-[#7D6870] block">
@@ -643,10 +692,10 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                   </label>
                   {buscandoCliente && (
                     <span className="text-[10px] text-[#8C243B] flex items-center gap-1 font-medium animate-pulse">
-                      <IconLoader2 className="w-3 h-3 animate-spin" /> Buscando número...
+                      <IconLoader2 className="w-3 h-3 animate-spin" /> Buscando clienta...
                     </span>
                   )}
-                  {clienteEncontrado && (
+                  {clienteEncontrado && !buscandoCliente && (
                     <span className="text-[10px] text-emerald-700 font-semibold flex items-center gap-1 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
                       <IconCheck className="w-3 h-3 text-emerald-600" /> Registrada en sistema
                     </span>
@@ -657,51 +706,55 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                   placeholder="Ej: Camila Restrepo"
                   value={agendarNombre}
                   onChange={(e) => {
-                    nombreSeleccionadoManual.current = '';
                     setAgendarNombre(e.target.value);
+                    if (clienteEncontrado) setClienteEncontrado(null);
                   }}
                   className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl text-[#2D2529] font-medium outline-none focus:border-[#8C243B]"
+                  autoComplete="off"
                   required
                 />
 
-                {sugerenciasClientes.length > 1 && (
-                  <div className="mt-1.5 bg-white border border-[#F2C4D2] rounded-2xl shadow-lg overflow-hidden">
-                    <div className="px-3 py-1.5 bg-[#FFF5F7] border-b border-[#FCE8EF] text-[10px] font-bold text-[#8C243B]">
-                      Se encontraron {sugerenciasClientes.length} opciones para "{agendarNombre.trim()}". Selecciona el número correcto:
+                {opcionesClientes.length > 0 ? (
+                  <div className="mt-1.5 rounded-xl border border-[#F2C4D2] bg-white shadow-sm overflow-hidden">
+                    <div className="px-2.5 py-1.5 bg-[#FFF5F7] border-b border-[#F2C4D2] text-[10px] font-bold text-[#8C243B] flex items-center gap-1.5">
+                      <IconSparkles className="w-3.5 h-3.5 text-[#C74B66] shrink-0" />
+                      <span>
+                        {esCoincidenciaExactaMultiple
+                          ? `Se encontraron ${opcionesClientes.length} números registrados con este nombre. Selecciona una opción:`
+                          : `Clientas encontradas (${opcionesClientes.length}). Selecciona para completar el número:`}
+                      </span>
                     </div>
-                    <div className="max-h-40 overflow-y-auto divide-y divide-[#FCE8EF]">
-                      {sugerenciasClientes.map((opcion) => (
+                    <div className="max-h-36 overflow-y-auto divide-y divide-[#F8DDE6]">
+                      {opcionesClientes.map((opcion) => (
                         <button
-                          key={`${opcion.id}-${opcion.telefono}`}
+                          key={`${opcion.id}-${opcion.telefonoLocal}`}
                           type="button"
-                          onClick={() => seleccionarClienteSugerido(opcion)}
-                          className="w-full px-3 py-2 text-left hover:bg-[#FFF5F7] transition-colors flex items-center justify-between gap-2 cursor-pointer"
+                          onClick={() => seleccionarOpcionCliente(opcion)}
+                          className="w-full px-3 py-2 text-left hover:bg-[#FCE8EF] transition flex items-center justify-between gap-2 cursor-pointer"
                         >
-                          <span className="text-xs font-semibold text-[#2D2529] truncate">
+                          <span className="font-semibold text-[#2D2529] truncate">
                             {opcion.nombre}
                           </span>
-                          <span className="text-xs font-mono font-bold text-[#8C243B] bg-[#FCE8EF] px-2 py-0.5 rounded-lg shrink-0">
-                            {opcion.telefono}
+                          <span className="inline-flex items-center gap-1 font-mono text-[11px] font-bold text-[#8C243B] bg-[#FFF5F7] border border-[#F2C4D2] px-2 py-0.5 rounded-lg shrink-0">
+                            <IconPhone className="w-3 h-3 text-[#C74B66]" />
+                            {opcion.telefonoVisual}
                           </span>
                         </button>
                       ))}
                     </div>
                   </div>
-                )}
-
-                {clienteEncontrado ? (
+                ) : clienteEncontrado ? (
                   <div className="flex items-center gap-1.5 text-[11px] text-[#8C243B] bg-[#FCE8EF] px-2.5 py-1.5 rounded-xl mt-1.5 font-medium border border-[#F2C4D2]">
                     <IconSparkles className="w-3.5 h-3.5 text-[#C74B66] shrink-0" />
                     <span>
-                      Clienta identificada: <strong>{clienteEncontrado.nombre}</strong> — Teléfono:{' '}
-                      <strong className="font-mono">{clienteEncontrado.telefono}</strong> (llenado automáticamente)
+                      Teléfono encontrado: <strong className="font-mono">{clienteEncontrado.telefonoVisual}</strong> (llenado automáticamente)
                     </span>
                   </div>
-                ) : sugerenciasClientes.length === 0 ? (
+                ) : (
                   <p className="text-[10px] text-[#7D6870] mt-0.5">
-                    Al escribir el nombre, el teléfono se llenará automáticamente o podrás elegir entre los números registrados con ese nombre.
+                    Al escribir el nombre, se mostrará el número automáticamente si la clienta ya está registrada.
                   </p>
-                ) : null}
+                )}
               </div>
 
               <div>
@@ -712,7 +765,16 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                   type="tel"
                   placeholder="Ej: 321 961 0896"
                   value={agendarTelefono}
-                  onChange={(e) => setAgendarTelefono(e.target.value)}
+                  onChange={(e) => {
+                    const nuevoTel = e.target.value;
+                    setAgendarTelefono(nuevoTel);
+                    if (
+                      clienteEncontrado &&
+                      normalizarTelefonoLocal(nuevoTel) !== clienteEncontrado.telefonoLocal
+                    ) {
+                      setClienteEncontrado(null);
+                    }
+                  }}
                   className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl text-[#2D2529] font-mono outline-none focus:border-[#8C243B]"
                   required
                 />
