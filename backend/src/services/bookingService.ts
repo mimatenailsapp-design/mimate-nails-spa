@@ -500,6 +500,10 @@ export class BookingService {
 
       for (const r of expiradas) {
         const notas = r.notas || '';
+        // Si la cita fue agendada por una administradora o especialista desde el panel, NUNCA se cancela automáticamente
+        if (notas.includes('Agendado en cabina por:') || notas.includes('[SIN_EXPIRACION_PANEL]')) {
+          continue;
+        }
         // Si la clienta ya envió el comprobante y la IA lo validó en revisión, NO se cancela
         if (notas.includes('[COMPROBANTE_VALIDO_IA]') || notas.includes('[COMPROBANTE_RECIBIDO]')) {
           continue;

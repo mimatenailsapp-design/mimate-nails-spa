@@ -2304,11 +2304,12 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
       const anticipoFaltante = Math.max(0, anticipoTotalParaEsteTurno - abonoPrevioReconocido);
 
       if (anticipoFaltante > 0) {
-        // La nueva cita exige anticipo que no está cubierto: queda pendiente de pago (30 min)
+        // La nueva cita exige anticipo que no está cubierto: queda pendiente de pago
+        // Solo expira automáticamente (30 min) si la agendó una clienta; las del panel no expiran solas
         anticipoCalculado = anticipoFaltante;
         saldoRestante = Math.max(0, numPrecio - abonoPrevioReconocido - anticipoFaltante);
         estadoInicial = 'pendiente_pago';
-        expiracionReserva = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+        expiracionReserva = origenReal === 'panel' ? null : new Date(Date.now() + 30 * 60 * 1000).toISOString();
         esPreReserva = true;
       } else {
         // No hay anticipo faltante: se confirma de inmediato
@@ -2320,10 +2321,15 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
       }
     } else {
       // Cita nueva directa (no reagendamiento)
+      // Si la agenda una administradora o especialista (origenReal === 'panel'), NO tiene expiración automática:
+      // el espacio se mantiene ocupado hasta que la aprueben o la cancelen manualmente.
       anticipoCalculado = anticipoTotalParaEsteTurno;
       saldoRestante = Math.max(0, numPrecio - anticipoCalculado);
       estadoInicial = exigeAnticipo ? 'pendiente_pago' : 'confirmada';
-      expiracionReserva = exigeAnticipo ? new Date(Date.now() + 30 * 60 * 1000).toISOString() : null;
+      expiracionReserva =
+        exigeAnticipo && origenReal !== 'panel'
+          ? new Date(Date.now() + 30 * 60 * 1000).toISOString()
+          : null;
       esPreReserva = exigeAnticipo;
     }
 
@@ -2338,19 +2344,22 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
         : `Mismo servicio: "${servicio_nombre}"`;
 
       if (esPreReserva) {
-        notas = `💅 Servicio: ${servicio_nombre || 'Uñas'} | Clienta: ${cliente_nombre.trim()} | [CITA_REAGENDADA_PENDIENTE_ANTICIPO: ${anticipoFmt}] | ${detalleServicio}${abonoPrevioReconocido > 0 ? ` | Abono anterior: $${abonoPrevioReconocido.toLocaleString('es-CO')}` : ''} | Excedente en spa: $${saldoRestante.toLocaleString('es-CO')}`;
+        notas = `💅 Servicio: ${servicio_nombre || 'Uñas'} | Clienta: ${cliente_nombre.trim()} | [CITA_REAGENDADA_PENDIENTE_ANTICIPO: ${anticipoFmt}] | ${detalleServicio}${abonoPrevioReconocido > 0 ? ` | Abono anterior: $${abonoPrevioReconocido.toLocaleString('es-CO')}` : ''} | Excedente en spa: $${saldoRestante.toLocaleString('es-CO')}${origenReal === 'panel' ? ` | Agendado en cabina por: ${sanitizeInput(agendado_por, 60) || 'Personal'} | [SIN_EXPIRACION_PANEL]` : ''}`;
       } else {
         notas = `💅 Servicio: ${servicio_nombre || 'Uñas'} | Clienta: ${cliente_nombre.trim()} | [CITA_REAGENDADA_CONFIRMADA] | ${detalleServicio}${abonoPrevioReconocido > 0 ? ` | Abono previo transferido: $${abonoPrevioReconocido.toLocaleString('es-CO')}` : ''} | Excedente en spa: $${saldoRestante.toLocaleString('es-CO')} | [CONFIRMADA_POR_CLIENTA]`;
       }
+    } else if (origenReal === 'panel') {
+      // Cita agendada desde el panel (admin / especialista): nunca se cancela automáticamente por vencimiento de abono
+      const autorPanel = sanitizeInput(agendado_por, 60) || 'Personal';
+      if (exigeAnticipo) {
+        notas = `💅 Servicio: ${servicio_nombre || 'Uñas'} | Clienta: ${cliente_nombre.trim()} | Agendado en cabina por: ${autorPanel} | [PENDIENTE_ANTICIPO: ${anticipoFmt}] | [SIN_EXPIRACION_PANEL]`;
+      } else {
+        const hoyCol = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+        const esCitaCercana = fecha === hoyCol || dInicio.getTime() - Date.now() < 24 * 60 * 60 * 1000;
+        notas = `💅 Servicio: ${servicio_nombre || 'Uñas'} | Clienta: ${cliente_nombre.trim()} | Agendado en cabina por: ${autorPanel} | Pago en el spa (Sin cobro anticipado)${esCitaCercana ? '' : ' [POR_CONFIRMAR_CLIENTA]'}`;
+      }
     } else if (exigeAnticipo) {
       notas = `💅 Servicio: ${servicio_nombre || 'Uñas'} | Clienta: ${cliente_nombre.trim()} | Pre-Reserva Web JL Mímate Nails | [PENDIENTE_ANTICIPO: ${anticipoFmt}]`;
-    } else if (origenReal === 'panel') {
-      // Cita agendada desde el panel (admin / especialista): solo queda confirmada cuando la clienta
-      // la confirma en el recordatorio de WhatsApp. Si es para hoy o falta menos de 24 h, queda confirmada de una vez.
-      const hoyCol = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
-      const esCitaCercana = fecha === hoyCol || dInicio.getTime() - Date.now() < 24 * 60 * 60 * 1000;
-      const autorPanel = sanitizeInput(agendado_por, 60) || 'Personal';
-      notas = `💅 Servicio: ${servicio_nombre || 'Uñas'} | Clienta: ${cliente_nombre.trim()} | Agendado en cabina por: ${autorPanel} | Pago en el spa (Sin cobro anticipado)${esCitaCercana ? '' : ' [POR_CONFIRMAR_CLIENTA]'}`;
     } else {
       notas = `💅 Servicio: ${servicio_nombre || 'Uñas'} | Clienta: ${cliente_nombre.trim()} | Reserva Web JL Mímate Nails | Pago en el spa (Sin cobro anticipado)`;
     }
@@ -2498,10 +2507,14 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
         `───────────────\n` +
         `*CUENTAS OFICIALES PARA TRANSFERIR:*\n` +
         `${formatearCuentasRecaudoMensaje(complejo)}\n\n` +
-        `⏳ *TIEMPO LÍMITE (30 MINUTOS):*\n` +
-        `Para asegurar tu cupo definitivo, por favor transfiere ${saldoRestante === 0 ? `el valor total de *${anticipoFmt}*` : `el abono de *${anticipoFmt}*`} y *envía la foto del comprobante por este mismo chat* dentro de los próximos 30 minutos.\n\n` +
-        `Pasado este tiempo, el espacio se liberará automáticamente para otra clienta.\n\n` +
-        `¡Quedamos atentas a tu comprobante reina! 💕🌸`;
+        (origenReal === 'panel'
+          ? `📸 *COMPROBANTE DE ABONO:*\n` +
+            `Para confirmar tu abono, por favor transfiere ${saldoRestante === 0 ? `el valor total de *${anticipoFmt}*` : `el abono de *${anticipoFmt}*`} y *envía la foto del comprobante por este mismo chat*.\n\n` +
+            `¡Quedamos atentas a tu comprobante reina! 💕🌸`
+          : `⏳ *TIEMPO LÍMITE (30 MINUTOS):*\n` +
+            `Para asegurar tu cupo definitivo, por favor transfiere ${saldoRestante === 0 ? `el valor total de *${anticipoFmt}*` : `el abono de *${anticipoFmt}*`} y *envía la foto del comprobante por este mismo chat* dentro de los próximos 30 minutos.\n\n` +
+            `Pasado este tiempo, el espacio se liberará automáticamente para otra clienta.\n\n` +
+            `¡Quedamos atentas a tu comprobante reina! 💕🌸`);
     } else {
       voucherWhatsApp =
         `🌸 *JL MÍMATE NAILS* 🌸\n` +
