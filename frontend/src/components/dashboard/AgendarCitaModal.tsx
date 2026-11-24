@@ -14,6 +14,28 @@ import {
   IconSparkles,
 } from '@tabler/icons-react';
 
+interface ClienteSugerido {
+  id: string;
+  nombre: string;
+  telefono: string;
+}
+
+const normalizarTextoCliente = (texto: string): string =>
+  texto
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+
+const formatearTelefonoLocal = (telefono: string): string => {
+  const digits = telefono.replace(/\D/g, '');
+  if (digits.length === 12 && digits.startsWith('573')) {
+    return digits.substring(2);
+  }
+  return digits || telefono.trim();
+};
+
 export interface AgendarCitaModalProps {
   abierto: boolean;
   onClose: () => void;
@@ -102,68 +124,108 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
 }) => {
   const [menuExtrasAbierto, setMenuExtrasAbierto] = useState(false);
   const [buscandoCliente, setBuscandoCliente] = useState(false);
-  const [clienteEncontrado, setClienteEncontrado] = useState<string | null>(null);
-  const ultimoTelefonoBuscado = useRef<string>('');
+  const [clienteEncontrado, setClienteEncontrado] = useState<ClienteSugerido | null>(null);
+  const [sugerenciasClientes, setSugerenciasClientes] = useState<ClienteSugerido[]>([]);
+  const ultimoNombreBuscado = useRef<string>('');
+  const nombreSeleccionadoManual = useRef<string>('');
 
   // Resetear estados al cerrar modal
   useEffect(() => {
     if (!abierto) {
       setClienteEncontrado(null);
+      setSugerenciasClientes([]);
       setBuscandoCliente(false);
-      ultimoTelefonoBuscado.current = '';
+      ultimoNombreBuscado.current = '';
+      nombreSeleccionadoManual.current = '';
     }
   }, [abierto]);
 
-  // Asociación automática de teléfono -> nombre en la base de datos (solo en vista de administradoras y especialistas)
+  const seleccionarClienteSugerido = (cliente: ClienteSugerido) => {
+    const clave = normalizarTextoCliente(cliente.nombre);
+    nombreSeleccionadoManual.current = clave;
+    ultimoNombreBuscado.current = clave;
+    setAgendarNombre(cliente.nombre);
+    setAgendarTelefono(cliente.telefono);
+    setClienteEncontrado(cliente);
+    setSugerenciasClientes([]);
+  };
+
+  // Asociación automática de nombre -> teléfono en la base de datos (solo en vista de administradoras y especialistas)
   useEffect(() => {
     if (!abierto) return;
-    const raw = agendarTelefono.trim();
-    const digits = raw.replace(/\D/g, '');
+    const raw = agendarNombre.trim();
+    const clave = normalizarTextoCliente(raw);
 
-    if (digits.length < 7) {
+    if (clave.length < 2) {
       setClienteEncontrado(null);
+      setSugerenciasClientes([]);
       setBuscandoCliente(false);
-      ultimoTelefonoBuscado.current = '';
+      ultimoNombreBuscado.current = '';
+      nombreSeleccionadoManual.current = '';
       return;
     }
 
-    let conPais = digits;
-    let sinPais = digits;
-    if (digits.length === 10 && digits.startsWith('3')) {
-      conPais = `57${digits}`;
-    } else if (digits.length === 12 && digits.startsWith('573')) {
-      sinPais = digits.substring(2);
+    if (nombreSeleccionadoManual.current && nombreSeleccionadoManual.current === clave) {
+      return;
     }
 
-    if (ultimoTelefonoBuscado.current === digits) return;
+    if (ultimoNombreBuscado.current === clave) return;
 
     const timer = setTimeout(async () => {
-      ultimoTelefonoBuscado.current = digits;
+      ultimoNombreBuscado.current = clave;
       setBuscandoCliente(true);
       try {
+        const qEscapado = raw.replace(/[%_]/g, '\\$&');
         const { data } = await supabase
           .from('clientes')
           .select('id, nombre, telefono_wa')
-          .or(`telefono_wa.eq.${digits},telefono_wa.eq.${conPais},telefono_wa.eq.${sinPais}`)
-          .limit(1)
-          .maybeSingle();
+          .ilike('nombre', `%${qEscapado}%`)
+          .not('telefono_wa', 'is', null)
+          .limit(25);
 
-        if (data && data.nombre) {
-          setClienteEncontrado(data.nombre);
-          setAgendarNombre(data.nombre);
+        const unicosMap = new Map<string, ClienteSugerido>();
+        for (const row of data || []) {
+          const nombreRow = (row.nombre || '').trim();
+          const telLocal = formatearTelefonoLocal(row.telefono_wa || '');
+          if (!nombreRow || !telLocal) continue;
+          const dedupKey = `${normalizarTextoCliente(nombreRow)}::${telLocal}`;
+          if (!unicosMap.has(dedupKey)) {
+            unicosMap.set(dedupKey, {
+              id: String(row.id),
+              nombre: nombreRow,
+              telefono: telLocal,
+            });
+          }
+        }
+
+        const todos = Array.from(unicosMap.values());
+        // Si hay coincidencias exactas con ese nombre, mostrar exclusivamente las opciones asociadas a ese nombre
+        const exactos = todos.filter((c) => normalizarTextoCliente(c.nombre) === clave);
+        const candidatos = exactos.length > 0 ? exactos : todos;
+
+        if (candidatos.length === 1) {
+          const unico = candidatos[0];
+          setAgendarTelefono(unico.telefono);
+          setClienteEncontrado(unico);
+          setSugerenciasClientes([]);
+        } else if (candidatos.length > 1) {
+          setClienteEncontrado(null);
+          setSugerenciasClientes(candidatos);
         } else {
           setClienteEncontrado(null);
+          setSugerenciasClientes([]);
         }
       } catch (err) {
-        console.error('Error buscando clienta por teléfono:', err);
+        console.error('Error buscando clienta por nombre:', err);
         setClienteEncontrado(null);
+        setSugerenciasClientes([]);
       } finally {
         setBuscandoCliente(false);
       }
-    }, 350);
+    }, 300);
 
     return () => clearTimeout(timer);
-  }, [abierto, agendarTelefono, setAgendarNombre]);
+  }, [abierto, agendarNombre, setAgendarTelefono]);
 
   return (
     <AnimatePresence>
@@ -573,15 +635,15 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                 </div>
               </div>
 
-              {/* 4. DATOS DE LA CLIENTA (CON ASOCIACIÓN AUTOMÁTICA EN VISTA DE ADMINISTRADORAS / ESPECIALISTAS) */}
+              {/* 4. DATOS DE LA CLIENTA (ASOCIACIÓN AUTOMÁTICA NOMBRE -> TELÉFONO EN VISTA DE ADMINISTRADORAS / ESPECIALISTAS) */}
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="font-bold text-[#7D6870] block">
-                    Teléfono WhatsApp (10 dígitos)
+                    Nombre de la Clienta
                   </label>
                   {buscandoCliente && (
                     <span className="text-[10px] text-[#8C243B] flex items-center gap-1 font-medium animate-pulse">
-                      <IconLoader2 className="w-3 h-3 animate-spin" /> Buscando clienta...
+                      <IconLoader2 className="w-3 h-3 animate-spin" /> Buscando número...
                     </span>
                   )}
                   {clienteEncontrado && (
@@ -591,37 +653,67 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                   )}
                 </div>
                 <input
+                  type="text"
+                  placeholder="Ej: Camila Restrepo"
+                  value={agendarNombre}
+                  onChange={(e) => {
+                    nombreSeleccionadoManual.current = '';
+                    setAgendarNombre(e.target.value);
+                  }}
+                  className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl text-[#2D2529] font-medium outline-none focus:border-[#8C243B]"
+                  required
+                />
+
+                {sugerenciasClientes.length > 1 && (
+                  <div className="mt-1.5 bg-white border border-[#F2C4D2] rounded-2xl shadow-lg overflow-hidden">
+                    <div className="px-3 py-1.5 bg-[#FFF5F7] border-b border-[#FCE8EF] text-[10px] font-bold text-[#8C243B]">
+                      Se encontraron {sugerenciasClientes.length} opciones para "{agendarNombre.trim()}". Selecciona el número correcto:
+                    </div>
+                    <div className="max-h-40 overflow-y-auto divide-y divide-[#FCE8EF]">
+                      {sugerenciasClientes.map((opcion) => (
+                        <button
+                          key={`${opcion.id}-${opcion.telefono}`}
+                          type="button"
+                          onClick={() => seleccionarClienteSugerido(opcion)}
+                          className="w-full px-3 py-2 text-left hover:bg-[#FFF5F7] transition-colors flex items-center justify-between gap-2 cursor-pointer"
+                        >
+                          <span className="text-xs font-semibold text-[#2D2529] truncate">
+                            {opcion.nombre}
+                          </span>
+                          <span className="text-xs font-mono font-bold text-[#8C243B] bg-[#FCE8EF] px-2 py-0.5 rounded-lg shrink-0">
+                            {opcion.telefono}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {clienteEncontrado ? (
+                  <div className="flex items-center gap-1.5 text-[11px] text-[#8C243B] bg-[#FCE8EF] px-2.5 py-1.5 rounded-xl mt-1.5 font-medium border border-[#F2C4D2]">
+                    <IconSparkles className="w-3.5 h-3.5 text-[#C74B66] shrink-0" />
+                    <span>
+                      Clienta identificada: <strong>{clienteEncontrado.nombre}</strong> — Teléfono:{' '}
+                      <strong className="font-mono">{clienteEncontrado.telefono}</strong> (llenado automáticamente)
+                    </span>
+                  </div>
+                ) : sugerenciasClientes.length === 0 ? (
+                  <p className="text-[10px] text-[#7D6870] mt-0.5">
+                    Al escribir el nombre, el teléfono se llenará automáticamente o podrás elegir entre los números registrados con ese nombre.
+                  </p>
+                ) : null}
+              </div>
+
+              <div>
+                <label className="font-bold text-[#7D6870] block mb-1">
+                  Teléfono WhatsApp (10 dígitos)
+                </label>
+                <input
                   type="tel"
                   placeholder="Ej: 321 961 0896"
                   value={agendarTelefono}
                   onChange={(e) => setAgendarTelefono(e.target.value)}
                   className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl text-[#2D2529] font-mono outline-none focus:border-[#8C243B]"
-                  required
-                />
-                {clienteEncontrado ? (
-                  <div className="flex items-center gap-1.5 text-[11px] text-[#8C243B] bg-[#FCE8EF] px-2.5 py-1.5 rounded-xl mt-1.5 font-medium border border-[#F2C4D2]">
-                    <IconSparkles className="w-3.5 h-3.5 text-[#C74B66] shrink-0" />
-                    <span>
-                      Clienta identificada: <strong>{clienteEncontrado}</strong> (nombre llenado automáticamente)
-                    </span>
-                  </div>
-                ) : (
-                  <p className="text-[10px] text-[#7D6870] mt-0.5">
-                    Al ingresar el número, el nombre se llenará automáticamente si la clienta ya existe en la base de datos.
-                  </p>
-                )}
-              </div>
-
-              <div>
-                <label className="font-bold text-[#7D6870] block mb-1">
-                  Nombre de la Clienta
-                </label>
-                <input
-                  type="text"
-                  placeholder="Ej: Camila Restrepo"
-                  value={agendarNombre}
-                  onChange={(e) => setAgendarNombre(e.target.value)}
-                  className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl text-[#2D2529] font-medium outline-none focus:border-[#8C243B]"
                   required
                 />
               </div>
