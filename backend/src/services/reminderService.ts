@@ -58,9 +58,9 @@ export class ReminderService {
     const manana = new Date(ahora.getTime() + 24 * 60 * 60 * 1000);
     const fechaMananaCol = this.obtenerFechaCol(manana);
 
-    // Franja amplia de búsqueda en UTC: desde ahora hasta 36 horas adelante
-    const desdeIso = ahora.toISOString();
-    const hastaIso = new Date(ahora.getTime() + 36 * 60 * 60 * 1000).toISOString();
+    // Franja amplia de búsqueda en UTC (con margen de 4h atrás por si una cita traslapada tiene db_fecha_inicio desplazada)
+    const desdeIso = new Date(ahora.getTime() - 4 * 60 * 60 * 1000).toISOString();
+    const hastaIso = new Date(ahora.getTime() + 40 * 60 * 60 * 1000).toISOString();
 
     const { data: reservas, error } = await supabase
       .from('reservas')
@@ -71,6 +71,7 @@ export class ReminderService {
 
     if (error || !reservas) return { enviados: 0 };
 
+    const regexHorarioReal = /\[HORARIO_REAL:([^|\]]+)\|([^\]]+)\]/i;
     let enviados = 0;
     for (const r of reservas) {
       const notas = r.notas || '';
@@ -83,7 +84,15 @@ export class ReminderService {
         continue;
       }
 
-      const dInicio = new Date(r.fecha_inicio);
+      const matchReal = notas.match(regexHorarioReal);
+      const fechaInicioRealIso =
+        matchReal && matchReal[1] && !isNaN(new Date(matchReal[1].trim()).getTime())
+          ? matchReal[1].trim()
+          : r.fecha_inicio;
+      const dInicio = new Date(fechaInicioRealIso);
+      if (dInicio.getTime() <= ahora.getTime() || dInicio.getTime() > ahora.getTime() + 36 * 60 * 60 * 1000) {
+        continue;
+      }
       const fechaCitaCol = this.obtenerFechaCol(dInicio);
 
       // Si la cita es para HOY en Colombia, este método NO la procesa (le corresponde al de 3 horas antes)
@@ -181,9 +190,9 @@ export class ReminderService {
     const ahora = new Date();
     const fechaHoyCol = this.obtenerFechaCol(ahora);
 
-    // Ventana de 3 horas antes: citas que comienzan entre 2 horas y 3.5 horas a partir de ahora
-    const desdeIso = new Date(ahora.getTime() + 2 * 60 * 60 * 1000).toISOString();
-    const hastaIso = new Date(ahora.getTime() + 3.5 * 60 * 60 * 1000).toISOString();
+    // Ventana amplia en BD para capturar también citas con HORARIO_REAL cuyo db_fecha_inicio fue ajustado
+    const desdeIso = new Date(ahora.getTime() - 2 * 60 * 60 * 1000).toISOString();
+    const hastaIso = new Date(ahora.getTime() + 8 * 60 * 60 * 1000).toISOString();
 
     const { data: reservas, error } = await supabase
       .from('reservas')
@@ -193,6 +202,10 @@ export class ReminderService {
       .lte('fecha_inicio', hastaIso);
 
     if (error || !reservas) return { enviados: 0 };
+
+    const regexHorarioReal = /\[HORARIO_REAL:([^|\]]+)\|([^\]]+)\]/i;
+    const minVentanaMs = ahora.getTime() + 2 * 60 * 60 * 1000;
+    const maxVentanaMs = ahora.getTime() + 3.5 * 60 * 60 * 1000;
 
     let enviados = 0;
     for (const r of reservas) {
@@ -206,7 +219,15 @@ export class ReminderService {
         continue;
       }
 
-      const dInicio = new Date(r.fecha_inicio);
+      const matchReal = notas.match(regexHorarioReal);
+      const fechaInicioRealIso =
+        matchReal && matchReal[1] && !isNaN(new Date(matchReal[1].trim()).getTime())
+          ? matchReal[1].trim()
+          : r.fecha_inicio;
+      const dInicio = new Date(fechaInicioRealIso);
+      if (dInicio.getTime() < minVentanaMs || dInicio.getTime() > maxVentanaMs) {
+        continue;
+      }
       const fechaCitaCol = this.obtenerFechaCol(dInicio);
 
       // Solo aplica si la cita ocurre HOY en Colombia

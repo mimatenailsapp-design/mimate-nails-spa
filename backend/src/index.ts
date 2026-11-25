@@ -1549,24 +1549,25 @@ app.patch('/api/reservas/:id/aprobar-anticipo', requireAdminAuth, async (req: Re
       notas_admin: notas_admin || 'Aprobado desde Visor Web',
     });
 
+    const reservaHidratada = hidratarHorarioRealReserva(reserva);
     const cliente = reserva.clientes as any;
     const cancha = reserva.canchas as any;
     const complejo = cancha?.complejos as any;
 
     if (cliente?.telefono_wa) {
-      const fechaFmt = new Date(reserva.fecha_inicio).toLocaleDateString('es-CO', {
+      const fechaFmt = new Date(reservaHidratada.fecha_inicio).toLocaleDateString('es-CO', {
         weekday: 'long',
         year: 'numeric',
         month: 'long',
         day: 'numeric',
         timeZone: 'America/Bogota',
       });
-      const horaInicio = new Date(reserva.fecha_inicio).toLocaleTimeString('es-CO', {
+      const horaInicio = new Date(reservaHidratada.fecha_inicio).toLocaleTimeString('es-CO', {
         hour: 'numeric',
         minute: '2-digit',
         timeZone: 'America/Bogota',
       });
-      const horaFin = new Date(reserva.fecha_fin).toLocaleTimeString('es-CO', {
+      const horaFin = new Date(reservaHidratada.fecha_fin).toLocaleTimeString('es-CO', {
         hour: 'numeric',
         minute: '2-digit',
         timeZone: 'America/Bogota',
@@ -1591,7 +1592,8 @@ app.patch('/api/reservas/:id/aprobar-anticipo', requireAdminAuth, async (req: Re
       );
     }
 
-    res.json({ success: true, reserva: reservaActualizada });
+    notificarCambioReservas('UPDATE', { id });
+    res.json({ success: true, reserva: hidratarHorarioRealReserva(reservaActualizada) });
   } catch (error: any) {
     console.error('Error aprobando anticipo:', error);
     res.status(500).json({ error: error.message });
@@ -1650,7 +1652,8 @@ app.patch('/api/reservas/:id/rechazar-anticipo', requireAdminAuth, async (req: R
       );
     }
 
-    res.json({ success: true, reserva: reservaActualizada });
+    notificarCambioReservas('UPDATE', { id });
+    res.json({ success: true, reserva: hidratarHorarioRealReserva(reservaActualizada) });
   } catch (error: any) {
     console.error('Error rechazando anticipo:', error);
     res.status(500).json({ error: error.message });

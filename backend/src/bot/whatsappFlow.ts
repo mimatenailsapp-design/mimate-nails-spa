@@ -69,6 +69,24 @@ interface UserSession {
 }
 
 const sesiones: Map<string, UserSession> = new Map();
+const REGEX_HORARIO_REAL_WA = /\[HORARIO_REAL:([^|\]]+)\|([^\]]+)\]/i;
+
+function hidratarHorarioRealWa<T extends { fecha_inicio?: string; fecha_fin?: string; notas?: string | null }>(r: T): T {
+  if (!r) return r;
+  const match = (r.notas || '').match(REGEX_HORARIO_REAL_WA);
+  if (match && match[1] && match[2]) {
+    const iniMs = new Date(match[1].trim()).getTime();
+    const finMs = new Date(match[2].trim()).getTime();
+    if (!isNaN(iniMs) && !isNaN(finMs) && finMs > iniMs) {
+      return {
+        ...r,
+        fecha_inicio: new Date(iniMs).toISOString(),
+        fecha_fin: new Date(finMs).toISOString(),
+      };
+    }
+  }
+  return r;
+}
 
 export class WhatsAppFlow {
   /**
@@ -1344,7 +1362,7 @@ export class WhatsAppFlow {
       }
 
       if (reservas && reservas.length > 0) {
-        reservaTarget = reservas[0];
+        reservaTarget = hidratarHorarioRealWa(reservas[0]);
         session.reservaId = reservaTarget.id;
       }
     }
@@ -1357,7 +1375,7 @@ export class WhatsAppFlow {
         .eq('id', session.reservaId)
         .eq('estado', 'pendiente_pago')
         .maybeSingle();
-      if (data) reservaTarget = data;
+      if (data) reservaTarget = hidratarHorarioRealWa(data);
     }
 
     // Si no tiene reserva pendiente y no envió multimedia, continuar el flujo normal
@@ -1920,6 +1938,7 @@ export class WhatsAppFlow {
     const cancha = reserva.canchas as any;
     const complejoRes = cancha?.complejos as any || complejo;
     const esSpa = complejoRes?.slug === 'mimate-nails' || complejoRes?.tipo_negocio === 'belleza_unas';
+    reserva = hidratarHorarioRealWa(reserva);
 
     const fechaCita = new Date(reserva.fecha_inicio).toLocaleDateString('es-CO', {
       timeZone: 'America/Bogota',

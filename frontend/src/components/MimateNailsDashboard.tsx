@@ -274,35 +274,22 @@ export function calcularHorasTimeline(horaApertura: string = '08:00', horaCierre
 
 const ALTURA_HORA_PX = 88;
 
-// Funciones para calcular la hora en Colombia (America/Bogota, UTC-5)
+// Funciones para calcular la hora en Colombia (America/Bogota, UTC-5 fijo todo el año)
 function obtenerHoraMinutosBogota(isoStr: string): string {
   try {
     const d = new Date(isoStr);
     if (isNaN(d.getTime())) return '08:00';
-    return d.toLocaleTimeString('es-CO', {
-      timeZone: 'America/Bogota',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    });
+    const bogota = new Date(d.getTime() - 5 * 60 * 60 * 1000);
+    return bogota.toISOString().slice(11, 16);
   } catch {
     return '08:00';
   }
 }
 
-
-
-// Minutos desde la apertura en Colombia (por defecto horaBaseApertura = 8:00 AM)
+// Minutos desde la hora base del timeline en Colombia
 function obtenerMinutosDesdeAperturaBogota(isoStr: string, horaBaseApertura: number = 8): number {
   try {
-    const d = new Date(isoStr);
-    if (isNaN(d.getTime())) return 0;
-    const horaStr = d.toLocaleTimeString('es-CO', {
-      timeZone: 'America/Bogota',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    });
+    const horaStr = obtenerHoraMinutosBogota(isoStr);
     const [h, m] = horaStr.split(':').map((n) => parseInt(n, 10));
     return (h - horaBaseApertura) * 60 + m;
   } catch {
@@ -1116,6 +1103,16 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     }
     return baseHoras;
   }, [configAnticipo.horaApertura, configAnticipo.horaCierre, reservas]);
+
+  // Hora inicial y final real del eje lateral renderizado (garantiza que bloques, línea actual y arrastre coincidan 1:1 con la columna lateral)
+  const horaBaseTimeline = useMemo(
+    () => horasTimeline[0] ?? (parseInt((configAnticipo.horaApertura || '08:00').split(':')[0], 10) || 8),
+    [horasTimeline, configAnticipo.horaApertura]
+  );
+  const horaMaxTimeline = useMemo(
+    () => horasTimeline[horasTimeline.length - 1] ?? (parseInt((configAnticipo.horaCierre || '19:00').split(':')[0], 10) || 19),
+    [horasTimeline, configAnticipo.horaCierre]
+  );
 
   // Horas libres y con traslape parcial permitido para el modal de Agendar Cita
   // (Exclusivo para Admin y Especialistas; las clientas nunca pueden solapar citas)
@@ -1939,7 +1936,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     targetMinInicio: number,
     duracionMinutos: number
   ): { esValido: boolean; motivoInvalido: string | null; esTraslapeParcial?: boolean } => {
-    const horaAperturaNum = parseInt((configAnticipo.horaApertura || '08:00').split(':')[0], 10) || 8;
+    const horaAperturaNum = horaBaseTimeline;
     const horaInicioStr = formatearMinutosAHHMM(horaAperturaNum, targetMinInicio);
     const slotStartMs = new Date(`${targetFechaIso}T${horaInicioStr}:00-05:00`).getTime();
     const slotEndMs = slotStartMs + duracionMinutos * 60 * 1000;
@@ -1954,13 +1951,6 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     // 2. Fecha u hora ya pasada
     if (targetFechaIso < hoyStr || slotStartMs <= Date.now()) {
       return { esValido: false, motivoInvalido: 'Horario ya pasado' };
-    }
-
-    // 3. El inicio no puede ser igual o posterior a la hora de cierre del spa (el fin sí puede extenderse más allá del cierre para Admin/Especialistas)
-    const cierreStr = (configAnticipo.horaCierre || '19:00').slice(0, 5);
-    const horaCierreMs = new Date(`${targetFechaIso}T${cierreStr}:00-05:00`).getTime();
-    if (slotStartMs >= horaCierreMs) {
-      return { esValido: false, motivoInvalido: 'Inicia después del cierre' };
     }
 
     // 4. Evaluar traslape parcial con citas activas de la misma especialista
@@ -2012,7 +2002,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     if (isMovingCitaRef.current) return;
     isMovingCitaRef.current = true;
 
-    const horaAperturaNum = parseInt((configAnticipo.horaApertura || '08:00').split(':')[0], 10) || 8;
+    const horaAperturaNum = horaBaseTimeline;
     const horaInicioNueva = formatearMinutosAHHMM(horaAperturaNum, drag.targetMinInicio);
     const dInicio = new Date(`${drag.targetFechaIso}T${horaInicioNueva}:00-05:00`);
     const dFin = new Date(dInicio.getTime() + drag.duracionMinutos * 60 * 1000);
@@ -2211,11 +2201,9 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       targetFechaIso = targetDia.fechaIso;
     }
 
-    const horaAperturaNum = parseInt((configAnticipo.horaApertura || '08:00').split(':')[0], 10) || 8;
-    const horaCierreNum = parseInt((configAnticipo.horaCierre || '19:00').split(':')[0], 10) || 19;
-    const cierreParts = (configAnticipo.horaCierre || '19:00').slice(0, 5).split(':').map(Number);
-    const cierreMinTotal = (isNaN(cierreParts[0]) ? horaCierreNum : cierreParts[0]) * 60 + (isNaN(cierreParts[1]) ? 0 : cierreParts[1]);
-    const maxMinPermitidos = Math.max(0, cierreMinTotal - horaAperturaNum * 60 - 15);
+    const horaAperturaNum = horaBaseTimeline;
+    const finTimelineMinTotal = Math.min(24 * 60, (horaMaxTimeline + 1) * 60);
+    const maxMinPermitidos = Math.max(0, finTimelineMinTotal - horaAperturaNum * 60 - 15);
     const maxRawTopPx = Math.max(0, (maxMinPermitidos / 60) * ALTURA_HORA_PX);
 
     const rawTopUnclamped = clientY - gridRect.top - info.grabOffsetY;
@@ -2504,7 +2492,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     const cardEl = e.currentTarget;
     const cardRect = cardEl.getBoundingClientRect();
     const grabOffsetY = Math.max(8, Math.min(cardRect.height - 8, e.clientY - cardRect.top));
-    const horaAperturaNum = parseInt((configAnticipo.horaApertura || '08:00').split(':')[0], 10) || 8;
+    const horaAperturaNum = horaBaseTimeline;
     const minInicioOriginal = Math.max(
       0,
       obtenerMinutosDesdeAperturaBogota(cita.fecha_inicio, horaAperturaNum)
@@ -3672,21 +3660,15 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     const fechaActualTimeline = fechaParam || fechaSeleccionada;
     const fechaTextoTimeline = fechaLegibleParam || fechaLegible;
     const esHoy = fechaActualTimeline === hoyStr;
-    const horaActualNum = ahora.getHours();
-    const minutosActuales = ahora.getMinutes();
-    const horaAperturaNum = parseInt((configAnticipo.horaApertura || '08:00').split(':')[0], 10) || 8;
-    const horaCierreNum = parseInt((configAnticipo.horaCierre || '19:00').split(':')[0], 10) || 19;
+    const [horaActualNum, minutosActuales] = obtenerHoraMinutosBogota(ahora.toISOString())
+      .split(':')
+      .map((n) => parseInt(n, 10));
+    const horaAperturaNum = horaBaseTimeline;
+    const horaCierreNum = horaMaxTimeline;
     const estaEnHorario = horaActualNum >= horaAperturaNum && horaActualNum <= horaCierreNum;
     const minutosDesdeApertura = (horaActualNum - horaAperturaNum) * 60 + minutosActuales;
     const posicionYLinea = (minutosDesdeApertura / 60) * ALTURA_HORA_PX;
-    const horaMinutosActualStr = formatearHora12(
-      ahora.toLocaleTimeString('es-CO', {
-        timeZone: 'America/Bogota',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-      })
-    );
+    const horaMinutosActualStr = formatearHora12(obtenerHoraMinutosBogota(ahora.toISOString()));
 
     const ALTURA_TOTAL_TIMELINE = horasTimeline.length * ALTURA_HORA_PX;
     const citasVisibles = citasManicurista.filter((r) => r.estado !== 'cancelada');
@@ -4225,21 +4207,15 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     const icono =
       especialistaIdActual && especialistaIdActual !== 'todas' ? '💅' : '👑';
 
-    const horaActualNum = ahora.getHours();
-    const minutosActuales = ahora.getMinutes();
-    const horaAperturaNum = parseInt((configAnticipo.horaApertura || '08:00').split(':')[0], 10) || 8;
-    const horaCierreNum = parseInt((configAnticipo.horaCierre || '19:00').split(':')[0], 10) || 19;
+    const [horaActualNum, minutosActuales] = obtenerHoraMinutosBogota(ahora.toISOString())
+      .split(':')
+      .map((n) => parseInt(n, 10));
+    const horaAperturaNum = horaBaseTimeline;
+    const horaCierreNum = horaMaxTimeline;
     const estaEnHorario = horaActualNum >= horaAperturaNum && horaActualNum <= horaCierreNum;
     const minutosDesdeApertura = (horaActualNum - horaAperturaNum) * 60 + minutosActuales;
     const posicionYLinea = (minutosDesdeApertura / 60) * ALTURA_HORA_PX;
-    const horaMinutosActualStr = formatearHora12(
-      ahora.toLocaleTimeString('es-CO', {
-        timeZone: 'America/Bogota',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-      })
-    );
+    const horaMinutosActualStr = formatearHora12(obtenerHoraMinutosBogota(ahora.toISOString()));
     const esSemanaActual = diasDeLaSemana.some((d) => d.esHoy);
     const ALTURA_TOTAL_TIMELINE = horasTimeline.length * ALTURA_HORA_PX;
     const ahoraMs = ahora.getTime();
