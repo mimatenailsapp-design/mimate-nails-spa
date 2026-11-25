@@ -1117,9 +1117,11 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
     return baseHoras;
   }, [configAnticipo.horaApertura, configAnticipo.horaCierre, reservas]);
 
-  // Horas libres para el modal de Agendar Cita (Admin y Especialistas pueden agendar libremente en cualquier horario)
-  const horasDisponiblesAgendarAdmin = useMemo(() => {
-    if (!agendarFecha || !agendarManicuristaId) return [];
+  // Horas libres y con traslape parcial permitido para el modal de Agendar Cita
+  // (Exclusivo para Admin y Especialistas; las clientas nunca pueden solapar citas)
+  const { horasDisponiblesAgendarAdmin, horasConTraslapeAdmin } = useMemo(() => {
+    const vacio = { horasDisponiblesAgendarAdmin: [] as string[], horasConTraslapeAdmin: new Set<string>() };
+    if (!agendarFecha || !agendarManicuristaId) return vacio;
 
     const duracionMinutos = duracionTotalAdmin;
     const ahoraMs = Date.now();
@@ -1146,13 +1148,21 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       return fCita === agendarFecha;
     });
 
-    // Añadir puntos de inicio candidatos donde terminan citas previas de esa manicurista
+    // Añadir puntos de inicio candidatos donde terminan citas previas (y 30 min antes del fin para traslape parcial)
     for (const r of reservasMani) {
       if (r.fecha_fin) {
         try {
           const hhmmFin = obtenerHoraMinutosBogota(r.fecha_fin);
           if (/^\d{2}:\d{2}$/.test(hhmmFin)) {
             candidatosSet.add(hhmmFin);
+          }
+          const finMenos30 = new Date(new Date(r.fecha_fin).getTime() - 30 * 60 * 1000);
+          const fechaFinMenos30 = finMenos30.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+          if (fechaFinMenos30 === agendarFecha) {
+            const hhmmTraslape = obtenerHoraMinutosBogota(finMenos30.toISOString());
+            if (/^\d{2}:\d{2}$/.test(hhmmTraslape)) {
+              candidatosSet.add(hhmmTraslape);
+            }
           }
         } catch {
           // Ignorar
@@ -1162,6 +1172,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
     const candidatosOrdenados = Array.from(candidatosSet).sort();
     const libres: string[] = [];
+    const conTraslape = new Set<string>();
 
     for (const h of candidatosOrdenados) {
       const slotStartMs = new Date(`${agendarFecha}T${h}:00-05:00`).getTime();
@@ -1177,19 +1188,60 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
         continue;
       }
 
-      // 2. Validar si solapa con alguna reserva activa o bloqueada existente de esta manicurista
-      const colisiona = reservasMani.some((r) => {
+      // 2. Evaluar colisiones y traslape parcial permitido (solo admin / especialistas)
+      const solapadas = reservasMani.filter((r) => {
         const rStart = new Date(r.fecha_inicio).getTime();
         const rEnd = new Date(r.fecha_fin).getTime();
         return rStart < slotEndMs && rEnd > slotStartMs;
       });
 
-      if (!colisiona) {
+      if (solapadas.length === 0) {
         libres.push(h);
+        continue;
+      }
+
+      // Solo se permite traslapar parcialmente con 1 cita activa (nunca bloqueos ni traslape múltiple)
+      if (solapadas.length > 1 || solapadas.some((r) => r.estado === 'bloqueada')) {
+        continue;
+      }
+
+      const otra = solapadas[0];
+      const oStart = new Date(otra.fecha_inicio).getTime();
+      const oEnd = new Date(otra.fecha_fin).getTime();
+
+      // Prohibir traslape completo o igual inicio/fin
+      if (
+        slotStartMs === oStart ||
+        slotEndMs === oEnd ||
+        (slotStartMs >= oStart && slotEndMs <= oEnd) ||
+        (oStart >= slotStartMs && oEnd <= slotEndMs)
+      ) {
+        continue;
+      }
+
+      const overlapMs = Math.min(slotEndMs, oEnd) - Math.max(slotStartMs, oStart);
+      const restanteNuevaMs = slotEndMs - slotStartMs - overlapMs;
+      const restanteOtraMs = oEnd - oStart - overlapMs;
+      if (restanteNuevaMs < MIN_NO_TRASLAPE_MS || restanteOtraMs < MIN_NO_TRASLAPE_MS) {
+        continue;
+      }
+
+      // Verificar que exista sub-intervalo de BD libre sin afectar otras citas
+      const persistenciaOk = calcularPersistenciaTraslapeFallback({
+        idReserva: '__nueva_preview__',
+        canchaId: agendarManicuristaId,
+        dInicio: new Date(slotStartMs),
+        dFin: new Date(slotEndMs),
+        todasReservas: reservasMani,
+      });
+
+      if (persistenciaOk) {
+        libres.push(h);
+        conTraslape.add(h);
       }
     }
 
-    return libres;
+    return { horasDisponiblesAgendarAdmin: libres, horasConTraslapeAdmin: conTraslape };
   }, [reservas, agendarFecha, agendarManicuristaId, duracionTotalAdmin, hoyStr]);
 
   // Si cambia la manicurista, el servicio o la fecha en el modal de agendar, ajustar a una hora disponible
@@ -1201,16 +1253,18 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
             const [hh, mm] = hStr.split(':').map(Number);
             return (isNaN(hh) ? 0 : hh) * 60 + (isNaN(mm) ? 0 : mm);
           };
+          const sinTraslape = horasDisponiblesAgendarAdmin.filter((h) => !horasConTraslapeAdmin.has(h));
+          const poolPreferido = sinTraslape.length > 0 ? sinTraslape : horasDisponiblesAgendarAdmin;
           const referenciaHora =
             agendarHora && agendarHora.includes(':')
               ? agendarHora
               : (configAnticipo.horaApertura || '09:00');
           const targetMin = parseMin(referenciaHora);
-          const posterior = horasDisponiblesAgendarAdmin.find((h) => parseMin(h) >= targetMin);
+          const posterior = poolPreferido.find((h) => parseMin(h) >= targetMin);
           if (posterior) {
             setAgendarHora(posterior);
           } else {
-            const masCercana = [...horasDisponiblesAgendarAdmin].sort(
+            const masCercana = [...poolPreferido].sort(
               (a, b) => Math.abs(parseMin(a) - targetMin) - Math.abs(parseMin(b) - targetMin)
             )[0];
             setAgendarHora(masCercana);
@@ -1220,7 +1274,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
         setAgendarHora('');
       }
     }
-  }, [modalAgendarAbierto, agendarFecha, agendarManicuristaId, duracionTotalAdmin, horasDisponiblesAgendarAdmin, configAnticipo.horaApertura]);
+  }, [modalAgendarAbierto, agendarFecha, agendarManicuristaId, duracionTotalAdmin, horasDisponiblesAgendarAdmin, horasConTraslapeAdmin, configAnticipo.horaApertura]);
 
   // Horas ya ocupadas o bloqueadas para el modal de Bloquear Horario
   const horasYaOcupadasBloqueo = useMemo(() => {
@@ -2891,16 +2945,35 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
         const dInicio = new Date(`${agendarFecha}T${agendarHora}:00-05:00`);
         const dFin = new Date(dInicio.getTime() + (Number(duracionTotalAdmin) || 60) * 60 * 1000);
         const autor = perfilActual ? (perfilActual.alias || perfilActual.nombre) : 'Personal';
+        const canchaDestinoId = agendarManicuristaId || canchas[0]?.id;
+        const notasBase = `💅 Servicio: ${nombreServiciosAdmin} | Duración: ${duracionTotalAdmin} min | Clienta: ${agendarNombre.trim()} | Agendado en cabina por: ${autor}${(dInicio.getTime() - Date.now() >= 24 * 60 * 60 * 1000 && agendarFecha !== hoyStr) ? ' [POR_CONFIRMAR_CLIENTA]' : ''}`;
+
+        const persistenciaFallback = canchaDestinoId
+          ? calcularPersistenciaTraslapeFallback({
+              idReserva: '__nueva_fallback__',
+              canchaId: canchaDestinoId,
+              dInicio,
+              dFin,
+              notasActuales: notasBase,
+              todasReservas: reservas,
+            })
+          : null;
+
+        if (canchaDestinoId && !persistenciaFallback) {
+          setErrorAgendar('No queda espacio disponible para ubicar este traslape sin afectar otra cita.');
+          setGuardandoCita(false);
+          return;
+        }
 
         const { error: sbErr } = await supabase.from('reservas').insert({
-          cancha_id: agendarManicuristaId || canchas[0]?.id,
+          cancha_id: canchaDestinoId,
           cliente_id: clienteId,
-          fecha_inicio: dInicio.toISOString(),
-          fecha_fin: dFin.toISOString(),
+          fecha_inicio: persistenciaFallback ? persistenciaFallback.dbFechaInicio : dInicio.toISOString(),
+          fecha_fin: persistenciaFallback ? persistenciaFallback.dbFechaFin : dFin.toISOString(),
           valor_total: precioTotalAdmin,
           valor_anticipo_requerido: 0,
           estado: 'confirmada',
-          notas: `💅 Servicio: ${nombreServiciosAdmin} | Duración: ${duracionTotalAdmin} min | Clienta: ${agendarNombre.trim()} | Agendado en cabina por: ${autor}${(dInicio.getTime() - Date.now() >= 24 * 60 * 60 * 1000 && agendarFecha !== hoyStr) ? ' [POR_CONFIRMAR_CLIENTA]' : ''}`,
+          notas: persistenciaFallback ? persistenciaFallback.notasFinal : notasBase,
         });
 
         if (sbErr) {
@@ -6068,6 +6141,7 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
         menuHoraAbierto={menuHoraAbierto}
         setMenuHoraAbierto={setMenuHoraAbierto}
         horasDisponiblesAgendarAdmin={horasDisponiblesAgendarAdmin}
+        horasConTraslapeAdmin={horasConTraslapeAdmin}
         agendarNombre={agendarNombre}
         setAgendarNombre={setAgendarNombre}
         agendarTelefono={agendarTelefono}

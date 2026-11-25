@@ -2307,7 +2307,7 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
     const finVentanaRes = new Date(dFin.getTime() + 12 * 60 * 60 * 1000).toISOString();
     const { data: reservasVentana } = await supabase
       .from('reservas')
-      .select('id, cancha_id, fecha_inicio, fecha_fin, notas')
+      .select('id, cancha_id, fecha_inicio, fecha_fin, estado, notas')
       .in('cancha_id', listaEmpleadas.map(e => e.id))
       .neq('estado', 'cancelada')
       .gte('fecha_inicio', inicioVentanaRes)
@@ -2326,12 +2326,43 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
       .map(r => r.cancha_id);
 
     let empleadaAsignada: any;
+    let dbFechaInicioInsert = dInicio.toISOString();
+    let dbFechaFinInsert = dFin.toISOString();
+    let requiereTagHorarioReal = false;
+    let esTraslapeParcial = false;
 
     if (cancha_id) {
       if (ocupadasIds.includes(cancha_id)) {
-        return res.status(409).json({
-          error: 'La manicurista seleccionada ya tiene una cita agendada en este horario. Por favor elige otra hora o especialista.',
+        // Solo personal autenticado del panel (admin / especialistas) puede agendar con traslape parcial.
+        // Para clientas normales (origenReal !== 'panel') queda estrictamente prohibido cualquier solapamiento.
+        if (origenReal !== 'panel') {
+          return res.status(409).json({
+            error: 'La manicurista seleccionada ya tiene una cita agendada en este horario. Por favor elige otra hora o especialista.',
+          });
+        }
+
+        const otrasCancha = (reservasVentana || []).filter(
+          (r) => r.cancha_id === cancha_id && (!reagendar_reserva_id || r.id !== reagendar_reserva_id)
+        );
+        const validacionTraslape = validarYCalcularPersistenciaTraslape({
+          idReserva: reagendar_reserva_id || '__nueva_reserva__',
+          dInicio,
+          dFin,
+          notasActuales: '',
+          otrasReservas: otrasCancha,
         });
+
+        if (!validacionTraslape.valido) {
+          return res.status(409).json({
+            error: validacionTraslape.error,
+          });
+        }
+
+        dbFechaInicioInsert = validacionTraslape.dbFechaInicio;
+        dbFechaFinInsert = validacionTraslape.dbFechaFin;
+        esTraslapeParcial = validacionTraslape.esTraslapeParcial;
+        requiereTagHorarioReal =
+          dbFechaInicioInsert !== dInicio.toISOString() || dbFechaFinInsert !== dFin.toISOString();
       }
       empleadaAsignada = enriquecerCancha(listaEmpleadas.find(e => e.id === cancha_id));
       if (!empleadaAsignada) {
@@ -2489,13 +2520,17 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
       notas += ' | [Datos Ley 1581 Aceptados]';
     }
 
+    if (requiereTagHorarioReal) {
+      notas += ` | [HORARIO_REAL:${dInicio.toISOString()}|${dFin.toISOString()}]`;
+    }
+
     const { data: reserva, error: errRes } = await supabase
       .from('reservas')
       .insert({
         cancha_id: empleadaAsignada.id,
         cliente_id: cliente.id,
-        fecha_inicio: dInicio.toISOString(),
-        fecha_fin: dFin.toISOString(),
+        fecha_inicio: dbFechaInicioInsert,
+        fecha_fin: dbFechaFinInsert,
         valor_total: numPrecio,
         valor_anticipo_requerido: anticipoCalculado,
         estado: estadoInicial,
@@ -2673,7 +2708,8 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
 
     res.status(201).json({
       success: true,
-      reserva,
+      reserva: hidratarHorarioRealReserva(reserva),
+      esTraslapeParcial,
       empleada: empleadaAsignada.nombre,
       waEnviado,
       voucher: voucherWhatsApp,

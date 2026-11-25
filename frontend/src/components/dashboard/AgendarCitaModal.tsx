@@ -89,6 +89,7 @@ export interface AgendarCitaModalProps {
   menuHoraAbierto: boolean;
   setMenuHoraAbierto: (open: boolean) => void;
   horasDisponiblesAgendarAdmin: string[];
+  horasConTraslapeAdmin?: Set<string>;
   agendarNombre: string;
   setAgendarNombre: (n: string) => void;
   agendarTelefono: string;
@@ -124,6 +125,7 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
   menuHoraAbierto,
   setMenuHoraAbierto,
   horasDisponiblesAgendarAdmin,
+  horasConTraslapeAdmin,
   agendarNombre,
   setAgendarNombre,
   agendarTelefono,
@@ -634,6 +636,11 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                     <span className="flex items-center gap-1.5 font-mono text-[#8C243B]">
                       <IconClock className="w-4 h-4 text-[#C74B66]" />
                       {agendarHora ? formatearHora12(agendarHora) : 'Seleccionar turno disponible'}
+                      {agendarHora && horasConTraslapeAdmin?.has(agendarHora) && (
+                        <span className="ml-1 font-sans text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800 border border-amber-300">
+                          Traslape parcial
+                        </span>
+                      )}
                     </span>
                     <IconChevronDown
                       className={`w-4 h-4 text-[#8C243B] transition-transform ${
@@ -659,6 +666,7 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                         ) : (
                           horasDisponiblesAgendarAdmin.map((h) => {
                             const estaSel = h === agendarHora;
+                            const esTraslape = Boolean(horasConTraslapeAdmin?.has(h));
                             return (
                               <div
                                 key={h}
@@ -669,10 +677,19 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                                 className={`px-2.5 py-1.5 rounded-lg flex items-center justify-between cursor-pointer font-mono text-xs transition ${
                                   estaSel
                                     ? 'bg-[#FCE8EF] text-[#8C243B] font-bold'
+                                    : esTraslape
+                                    ? 'hover:bg-amber-50 text-[#2D2529]'
                                     : 'hover:bg-[#FFF5F7] text-[#2D2529]'
                                 }`}
                               >
-                                <span>{formatearHora12(h)}</span>
+                                <span className="flex items-center gap-2">
+                                  <span>{formatearHora12(h)}</span>
+                                  {esTraslape && (
+                                    <span className="font-sans text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800 border border-amber-200">
+                                      Traslape
+                                    </span>
+                                  )}
+                                </span>
                                 {estaSel && <IconCheck className="w-3.5 h-3.5 text-[#8C243B]" />}
                               </div>
                             );
