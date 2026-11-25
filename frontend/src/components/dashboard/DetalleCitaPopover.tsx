@@ -1,11 +1,5 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { formatearHora12, formatearRangoHoras12 } from '../../utils/formatoHora';
-
-/** Cita agendada desde el panel que aún espera la confirmación de la clienta por el recordatorio de WhatsApp. */
-export function esPorConfirmar(cita: { estado?: string; notas?: string | null }): boolean {
-  const n = cita.notas || '';
-  return cita.estado === 'confirmada' && n.includes('[POR_CONFIRMAR_CLIENTA]') && !n.includes('[CONFIRMADA_POR_CLIENTA]');
-}
 import {
   IconClock,
   IconBrandWhatsapp,
@@ -14,7 +8,23 @@ import {
   IconLockOpen,
   IconPlus,
   IconTrash,
+  IconPencil,
+  IconLoader2,
+  IconChevronDown,
 } from '@tabler/icons-react';
+
+/** Cita agendada desde el panel que aún espera la confirmación de la clienta por el recordatorio de WhatsApp. */
+export function esPorConfirmar(cita: { estado?: string; notas?: string | null }): boolean {
+  const n = cita.notas || '';
+  return cita.estado === 'confirmada' && n.includes('[POR_CONFIRMAR_CLIENTA]') && !n.includes('[CONFIRMADA_POR_CLIENTA]');
+}
+
+export interface OpcionHorarioCita {
+  horaInicio: string;
+  horaFin: string;
+  esActual: boolean;
+  esTraslapeParcial: boolean;
+}
 
 // Función auxiliar para extraer adicionales de las notas de la cita
 export function extraerAdicionalesCita(notas?: string): number[] {
@@ -87,6 +97,9 @@ export interface DetalleCitaPopoverProps {
   onClose: () => void;
   onAbrirModalAdicional?: (cita: any) => void;
   onEliminarAdicional?: (cita: any) => void;
+  obtenerHorariosDisponiblesCita?: (cita: any) => OpcionHorarioCita[];
+  onCambiarHoraCita?: (cita: any, nuevaHoraInicio: string) => Promise<void>;
+  onCambioModoEdicionHora?: (activo: boolean) => void;
 }
 
 export const DetalleCitaPopover: React.FC<DetalleCitaPopoverProps> = ({
@@ -110,7 +123,54 @@ export const DetalleCitaPopover: React.FC<DetalleCitaPopoverProps> = ({
   onClose,
   onAbrirModalAdicional,
   onEliminarAdicional,
+  obtenerHorariosDisponiblesCita,
+  onCambiarHoraCita,
+  onCambioModoEdicionHora,
 }) => {
+  const [editandoHora, setEditandoHora] = useState(false);
+  const [horaSeleccionada, setHoraSeleccionada] = useState('');
+  const [guardandoHora, setGuardandoHora] = useState(false);
+
+  useEffect(() => {
+    onCambioModoEdicionHora?.(Boolean(popoverCita && (editandoHora || guardandoHora)));
+    return () => {
+      onCambioModoEdicionHora?.(false);
+    };
+  }, [popoverCita, editandoHora, guardandoHora]);
+  const [errorHora, setErrorHora] = useState<string | null>(null);
+  const listaHorasRef = useRef<HTMLDivElement | null>(null);
+
+  const citaIdActual = popoverCita?.cita?.id || '';
+  const citaInicioActual = popoverCita?.cita?.fecha_inicio || '';
+
+  useEffect(() => {
+    setEditandoHora(false);
+    setGuardandoHora(false);
+    setErrorHora(null);
+    if (popoverCita?.cita?.fecha_inicio) {
+      setHoraSeleccionada(obtenerHoraMinutosBogota(popoverCita.cita.fecha_inicio));
+    }
+  }, [citaIdActual]);
+
+  useEffect(() => {
+    if (!editandoHora && popoverCita?.cita?.fecha_inicio) {
+      setHoraSeleccionada(obtenerHoraMinutosBogota(popoverCita.cita.fecha_inicio));
+    }
+  }, [citaInicioActual, editandoHora]);
+
+  useEffect(() => {
+    if (!editandoHora || !listaHorasRef.current) return;
+    const timer = requestAnimationFrame(() => {
+      const container = listaHorasRef.current;
+      if (!container) return;
+      const activo = container.querySelector('[data-hora-activa="true"]') as HTMLElement | null;
+      if (activo) {
+        container.scrollTop = Math.max(0, activo.offsetTop - container.clientHeight / 2 + activo.offsetHeight / 2);
+      }
+    });
+    return () => cancelAnimationFrame(timer);
+  }, [editandoHora]);
+
   if (!popoverCita) return null;
 
   const { cita, rect } = popoverCita;
@@ -126,20 +186,33 @@ export const DetalleCitaPopover: React.FC<DetalleCitaPopoverProps> = ({
   const puedeDesbloquear = esAdmin || (perfilActual?.canchaId === cita.cancha_id);
   const totalAdicionales = sumarAdicionalesCita(cita.notas);
 
-  const anchoPopover = 320;
-  const altoAprox = 320;
+  const ahoraMs = ahora.getTime();
+  const inicioMs = new Date(cita.fecha_inicio).getTime();
+  const finMs = cita.fecha_fin ? new Date(cita.fecha_fin).getTime() : inicioMs + 45 * 60000;
+  const puedeEditarHora =
+    !esBloqueada &&
+    cita.estado !== 'completada' &&
+    cita.estado !== 'cancelada' &&
+    finMs > ahoraMs &&
+    Boolean(onCambiarHoraCita && obtenerHorariosDisponiblesCita);
+
+  const opcionesHorario: OpcionHorarioCita[] =
+    editandoHora && obtenerHorariosDisponiblesCita ? obtenerHorariosDisponiblesCita(cita) : [];
+
+  const anchoPopover = 328;
+  const altoAprox = editandoHora ? 470 : 330;
   let posX = rect.right + 12;
   if (typeof window !== 'undefined' && posX + anchoPopover > window.innerWidth - 12) {
     posX = Math.max(12, rect.left - anchoPopover - 12);
+  }
+  if (typeof window !== 'undefined' && window.innerWidth < 360) {
+    posX = Math.max(8, (window.innerWidth - Math.min(anchoPopover, window.innerWidth - 16)) / 2);
   }
   let posY = rect.top;
   if (typeof window !== 'undefined' && posY + altoAprox > window.innerHeight - 12) {
     posY = Math.max(12, window.innerHeight - altoAprox - 12);
   }
 
-  const ahoraMs = ahora.getTime();
-  const inicioMs = new Date(cita.fecha_inicio).getTime();
-  const finMs = cita.fecha_fin ? new Date(cita.fecha_fin).getTime() : inicioMs + 45 * 60000;
   const estaEnAtencion =
     !esBloqueada &&
     cita.estado !== 'completada' &&
@@ -147,14 +220,35 @@ export const DetalleCitaPopover: React.FC<DetalleCitaPopoverProps> = ({
     ahoraMs >= inicioMs &&
     ahoraMs < finMs;
 
+  const handleGuardarNuevaHora = async () => {
+    if (!onCambiarHoraCita || !horaSeleccionada || horaSeleccionada === horaInicio) {
+      setEditandoHora(false);
+      return;
+    }
+    setGuardandoHora(true);
+    setErrorHora(null);
+    try {
+      await onCambiarHoraCita(cita, horaSeleccionada);
+      setEditandoHora(false);
+    } catch (err: any) {
+      setErrorHora(err?.message || 'No se pudo cambiar la hora de la cita.');
+    } finally {
+      setGuardandoHora(false);
+    }
+  };
+
   return (
     <div
-      className="fixed z-50 pointer-events-auto transition-all duration-150"
+      className="fixed z-50 pointer-events-auto transition-all duration-150 max-w-[calc(100vw-16px)]"
       style={{ left: `${posX}px`, top: `${posY}px`, width: `${anchoPopover}px` }}
       onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
+      onMouseLeave={() => {
+        if (!editandoHora && !guardandoHora) {
+          onMouseLeave();
+        }
+      }}
     >
-      <div className="bg-white rounded-2xl border-2 border-[#8C243B]/25 shadow-2xl overflow-hidden p-4 space-y-3 backdrop-blur-md ring-8 ring-black/5 animate-in fade-in zoom-in-95 duration-150">
+      <div className="bg-white rounded-2xl border-2 border-[#8C243B]/25 shadow-2xl overflow-y-auto max-h-[calc(100vh-24px)] p-4 space-y-3 backdrop-blur-md ring-8 ring-black/5 animate-in fade-in zoom-in-95 duration-150">
         {/* Cabecera del Popover */}
         <div className="flex items-start justify-between gap-2 border-b border-[#F2C4D2]/70 pb-2.5">
           <div className="flex items-center gap-2.5 min-w-0">
@@ -215,17 +309,167 @@ export const DetalleCitaPopover: React.FC<DetalleCitaPopoverProps> = ({
           </div>
         </div>
 
-        {/* Horario y Duración */}
-        <div className="bg-[#FFF5F7] rounded-xl p-2.5 border border-[#F2C4D2]/80 flex items-center justify-between text-xs">
-          <div className="flex items-center gap-2">
-            <IconClock className="w-4 h-4 text-[#C74B66]" />
-            <span className="font-mono font-bold text-[#8C243B]">
-              {formatearRangoHoras12(horaInicio, horaFin)}
+        {/* Horario y Duración (con edición directa de hora) */}
+        <div
+          className={`bg-[#FFF5F7] rounded-xl p-2.5 border transition-colors text-xs ${
+            editandoHora
+              ? 'border-[#8C243B]/60 ring-2 ring-[#FCE8EF]'
+              : puedeEditarHora
+              ? 'border-[#F2C4D2]/80 hover:border-[#C74B66] hover:bg-[#FCE8EF]/45'
+              : 'border-[#F2C4D2]/80'
+          }`}
+        >
+          <div
+            role={puedeEditarHora ? 'button' : undefined}
+            tabIndex={puedeEditarHora ? 0 : undefined}
+            onClick={() => {
+              if (!puedeEditarHora || guardandoHora) return;
+              setErrorHora(null);
+              setHoraSeleccionada(horaInicio);
+              setEditandoHora((prev) => !prev);
+            }}
+            onKeyDown={(e) => {
+              if (!puedeEditarHora || guardandoHora) return;
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setErrorHora(null);
+                setHoraSeleccionada(horaInicio);
+                setEditandoHora((prev) => !prev);
+              }
+            }}
+            className={`flex items-center justify-between gap-2 ${
+              puedeEditarHora ? 'cursor-pointer select-none' : ''
+            }`}
+            title={puedeEditarHora ? 'Clic para cambiar la hora de esta cita' : undefined}
+          >
+            <div className="flex items-center gap-1.5 min-w-0">
+              <IconClock className="w-4 h-4 text-[#C74B66] shrink-0" />
+              <span className="font-mono font-bold text-[#8C243B] truncate">
+                {formatearRangoHoras12(horaInicio, horaFin)}
+              </span>
+              {puedeEditarHora && (
+                <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-[#8C243B] bg-white/90 border border-[#F2C4D2] px-1.5 py-0.5 rounded-md shrink-0">
+                  {editandoHora ? (
+                    <IconChevronDown className="w-3 h-3 rotate-180 transition-transform" />
+                  ) : (
+                    <IconPencil className="w-3 h-3 text-[#C74B66]" />
+                  )}
+                </span>
+              )}
+            </div>
+            <span className="text-[11px] font-semibold text-[#7D6870] bg-white px-2 py-0.5 rounded-lg border border-[#F2C4D2] shrink-0">
+              {durMin} minutos
             </span>
           </div>
-          <span className="text-[11px] font-semibold text-[#7D6870] bg-white px-2 py-0.5 rounded-lg border border-[#F2C4D2]">
-            {durMin} minutos
-          </span>
+
+          {editandoHora && puedeEditarHora && (
+            <div className="mt-2.5 pt-2.5 border-t border-[#F2C4D2]/80 space-y-2">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="font-bold text-[#8C243B]">Selecciona nueva hora:</span>
+                <span className="text-[10px] text-[#7D6870]">Misma duración ({durMin} min)</span>
+              </div>
+
+              {opcionesHorario.length === 0 ? (
+                <div className="p-2 text-center text-[11px] text-[#8C243B] bg-white rounded-xl border border-[#F2C4D2]">
+                  No hay otros horarios disponibles en este día.
+                </div>
+              ) : (
+                <div
+                  ref={listaHorasRef}
+                  className="bg-white border border-[#F2C4D2] rounded-xl p-1 max-h-40 overflow-y-auto space-y-0.5 shadow-inner"
+                >
+                  {opcionesHorario.map((op) => {
+                    const seleccionada = op.horaInicio === horaSeleccionada;
+                    return (
+                      <button
+                        key={op.horaInicio}
+                        type="button"
+                        data-hora-activa={seleccionada ? 'true' : undefined}
+                        disabled={guardandoHora}
+                        onClick={() => {
+                          setHoraSeleccionada(op.horaInicio);
+                          setErrorHora(null);
+                        }}
+                        className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between text-left transition cursor-pointer ${
+                          seleccionada
+                            ? 'bg-[#8C243B] text-white font-bold shadow-2xs'
+                            : 'hover:bg-[#FFF5F7] text-[#2D2529]'
+                        }`}
+                      >
+                        <span className="font-mono text-[11px]">
+                          {formatearRangoHoras12(op.horaInicio, op.horaFin)}
+                        </span>
+                        <span className="flex items-center gap-1 shrink-0">
+                          {op.esActual && (
+                            <span
+                              className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full ${
+                                seleccionada
+                                  ? 'bg-white/20 text-white'
+                                  : 'bg-[#FCE8EF] text-[#8C243B]'
+                              }`}
+                            >
+                              Actual
+                            </span>
+                          )}
+                          {!op.esActual && op.esTraslapeParcial && (
+                            <span
+                              className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+                                seleccionada
+                                  ? 'bg-amber-300/25 text-amber-100'
+                                  : 'bg-amber-50 text-amber-800 border border-amber-200'
+                              }`}
+                            >
+                              Traslape
+                            </span>
+                          )}
+                          {seleccionada && <IconCheck className="w-3.5 h-3.5 shrink-0" />}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {errorHora && (
+                <p className="text-[11px] font-semibold text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-2 py-1">
+                  {errorHora}
+                </p>
+              )}
+
+              <div className="flex items-center gap-1.5 pt-0.5">
+                <button
+                  type="button"
+                  disabled={guardandoHora}
+                  onClick={() => {
+                    setEditandoHora(false);
+                    setErrorHora(null);
+                    setHoraSeleccionada(horaInicio);
+                  }}
+                  className="flex-1 py-1.5 rounded-lg bg-white hover:bg-slate-50 text-[#7D6870] border border-[#F2C4D2] text-[11px] font-bold transition cursor-pointer disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={guardandoHora || !horaSeleccionada || horaSeleccionada === horaInicio}
+                  onClick={handleGuardarNuevaHora}
+                  className="flex-1 py-1.5 rounded-lg bg-[#8C243B] hover:bg-[#721C30] text-white text-[11px] font-bold transition flex items-center justify-center gap-1 shadow-2xs cursor-pointer active:scale-95 disabled:opacity-45 disabled:cursor-not-allowed"
+                >
+                  {guardandoHora ? (
+                    <>
+                      <IconLoader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Guardando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <IconCheck className="w-3.5 h-3.5" />
+                      <span>Guardar hora</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Detalle del Servicio, Adicionales y Valor */}

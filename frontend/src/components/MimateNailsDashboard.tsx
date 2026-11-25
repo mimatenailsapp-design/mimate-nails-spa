@@ -45,7 +45,12 @@ import { ConfigAnticipoModal } from './dashboard/ConfigAnticipoModal';
 import { AgendarCitaModal } from './dashboard/AgendarCitaModal';
 import { SelectorFechaMimate, SelectorMesMimate } from './dashboard/SelectorFechaMimate';
 import { ExclusionesBotModal } from './dashboard/ExclusionesBotModal';
-import { DetalleCitaPopover, sumarAdicionalesCita, esPorConfirmar } from './dashboard/DetalleCitaPopover';
+import {
+  DetalleCitaPopover,
+  sumarAdicionalesCita,
+  esPorConfirmar,
+  type OpcionHorarioCita,
+} from './dashboard/DetalleCitaPopover';
 import { ModalAgregarAdicional } from './dashboard/ModalAgregarAdicional';
 import { WhatsAppVinculacionModal } from './dashboard/WhatsAppVinculacionModal';
 
@@ -534,9 +539,11 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   } | null>(null);
   const popoverTimeoutRef = useRef<any>(null);
   const popoverWrapperRef = useRef<HTMLDivElement | null>(null);
+  const popoverEditandoHoraRef = useRef<boolean>(false);
 
   const abrirPopoverDesdeElemento = (cita: Reserva, el: HTMLElement) => {
     if (popoverTimeoutRef.current) clearTimeout(popoverTimeoutRef.current);
+    popoverEditandoHoraRef.current = false;
     const r = el.getBoundingClientRect();
     setPopoverCita({
       cita,
@@ -552,11 +559,14 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
   };
 
   const abrirPopoverCita = (cita: Reserva, e: React.MouseEvent) => {
+    if (popoverEditandoHoraRef.current) return;
     abrirPopoverDesdeElemento(cita, e.currentTarget as HTMLElement);
   };
 
   const cerrarPopoverCita = () => {
+    if (popoverEditandoHoraRef.current) return;
     popoverTimeoutRef.current = setTimeout(() => {
+      if (popoverEditandoHoraRef.current) return;
       setPopoverCita(null);
     }, 200);
   };
@@ -2142,6 +2152,22 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
         sessionStorage.removeItem('mimate_bootstrap');
       } catch {}
 
+      if (popoverCita && popoverCita.cita.id === drag.cita.id) {
+        setPopoverCita((prev) =>
+          prev
+            ? {
+                ...prev,
+                cita: {
+                  ...prev.cita,
+                  fecha_inicio: nuevoInicioIso,
+                  fecha_fin: nuevoFinIso,
+                  valor_total: nuevoValorTotalOptimista,
+                },
+              }
+            : null
+        );
+      }
+
       mostrarNotificacionRealtime(
         drag.esTraslapeParcial
           ? `✨ Cita de ${nombreClienta} movida con traslape parcial (${formatearHora12(horaInicioNueva)} - ${formatearHora12(horaFinNueva)})`
@@ -2167,6 +2193,258 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       mostrarNotificacionRealtime(
         `⚠️ ${err?.message || 'No se pudo mover la cita. Se restauró su horario.'}`
       );
+    } finally {
+      isMovingCitaRef.current = false;
+    }
+  };
+
+  // Opciones de horario válidas en el mismo día para cambiar la hora directamente desde DetalleCitaPopover
+  const obtenerHorariosDisponiblesCitaPopover = (citaRef: Reserva): OpcionHorarioCita[] => {
+    if (!citaRef || !citaRef.fecha_inicio) return [];
+    const fechaCitaIso = obtenerFechaBogotaIso(citaRef.fecha_inicio);
+    if (fechaCitaIso < hoyStr || esDomingoCerradoIso(fechaCitaIso)) return [];
+
+    const duracionMinutos = obtenerDuracionMinutosCita(citaRef.fecha_inicio, citaRef.fecha_fin);
+    const horaActual = obtenerHoraMinutosBogota(citaRef.fecha_inicio);
+    const ahoraCheckMs = Date.now();
+
+    const [apH, apM] = (configAnticipo.horaApertura || '08:00').slice(0, 5).split(':').map(Number);
+    const [ciH, ciM] = (configAnticipo.horaCierre || '19:00').slice(0, 5).split(':').map(Number);
+    const minApertura = (isNaN(apH) ? 8 : apH) * 60 + (isNaN(apM) ? 0 : apM);
+    const minCierre = (isNaN(ciH) ? 19 : ciH) * 60 + (isNaN(ciM) ? 0 : ciM);
+    const cierreIsoStr = `${String(Math.floor(minCierre / 60)).padStart(2, '0')}:${String(minCierre % 60).padStart(2, '0')}`;
+    const horaCierreMs = new Date(`${fechaCitaIso}T${cierreIsoStr}:00-05:00`).getTime();
+
+    const candidatosSet = new Set<string>();
+    for (let m = minApertura; m < minCierre; m += 15) {
+      const hh = String(Math.floor(m / 60)).padStart(2, '0');
+      const mm = String(m % 60).padStart(2, '0');
+      candidatosSet.add(`${hh}:${mm}`);
+    }
+    if (horaActual && /^\d{2}:\d{2}$/.test(horaActual)) {
+      candidatosSet.add(horaActual);
+    }
+
+    const otrasCitasDia = reservas.filter((r) => {
+      if (r.id === citaRef.id || r.estado === 'cancelada' || r.cancha_id !== citaRef.cancha_id) return false;
+      if (!r.fecha_inicio) return false;
+      return obtenerFechaBogotaIso(r.fecha_inicio) === fechaCitaIso;
+    });
+
+    for (const r of otrasCitasDia) {
+      if (r.fecha_fin) {
+        const finHHMM = obtenerHoraMinutosBogota(r.fecha_fin);
+        if (/^\d{2}:\d{2}$/.test(finHHMM)) {
+          candidatosSet.add(finHHMM);
+        }
+      }
+    }
+
+    const candidatos = Array.from(candidatosSet).sort();
+    const opciones: OpcionHorarioCita[] = [];
+
+    for (const h of candidatos) {
+      const slotStartMs = new Date(`${fechaCitaIso}T${h}:00-05:00`).getTime();
+      const slotEndMs = slotStartMs + duracionMinutos * 60 * 1000;
+      const horaFinCalc = obtenerHoraMinutosBogota(new Date(slotEndMs).toISOString());
+
+      if (h === horaActual) {
+        opciones.push({
+          horaInicio: h,
+          horaFin: horaFinCalc,
+          esActual: true,
+          esTraslapeParcial: false,
+        });
+        continue;
+      }
+
+      if (slotStartMs <= ahoraCheckMs || slotStartMs >= horaCierreMs) {
+        continue;
+      }
+
+      const colisiones = reservas.filter((r) => {
+        if (r.id === citaRef.id || r.estado === 'cancelada' || r.cancha_id !== citaRef.cancha_id) return false;
+        if (!r.fecha_inicio) return false;
+        const rStart = new Date(r.fecha_inicio).getTime();
+        const rEnd = r.fecha_fin ? new Date(r.fecha_fin).getTime() : rStart + 45 * 60000;
+        return rStart < slotEndMs && rEnd > slotStartMs;
+      });
+
+      if (colisiones.length === 0) {
+        opciones.push({
+          horaInicio: h,
+          horaFin: horaFinCalc,
+          esActual: false,
+          esTraslapeParcial: false,
+        });
+        continue;
+      }
+
+      if (colisiones.length === 1 && colisiones[0].estado !== 'bloqueada') {
+        const otra = colisiones[0];
+        const oStart = new Date(otra.fecha_inicio).getTime();
+        const oEnd = otra.fecha_fin ? new Date(otra.fecha_fin).getTime() : oStart + 45 * 60000;
+        const sinContencion =
+          slotStartMs !== oStart &&
+          slotEndMs !== oEnd &&
+          !(slotStartMs >= oStart && slotEndMs <= oEnd) &&
+          !(oStart >= slotStartMs && oEnd <= slotEndMs);
+        const overlapMs = Math.min(slotEndMs, oEnd) - Math.max(slotStartMs, oStart);
+        const restanteMovidaMs = slotEndMs - slotStartMs - overlapMs;
+        const restanteOtraMs = oEnd - oStart - overlapMs;
+
+        if (sinContencion && restanteMovidaMs >= MIN_NO_TRASLAPE_MS && restanteOtraMs >= MIN_NO_TRASLAPE_MS) {
+          opciones.push({
+            horaInicio: h,
+            horaFin: horaFinCalc,
+            esActual: false,
+            esTraslapeParcial: true,
+          });
+        }
+      }
+    }
+
+    return opciones;
+  };
+
+  // Cambiar la hora de una cita directamente desde el Popover
+  const handleCambiarHoraCitaPopover = async (citaRef: Reserva, nuevaHoraInicio: string): Promise<void> => {
+    if (isMovingCitaRef.current) return;
+    isMovingCitaRef.current = true;
+
+    const fechaCitaIso = obtenerFechaBogotaIso(citaRef.fecha_inicio);
+    const duracionMinutos = obtenerDuracionMinutosCita(citaRef.fecha_inicio, citaRef.fecha_fin);
+    const dInicio = new Date(`${fechaCitaIso}T${nuevaHoraInicio}:00-05:00`);
+    const dFin = new Date(dInicio.getTime() + duracionMinutos * 60 * 1000);
+    const nuevoInicioIso = dInicio.toISOString();
+    const nuevoFinIso = dFin.toISOString();
+    const horaFinNueva = obtenerHoraMinutosBogota(nuevoFinIso);
+    const nombreClienta = obtenerNombreClienta(citaRef);
+
+    const estadoPrevio = {
+      fecha_inicio: citaRef.fecha_inicio,
+      fecha_fin: citaRef.fecha_fin,
+      db_fecha_inicio: citaRef.db_fecha_inicio,
+      db_fecha_fin: citaRef.db_fecha_fin,
+      valor_total: citaRef.valor_total,
+      notas: citaRef.notas,
+    };
+
+    // Actualización optimista en agenda y en el mismo popover abierto
+    setReservas((prev) =>
+      prev.map((r) =>
+        r.id === citaRef.id ? { ...r, fecha_inicio: nuevoInicioIso, fecha_fin: nuevoFinIso } : r
+      )
+    );
+    setPopoverCita((prev) =>
+      prev && prev.cita.id === citaRef.id
+        ? { ...prev, cita: { ...prev.cita, fecha_inicio: nuevoInicioIso, fecha_fin: nuevoFinIso } }
+        : prev
+    );
+
+    try {
+      let apiHandled = false;
+      try {
+        const res = await fetch(`/api/reservas/${citaRef.id}/horario`, {
+          method: 'PATCH',
+          headers: obtenerHeadersStaff({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({
+            fecha_inicio: nuevoInicioIso,
+            fecha_fin: nuevoFinIso,
+          }),
+        });
+
+        if (res.ok) {
+          apiHandled = true;
+          const payload = await res.json().catch(() => null);
+          if (payload?.reserva) {
+            const hydrated = hidratarHorarioRealReserva(payload.reserva);
+            setReservas((prev) =>
+              prev.map((r) => (r.id === citaRef.id ? { ...r, ...hydrated } : r))
+            );
+            setPopoverCita((prev) =>
+              prev && prev.cita.id === citaRef.id
+                ? { ...prev, cita: { ...prev.cita, ...hydrated } }
+                : prev
+            );
+          }
+        } else if (res.status === 400 || res.status === 404 || res.status === 409) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || 'No se pudo cambiar la hora de la cita.');
+        }
+      } catch (errApi: any) {
+        if (errApi instanceof Error && errApi.name !== 'TypeError') {
+          throw errApi;
+        }
+        console.warn('API /api/reservas/:id/horario offline, usando Supabase directo:', errApi);
+      }
+
+      if (!apiHandled) {
+        const persistencia = calcularPersistenciaTraslapeFallback({
+          idReserva: citaRef.id,
+          canchaId: citaRef.cancha_id,
+          dInicio,
+          dFin,
+          notasActuales: citaRef.notas,
+          todasReservas: reservas,
+        });
+
+        if (!persistencia) {
+          throw new Error('Ese horario se cruza con otra cita o bloqueo.');
+        }
+
+        const { error: sbErr } = await supabase
+          .from('reservas')
+          .update({
+            fecha_inicio: persistencia.dbFechaInicio,
+            fecha_fin: persistencia.dbFechaFin,
+            notas: persistencia.notasFinal,
+            actualizado_en: new Date().toISOString(),
+          })
+          .eq('id', citaRef.id);
+
+        if (sbErr) {
+          if (sbErr.code === '23P01') {
+            throw new Error('Este horario ya está ocupado por otra cita o bloqueo.');
+          }
+          throw sbErr;
+        }
+
+        const camposActualizados = {
+          fecha_inicio: nuevoInicioIso,
+          fecha_fin: nuevoFinIso,
+          db_fecha_inicio: persistencia.dbFechaInicio,
+          db_fecha_fin: persistencia.dbFechaFin,
+          notas: persistencia.notasFinal,
+        };
+
+        setReservas((prev) =>
+          prev.map((r) => (r.id === citaRef.id ? { ...r, ...camposActualizados } : r))
+        );
+        setPopoverCita((prev) =>
+          prev && prev.cita.id === citaRef.id
+            ? { ...prev, cita: { ...prev.cita, ...camposActualizados } }
+            : prev
+        );
+      }
+
+      try {
+        sessionStorage.removeItem('mimate_bootstrap');
+      } catch {}
+
+      mostrarNotificacionRealtime(
+        `✨ Hora de ${nombreClienta} actualizada: ${formatearHora12(nuevaHoraInicio)} - ${formatearHora12(horaFinNueva)}`
+      );
+    } catch (err: any) {
+      setReservas((prev) =>
+        prev.map((r) => (r.id === citaRef.id ? { ...r, ...estadoPrevio } : r))
+      );
+      setPopoverCita((prev) =>
+        prev && prev.cita.id === citaRef.id
+          ? { ...prev, cita: { ...prev.cita, ...estadoPrevio } }
+          : prev
+      );
+      throw err;
     } finally {
       isMovingCitaRef.current = false;
     }
@@ -6313,6 +6591,11 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
           onClose={() => setPopoverCita(null)}
           onAbrirModalAdicional={abrirModalAdicional}
           onEliminarAdicional={handleEliminarAdicional}
+          obtenerHorariosDisponiblesCita={obtenerHorariosDisponiblesCitaPopover}
+          onCambiarHoraCita={handleCambiarHoraCitaPopover}
+          onCambioModoEdicionHora={(activo) => {
+            popoverEditandoHoraRef.current = activo;
+          }}
         />
       </div>
 
