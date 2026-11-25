@@ -2052,9 +2052,80 @@ function solapaHorarioAlmuerzo(inicioMs: number, finMs: number, fechaBogotaIso?:
   return inicioMs < almuerzoEndMs && finMs > almuerzoStartMs;
 }
 
+// Horarios base iniciales para clientas (se adaptan dinámicamente según el fin de citas agendadas por especialista)
+const HORAS_ANCLA_CLIENTAS = ['09:30', '13:00', '15:00', '17:00'] as const;
+
+function obtenerFechaYHoraBogota(epochMs: number): { fechaIso: string; hhmm: string } {
+  // Colombia (America/Bogota) opera en UTC-5 fijo todo el año
+  const d = new Date(epochMs - 5 * 60 * 60 * 1000);
+  const iso = d.toISOString();
+  return {
+    fechaIso: iso.slice(0, 10),
+    hhmm: iso.slice(11, 16),
+  };
+}
+
+function calcularSlotsClientaManicurista(params: {
+  fechaIso: string;
+  canchaId: string;
+  duracionMinutos: number;
+  reservasActivas: Array<{ cancha_id?: string; fecha_inicio?: string; fecha_fin?: string }>;
+  horaAperturaMs: number;
+  horaCierreMs: number;
+  ahoraMs: number;
+}): string[] {
+  const { fechaIso, canchaId, duracionMinutos, reservasActivas, horaAperturaMs, horaCierreMs, ahoraMs } = params;
+  const reservasMani = reservasActivas.filter((r) => r.cancha_id === canchaId && r.fecha_inicio);
+
+  // Solo las 4 horas base + puntos exactos donde terminan citas o bloqueos de ESTA especialista en la fecha
+  const candidatosSet = new Set<string>(HORAS_ANCLA_CLIENTAS);
+
+  for (const r of reservasMani) {
+    const rStart = new Date(r.fecha_inicio!).getTime();
+    const rEnd = r.fecha_fin ? new Date(r.fecha_fin).getTime() : rStart + 45 * 60 * 1000;
+    if (!isNaN(rEnd)) {
+      const { fechaIso: finFecha, hhmm: finHHMM } = obtenerFechaYHoraBogota(rEnd);
+      if (finFecha === fechaIso && rEnd >= horaAperturaMs && rEnd < horaCierreMs) {
+        candidatosSet.add(finHHMM);
+      }
+    }
+  }
+
+  const candidatosOrdenados = Array.from(candidatosSet).sort();
+  const libres: string[] = [];
+
+  for (const h of candidatosOrdenados) {
+    const slotStartMs = new Date(`${fechaIso}T${h}:00-05:00`).getTime();
+    const slotEndMs = slotStartMs + duracionMinutos * 60 * 1000;
+
+    // 1. Si es hoy y la hora ya pasó, descartar
+    if (slotStartMs <= ahoraMs) continue;
+
+    // 2. Respetar estrictamente apertura y hora de cierre del spa para clientas
+    if (!isNaN(horaAperturaMs) && slotStartMs < horaAperturaMs) continue;
+    if (!isNaN(horaCierreMs) && slotEndMs > horaCierreMs) continue;
+
+    // 3. Bloquear siempre la hora de almuerzo (12:00 PM - 1:00 PM) para clientas
+    if (solapaHorarioAlmuerzo(slotStartMs, slotEndMs, fechaIso)) continue;
+
+    // 4. Sin solapamiento con reservas activas ni bloqueos de horario de esta especialista
+    const solapa = reservasMani.some((r) => {
+      const rStart = new Date(r.fecha_inicio!).getTime();
+      const rEnd = r.fecha_fin ? new Date(r.fecha_fin).getTime() : rStart + 45 * 60 * 1000;
+      return rStart < slotEndMs && rEnd > slotStartMs;
+    });
+
+    if (!solapa) {
+      libres.push(h);
+    }
+  }
+
+  return libres;
+}
+
 // Obtener horarios (slots) disponibles para una fecha y duración específica (Lunes a Sábado, 9:30 am a 5:30 pm)
 app.get('/api/spa/slots', async (req: Request, res: Response) => {
-  const { date, cancha_id, duracion_minutos } = req.query;
+  const { date, cancha_id, duracion_minutos, reagendar_id } = req.query;
   const cleanDate = sanitizeInput(date, 10);
   if (!cleanDate || !esFormatoFechaValido(cleanDate)) {
     return res.status(400).json({ error: 'Parámetro date inválido o ausente (se espera YYYY-MM-DD)' });
@@ -2062,6 +2133,10 @@ app.get('/api/spa/slots', async (req: Request, res: Response) => {
 
   if (cancha_id && !esUUIDValido(String(cancha_id))) {
     return res.status(400).json({ error: 'ID de especialista inválido' });
+  }
+
+  if (reagendar_id && !esUUIDValido(String(reagendar_id))) {
+    return res.status(400).json({ error: 'ID de reserva a reagendar inválido' });
   }
 
   try {
@@ -2088,110 +2163,66 @@ app.get('/api/spa/slots', async (req: Request, res: Response) => {
       .eq('complejo_id', complejo.id)
       .eq('activa', true);
 
-    const listaEmpleadas = (empleadas || []).map(enriquecerCancha);
-    if (listaEmpleadas.length === 0) return res.json({ date, slots: [] });
+    const listaEmpleadas = (empleadas || [])
+      .filter((c) => {
+        const nLower = (c.nombre || '').toLowerCase();
+        return !nLower.includes('manicurista 4') && nLower !== '4';
+      })
+      .map(enriquecerCancha);
+    if (listaEmpleadas.length === 0) return res.json({ date: cleanDate, slots: [] });
 
     const aperturaStr = complejo.hora_apertura ? complejo.hora_apertura.slice(0, 5) : '08:00';
     const cierreStr = complejo.hora_cierre ? complejo.hora_cierre.slice(0, 5) : '19:00';
 
-    // Generar franjas base cada 30 minutos desde apertura hasta cierre
-    const [aperH, aperM] = aperturaStr.split(':').map(Number);
-    const [cierH, cierM] = cierreStr.split(':').map(Number);
-    const startTotalMin = aperH * 60 + aperM;
-    const endTotalMin = cierH * 60 + cierM;
-
-    const horasBase: string[] = [];
-    for (let m = startTotalMin; m < endTotalMin; m += 30) {
-      const hh = String(Math.floor(m / 60)).padStart(2, '0');
-      const mm = String(m % 60).padStart(2, '0');
-      horasBase.push(`${hh}:${mm}`);
-    }
-
-    const inicioBuffer = new Date(new Date(`${date}T00:00:00-05:00`).getTime() - 6 * 60 * 60 * 1000).toISOString();
-    const finBuffer = new Date(new Date(`${date}T23:59:59-05:00`).getTime() + 6 * 60 * 60 * 1000).toISOString();
+    const inicioBuffer = new Date(new Date(`${cleanDate}T00:00:00-05:00`).getTime() - 6 * 60 * 60 * 1000).toISOString();
+    const finBuffer = new Date(new Date(`${cleanDate}T23:59:59-05:00`).getTime() + 6 * 60 * 60 * 1000).toISOString();
 
     const { data: reservasOcupadas } = await supabase
       .from('reservas')
-      .select('cancha_id, fecha_inicio, fecha_fin, estado, notas')
+      .select('id, cancha_id, fecha_inicio, fecha_fin, estado, notas')
       .in('cancha_id', listaEmpleadas.map(e => e.id))
       .neq('estado', 'cancelada')
       .gte('fecha_inicio', inicioBuffer)
       .lte('fecha_inicio', finBuffer);
 
-    const ocupadas = (reservasOcupadas || []).map(hidratarHorarioRealReserva);
+    const ocupadas = (reservasOcupadas || [])
+      .filter(r => !reagendar_id || r.id !== String(reagendar_id))
+      .map(hidratarHorarioRealReserva);
+
     const ahoraMs = Date.now();
-    const horaCierreMs = new Date(`${date}T${cierreStr}:00-05:00`).getTime();
-    const horaAperturaMs = new Date(`${date}T${aperturaStr}:00-05:00`).getTime();
+    const horaCierreMs = new Date(`${cleanDate}T${cierreStr}:00-05:00`).getTime();
+    const horaAperturaMs = new Date(`${cleanDate}T${aperturaStr}:00-05:00`).getTime();
 
-    // Candidatos dinámicos: horas base + puntos exactos donde terminan citas previas de ese día
-    const candidatosSet = new Set<string>(horasBase);
-
-    for (const r of ocupadas) {
-      if (r.fecha_fin) {
-        try {
-          const dFin = new Date(r.fecha_fin);
-          const hhmmFin = dFin.toLocaleTimeString('es-CO', {
-            timeZone: 'America/Bogota',
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false,
-          });
-          const finMs = new Date(`${date}T${hhmmFin}:00-05:00`).getTime();
-          if (finMs >= horaAperturaMs && finMs < horaCierreMs) {
-            candidatosSet.add(hhmmFin);
-          }
-        } catch {
-          // Ignorar fecha inválida
-        }
+    let slotsDisponibles: string[] = [];
+    if (cancha_id) {
+      slotsDisponibles = calcularSlotsClientaManicurista({
+        fechaIso: cleanDate,
+        canchaId: String(cancha_id),
+        duracionMinutos: duracion,
+        reservasActivas: ocupadas,
+        horaAperturaMs,
+        horaCierreMs,
+        ahoraMs,
+      });
+    } else {
+      const unionSlots = new Set<string>();
+      for (const emp of listaEmpleadas) {
+        const slotsEmp = calcularSlotsClientaManicurista({
+          fechaIso: cleanDate,
+          canchaId: emp.id,
+          duracionMinutos: duracion,
+          reservasActivas: ocupadas,
+          horaAperturaMs,
+          horaCierreMs,
+          ahoraMs,
+        });
+        for (const s of slotsEmp) unionSlots.add(s);
       }
-    }
-
-    const candidatosOrdenados = Array.from(candidatosSet).sort();
-    const slotsDisponibles: string[] = [];
-
-    for (const h of candidatosOrdenados) {
-      const slotStartMs = new Date(`${date}T${h}:00-05:00`).getTime();
-      const slotEndMs = slotStartMs + duracion * 60 * 1000;
-
-      // Si la fecha es hoy y la hora ya pasó, no se puede agendar
-      if (slotStartMs <= ahoraMs) {
-        continue;
-      }
-
-      // Si el servicio termina después de la hora de cierre del local, descartar
-      if (slotEndMs > horaCierreMs) {
-        continue;
-      }
-
-      // Bloquear siempre la hora de almuerzo (12:00 PM - 1:00 PM)
-      if (solapaHorarioAlmuerzo(slotStartMs, slotEndMs, cleanDate)) {
-        continue;
-      }
-
-      // Verificar qué manicuristas están libres sin solapamiento
-      const manicuristasOcupadas = ocupadas
-        .filter(r => {
-          const rStart = new Date(r.fecha_inicio).getTime();
-          const rEnd = new Date(r.fecha_fin).getTime();
-          return rStart < slotEndMs && rEnd > slotStartMs;
-        })
-        .map(r => r.cancha_id);
-
-      if (cancha_id) {
-        const estaOcupada = manicuristasOcupadas.includes(cancha_id as string);
-        if (!estaOcupada) {
-          slotsDisponibles.push(h);
-        }
-      } else {
-        const hayLibre = listaEmpleadas.some(e => !manicuristasOcupadas.includes(e.id));
-        if (hayLibre) {
-          slotsDisponibles.push(h);
-        }
-      }
+      slotsDisponibles = Array.from(unionSlots).sort();
     }
 
     res.json({
-      date,
+      date: cleanDate,
       duracion_minutos: duracion,
       slots: slotsDisponibles,
       aviso: slotsDisponibles.length === 0 ? 'No hay horarios disponibles para esta fecha con la duración de este servicio. Prueba con otro día 💕' : undefined
@@ -2259,13 +2290,19 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
       .eq('complejo_id', complejo.id)
       .eq('activa', true);
 
-    const listaEmpleadas = (empleadas || []).map(enriquecerCancha);
+    const listaEmpleadas = (empleadas || [])
+      .filter((c) => {
+        const nLower = (c.nombre || '').toLowerCase();
+        return !nLower.includes('manicurista 4') && nLower !== '4';
+      })
+      .map(enriquecerCancha);
     if (listaEmpleadas.length === 0) {
       return res.status(400).json({ error: 'No hay personal registrado en el spa' });
     }
 
+    const duracionReservaMin = Number(duracion_minutos) || 60;
     const dInicio = new Date(`${fecha}T${hora}:00-05:00`);
-    const dFin = new Date(dInicio.getTime() + (Number(duracion_minutos) || 60) * 60 * 1000);
+    const dFin = new Date(dInicio.getTime() + duracionReservaMin * 60 * 1000);
 
     // 1. Validar que la hora no esté en el pasado
     if (dInicio.getTime() <= Date.now()) {
@@ -2302,9 +2339,11 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
       });
     }
 
-    // 2. Buscar reservas activas solapadas en esta franja usando horario real (excluyendo cita anterior si es reagendamiento)
-    const inicioVentanaRes = new Date(dInicio.getTime() - 12 * 60 * 60 * 1000).toISOString();
-    const finVentanaRes = new Date(dFin.getTime() + 12 * 60 * 60 * 1000).toISOString();
+    // 2. Buscar reservas activas del día/ventana usando horario real (excluyendo cita anterior si es reagendamiento)
+    const inicioDiaBufferMs = new Date(`${fecha}T00:00:00-05:00`).getTime() - 6 * 60 * 60 * 1000;
+    const finDiaBufferMs = new Date(`${fecha}T23:59:59-05:00`).getTime() + 6 * 60 * 60 * 1000;
+    const inicioVentanaRes = new Date(Math.min(dInicio.getTime() - 12 * 60 * 60 * 1000, inicioDiaBufferMs)).toISOString();
+    const finVentanaRes = new Date(Math.max(dFin.getTime() + 12 * 60 * 60 * 1000, finDiaBufferMs)).toISOString();
     const { data: reservasVentana } = await supabase
       .from('reservas')
       .select('id, cancha_id, fecha_inicio, fecha_fin, estado, notas')
@@ -2313,17 +2352,33 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
       .gte('fecha_inicio', inicioVentanaRes)
       .lte('fecha_inicio', finVentanaRes);
 
+    const reservasDiaHidratadas = (reservasVentana || [])
+      .filter(r => !reagendar_reserva_id || r.id !== reagendar_reserva_id)
+      .map(hidratarHorarioRealReserva);
+
     const inicioReqMs = dInicio.getTime();
     const finReqMs = dFin.getTime();
-    const ocupadasIds = (reservasVentana || [])
-      .filter(r => !reagendar_reserva_id || r.id !== reagendar_reserva_id)
-      .map(hidratarHorarioRealReserva)
+    const ocupadasIds = reservasDiaHidratadas
       .filter(r => {
         const rStart = new Date(r.fecha_inicio).getTime();
         const rEnd = r.fecha_fin ? new Date(r.fecha_fin).getTime() : rStart + 45 * 60 * 1000;
         return rStart < finReqMs && rEnd > inicioReqMs;
       })
       .map(r => r.cancha_id);
+
+    const ahoraReservaMs = Date.now();
+    const tieneSlotClientaHabilitado = (maniId: string): boolean => {
+      const slotsMani = calcularSlotsClientaManicurista({
+        fechaIso: fecha,
+        canchaId: maniId,
+        duracionMinutos: duracionReservaMin,
+        reservasActivas: reservasDiaHidratadas,
+        horaAperturaMs,
+        horaCierreMs,
+        ahoraMs: ahoraReservaMs,
+      });
+      return slotsMani.includes(hora);
+    };
 
     let empleadaAsignada: any;
     let dbFechaInicioInsert = dInicio.toISOString();
@@ -2364,16 +2419,23 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
         requiereTagHorarioReal =
           dbFechaInicioInsert !== dInicio.toISOString() || dbFechaFinInsert !== dFin.toISOString();
       }
+      if (origenReal !== 'panel' && !tieneSlotClientaHabilitado(cancha_id)) {
+        return res.status(400).json({
+          error: 'Este horario no está habilitado para reserva en línea con la especialista seleccionada. Por favor elige uno de los horarios disponibles.',
+        });
+      }
       empleadaAsignada = enriquecerCancha(listaEmpleadas.find(e => e.id === cancha_id));
       if (!empleadaAsignada) {
         return res.status(404).json({ error: 'Especialista no encontrada' });
       }
     } else {
-      // Asignar automáticamente una manicurista libre
-      const disponibles = listaEmpleadas.filter(e => !ocupadasIds.includes(e.id));
+      // Asignar automáticamente una manicurista libre (para clientas, solo entre las que tengan ese turno dinámico habilitado)
+      const disponibles = listaEmpleadas.filter(
+        e => !ocupadasIds.includes(e.id) && (origenReal === 'panel' || tieneSlotClientaHabilitado(e.id))
+      );
       if (disponibles.length === 0) {
         return res.status(409).json({
-          error: 'Lo sentimos, todos los turnos para este horario ya fueron reservados. Por favor selecciona otro horario.',
+          error: 'Lo sentimos, todos los turnos para este horario ya fueron reservados o no están habilitados. Por favor selecciona otro horario.',
         });
       }
       empleadaAsignada = enriquecerCancha(disponibles[0]);
