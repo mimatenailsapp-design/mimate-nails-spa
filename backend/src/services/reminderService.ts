@@ -113,6 +113,13 @@ export class ReminderService {
         continue;
       }
 
+      // Regla exacta de 24 horas: Se envía cuando falten 24 horas o menos para la hora de la cita
+      // (Ejemplo: Cita viernes a la 1:00 p.m. -> Se confirma el jueves a partir de la 1:00 p.m.)
+      const horasFaltantes = (dInicio.getTime() - ahora.getTime()) / (1000 * 60 * 60);
+      if (horasFaltantes > 24) {
+        continue;
+      }
+
       // Si la cita es para MAÑANA:
       const cliente = r.clientes as any;
       const cancha = r.canchas as any;
