@@ -75,6 +75,30 @@ export class BaileysService {
         })
         .map((n) => `57${n.slice(-10)}`);
 
+      // Cargar dinámicamente teléfonos de clientas de la base de datos para mapear sus LIDs automáticamente
+      try {
+        const { data: dbClientes } = await supabase
+          .from('clientes')
+          .select('telefono_wa')
+          .not('telefono_wa', 'is', null)
+          .limit(100);
+        if (dbClientes) {
+          for (const c of dbClientes) {
+            const raw = String(c.telefono_wa || '').replace(/\D/g, '');
+            if (raw.length >= 10) {
+              const ten = raw.slice(-10);
+              if (ten.startsWith('3')) {
+                phones.push(`57${ten}`);
+              } else {
+                phones.push(raw);
+              }
+            }
+          }
+        }
+      } catch (errClientes) {
+        console.warn('[Baileys] Error cargando teléfonos para LIDs:', errClientes);
+      }
+
       const uniquePhones = Array.from(new Set(phones));
 
       if (uniquePhones.length > 0) {
@@ -797,6 +821,18 @@ export class BaileysService {
       return false;
     }
     const remoteJid = `${clean}@s.whatsapp.net`;
+
+    // Mapear dinámicamente el LID de la destinataria en WhatsApp para reconocer sus respuestas de inmediato
+    try {
+      this.socket.onWhatsApp(clean).then((results: any) => {
+        if (results && results[0]?.lid && results[0]?.jid) {
+          const lidId = String(results[0].lid).split('@')[0].replace(/\D/g, '');
+          const phoneId = String(results[0].jid).split('@')[0].replace(/\D/g, '');
+          this.lidToPhoneMap.set(lidId, phoneId);
+          console.log(`[Baileys] 🔗 LID dinámico asociado para destinataria ${phoneId}: ${lidId}`);
+        }
+      }).catch(() => {});
+    } catch {}
 
     // Si tiene botones, estructurarlos como opciones numeradas para compatibilidad universal en cualquier teléfono
     let textoSalida = mensaje;

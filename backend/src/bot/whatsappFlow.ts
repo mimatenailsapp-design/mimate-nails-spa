@@ -1,4 +1,4 @@
-import { BookingService, Complejo, Cancha, HorarioDisponible, getMontoAnticipoFijo, requiereAnticipoParaFecha, formatearCuentasRecaudoMensaje, getLlaveNumero, getTitularLimpio } from '../services/bookingService.js';
+import { BookingService, Complejo, Cancha, HorarioDisponible, getMontoAnticipoFijo, requiereAnticipoParaFecha, formatearCuentasRecaudoMensaje, getLlaveNumero, getTitularLimpio, enriquecerCancha } from '../services/bookingService.js';
 import { ReceiptVerificationService } from '../services/receiptVerificationService.js';
 import { AIReceptionistService } from '../services/aiReceptionistService.js';
 import { NLUIntentService } from '../services/nluIntentService.js';
@@ -1940,18 +1940,45 @@ export class WhatsAppFlow {
     const esSpa = complejoRes?.slug === 'mimate-nails' || complejoRes?.tipo_negocio === 'belleza_unas';
     reserva = hidratarHorarioRealWa(reserva);
 
-    const fechaCita = new Date(reserva.fecha_inicio).toLocaleDateString('es-CO', {
+    // Buscar si la clienta tiene citas múltiples/consecutivas ese mismo día para confirmar o cancelar todo el bloque
+    const dtCita = new Date(reserva.fecha_inicio);
+    let citasDelMismoDia: any[] = [reserva];
+    if (reserva.cliente_id) {
+      const desdeIso = new Date(dtCita.getTime() - 12 * 60 * 60 * 1000).toISOString();
+      const hastaIso = new Date(dtCita.getTime() + 12 * 60 * 60 * 1000).toISOString();
+      const { data: citasCoincidentes } = await supabase
+        .from('reservas')
+        .select('*, canchas(*)')
+        .eq('cliente_id', reserva.cliente_id)
+        .neq('estado', 'cancelada')
+        .gte('fecha_inicio', desdeIso)
+        .lte('fecha_inicio', hastaIso);
+
+      if (citasCoincidentes && citasCoincidentes.length > 0) {
+        citasDelMismoDia = citasCoincidentes;
+      }
+    }
+
+    // Ordenar por hora de inicio (la primera cita marca la hora de inicio de atención)
+    citasDelMismoDia.sort((a, b) => new Date(a.fecha_inicio).getTime() - new Date(b.fecha_inicio).getTime());
+    const primeraCita = citasDelMismoDia[0];
+
+    const fechaCita = new Date(primeraCita.fecha_inicio).toLocaleDateString('es-CO', {
       timeZone: 'America/Bogota',
       weekday: 'long',
       day: '2-digit',
       month: '2-digit',
     });
-    const horaInicio = new Date(reserva.fecha_inicio).toLocaleTimeString('es-CO', {
+    const horaInicio = new Date(primeraCita.fecha_inicio).toLocaleTimeString('es-CO', {
       timeZone: 'America/Bogota',
-      hour: '2-digit',
+      hour: 'numeric',
       minute: '2-digit',
-      hour12: false,
-    });
+      hour12: true,
+    }).toLowerCase().replace(/\s+/g, ' ');
+
+    const nombresEspecialistas = Array.from(
+      new Set(citasDelMismoDia.map((c) => enriquecerCancha(c.canchas)?.nombre || 'tu especialista'))
+    ).join(' y ');
 
     // CASO 1: CONFIRMAR CITA
     if (esConfirmar) {
@@ -1976,7 +2003,7 @@ export class WhatsAppFlow {
             `🌸 *Hola ${reserva.clientes?.nombre || 'reina'}, tu turno está pre-apartado* 💕\n\n` +
             `📅 Fecha: *${fechaCita}*\n` +
             `⏰ Hora: *${horaInicio}*\n` +
-            `👩‍🎨 Manicurista: *${cancha.nombre}*\n\n` +
+            `👩‍🎨 Especialista: *${nombresEspecialistas}*\n\n` +
             `💰 Total del servicio: *${totalFmt}*\n` +
             (esTotalidad
               ? `💳 *Valor a transferir (100% del servicio):* *${anticipoFmt}*\n` +
@@ -1992,11 +2019,14 @@ export class WhatsAppFlow {
         };
       }
 
-      if (!notasActuales.includes('[CONFIRMADA_POR_CLIENTA]')) {
-        await supabase
-          .from('reservas')
-          .update({ notas: `${notasActuales} [CONFIRMADA_POR_CLIENTA]`.replace(/\s*\[POR_CONFIRMAR_CLIENTA\]/g, '').trim() })
-          .eq('id', reserva.id);
+      for (const c of citasDelMismoDia) {
+        const n = c.notas || '';
+        if (!n.includes('[CONFIRMADA_POR_CLIENTA]')) {
+          await supabase
+            .from('reservas')
+            .update({ notas: `${n} [CONFIRMADA_POR_CLIENTA]`.replace(/\s*\[POR_CONFIRMAR_CLIENTA\]/g, '').trim() })
+            .eq('id', c.id);
+        }
       }
 
       const exigeAnticipo = requiereAnticipoParaFecha(complejoRes, reserva.fecha_inicio) || Number(reserva.valor_anticipo_requerido) > 0;
@@ -2008,7 +2038,7 @@ export class WhatsAppFlow {
       return {
         texto:
           `🌸✨ *¡CITA CONFIRMADA EXITOSAMENTE!* ✨🌸\n\n` +
-          `¡Muchísimas gracias reina! Tu asistencia para el *${fechaCita}* a las *${horaInicio}* con *${cancha.nombre}* está 100% reconfirmada.${detallePagoConfirmado}\n` +
+          `¡Muchísimas gracias reina! Tu asistencia para el *${fechaCita}* a las *${horaInicio}* con *${nombresEspecialistas}* está 100% reconfirmada.${detallePagoConfirmado}\n` +
           `📍 Te esperamos con todo el amor en nuestro spa (Pereira, Cuba - Calle 66 bis #26-57).\n` +
           `🗺️ Cómo llegar: https://maps.app.goo.gl/KdSvqi1b2iAe5xgg8\n` +
           `¡Nos vemos para consentirte y dejarte hermosa! 💕💅`,
@@ -2017,14 +2047,15 @@ export class WhatsAppFlow {
 
     // CASO 2: CANCELAR CITA
     if (esCancelar) {
-      const notasActuales = reserva.notas || '';
-      await supabase
-        .from('reservas')
-        .update({
-          estado: 'cancelada',
-          notas: `${notasActuales} [CANCELADA_POR_CLIENTA]`.trim(),
-        })
-        .eq('id', reserva.id);
+      for (const c of citasDelMismoDia) {
+        await supabase
+          .from('reservas')
+          .update({
+            estado: 'cancelada',
+            notas: `${c.notas || ''} [CANCELADA_POR_CLIENTA]`.trim(),
+          })
+          .eq('id', c.id);
+      }
 
       session.reservaId = undefined;
       session.paso = 'INICIO';
@@ -2032,7 +2063,7 @@ export class WhatsAppFlow {
       return {
         texto:
           `🌸 *CITA CANCELADA*\n\n` +
-          `Hemos cancelado tu cita del *${fechaCita}* a las *${horaInicio}* con *${cancha.nombre}* y liberado el cupo en la agenda.\n\n` +
+          `Hemos cancelado tu cita del *${fechaCita}* a las *${horaInicio}* con *${nombresEspecialistas}* y liberado el cupo en la agenda.\n\n` +
           `Lamentamos que no puedas acompañarnos esta vez. Cuando desees volver a consentirte, puedes agendar en cualquier momento escribiendo *MENU* o desde nuestra web. ¡Que tengas un lindo día! 💕`,
       };
     }

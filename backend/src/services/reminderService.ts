@@ -1,8 +1,31 @@
 import { supabase } from '../config/supabase.js';
 import { BaileysService } from './baileysService.js';
-import { requiereAnticipoParaFecha } from './bookingService.js';
+import { requiereAnticipoParaFecha, MAPA_MANICURISTAS, enriquecerCancha } from './bookingService.js';
 
 export class ReminderService {
+  /**
+   * Helper para formatear la hora en formato 12 horas con a.m. / p.m. (ej: 9:30 a.m., 1:00 p.m.)
+   */
+  private static formatearHora12(d: Date): string {
+    const raw = d.toLocaleTimeString('es-CO', {
+      timeZone: 'America/Bogota',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    });
+    return raw.toLowerCase().replace(/\s+/g, ' ');
+  }
+
+  /**
+   * Helper para obtener el nombre real de la especialista (Lili, Jhoana, Manuela)
+   */
+  private static obtenerNombreEspecialista(cancha: any): string {
+    if (!cancha) return 'Especialista';
+    const match =
+      (cancha.id && MAPA_MANICURISTAS[cancha.id]) ||
+      (cancha.nombre && MAPA_MANICURISTAS[cancha.nombre]);
+    return match ? match.nombre : (cancha.nombre || 'Especialista');
+  }
   /**
    * Ejecuta la rutina periódica de recordatorios:
    * 1. Recordatorio 1 día antes de la cita
@@ -85,7 +108,20 @@ export class ReminderService {
     if (error || !reservas) return { enviados: 0 };
 
     const regexHorarioReal = /\[HORARIO_REAL:([^|\]]+)\|([^\]]+)\]/i;
-    let enviados = 0;
+
+    interface CitaAgrupada {
+      r: any;
+      dInicio: Date;
+      notas: string;
+      servicio: string;
+      especialista: string;
+      nombreCliente: string;
+      telefono: string;
+      complejo: any;
+    }
+
+    const mapaGrupos = new Map<string, CitaAgrupada[]>();
+
     for (const r of reservas) {
       const notas = r.notas || '';
       // Si ya recibió recordatorio de cualquier tipo, NUNCA enviar otro
@@ -113,14 +149,6 @@ export class ReminderService {
         continue;
       }
 
-      // Regla exacta de 24 horas: Se envía cuando falten 24 horas o menos para la hora de la cita
-      // (Ejemplo: Cita viernes a la 1:00 p.m. -> Se confirma el jueves a partir de la 1:00 p.m.)
-      const horasFaltantes = (dInicio.getTime() - ahora.getTime()) / (1000 * 60 * 60);
-      if (horasFaltantes > 24) {
-        continue;
-      }
-
-      // Si la cita es para MAÑANA:
       const cliente = r.clientes as any;
       const cancha = r.canchas as any;
       const complejo = cancha?.complejos as any;
@@ -131,45 +159,88 @@ export class ReminderService {
       const matchNom = notas.match(/Clienta:\s*([^|[\n]+)/i);
       if (matchNom && matchNom[1]) nombreCliente = matchNom[1].trim();
 
-      const fechaCita = dInicio.toLocaleDateString('es-CO', {
+      let servicio = 'tu servicio de uñas';
+      const matchSvc = notas.match(/Servicio:\s*([^|[\n]+)/i);
+      if (matchSvc && matchSvc[1]) servicio = matchSvc[1].trim();
+
+      const especialista = this.obtenerNombreEspecialista(cancha);
+
+      // Clave de agrupación: teléfono limpio (últimos 10 dígitos) para unificar citas seguidas/simultáneas de la misma clienta
+      const cleanTel = telefono.replace(/\D/g, '');
+      const keyGrupo = cleanTel.length >= 10 ? cleanTel.slice(-10) : (r.cliente_id || cleanTel);
+
+      const item: CitaAgrupada = {
+        r,
+        dInicio,
+        notas,
+        servicio,
+        especialista,
+        nombreCliente,
+        telefono,
+        complejo,
+      };
+
+      if (!mapaGrupos.has(keyGrupo)) {
+        mapaGrupos.set(keyGrupo, []);
+      }
+      mapaGrupos.get(keyGrupo)!.push(item);
+    }
+
+    let enviados = 0;
+
+    for (const [_, grupo] of mapaGrupos.entries()) {
+      // Ordenar por hora de inicio: la primera cita del día determina la hora y el saludo
+      grupo.sort((a, b) => a.dInicio.getTime() - b.dInicio.getTime());
+      const primera = grupo[0];
+
+      // Regla exacta de 24 horas: Se evalúa según la hora de la primera cita
+      const horasFaltantes = (primera.dInicio.getTime() - ahora.getTime()) / (1000 * 60 * 60);
+      if (horasFaltantes > 24) {
+        continue;
+      }
+
+      const fechaCita = primera.dInicio.toLocaleDateString('es-CO', {
         timeZone: 'America/Bogota',
         weekday: 'long',
         day: '2-digit',
         month: '2-digit',
         year: 'numeric',
       });
-      const horaInicio = dInicio.toLocaleTimeString('es-CO', {
-        timeZone: 'America/Bogota',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-      });
+      const horaInicio = this.formatearHora12(primera.dInicio);
 
-      let servicio = 'tu servicio de uñas';
-      const matchSvc = notas.match(/Servicio:\s*([^|[\n]+)/i);
-      if (matchSvc && matchSvc[1]) servicio = matchSvc[1].trim();
+      // Unificar servicios sin duplicados (ej: "Semi pies + Retoque")
+      const serviciosList = Array.from(new Set(grupo.map((g) => g.servicio).filter(Boolean)));
+      const servicioTexto = serviciosList.join(' + ');
+      const etiquetaServicio = serviciosList.length > 1 ? '💅 *Servicios:*' : '💅 *Servicio:*';
 
-      const exigeAnticipo = requiereAnticipoParaFecha(complejo, dInicio) || Number(r.valor_anticipo_requerido) > 0;
+      // Unificar especialistas sin duplicados (ej: "Lili y Manuela" o simplemente "Lili")
+      const especialistasList = Array.from(new Set(grupo.map((g) => g.especialista).filter(Boolean)));
+      const especialistaTexto = especialistasList.join(' y ');
+      const etiquetaEspecialista = especialistasList.length > 1 ? '👩‍🎨 *Especialistas:*' : '👩‍🎨 *Especialista:*';
+
+      const exigeAnticipo = grupo.some(
+        (g) => requiereAnticipoParaFecha(g.complejo, g.dInicio) || Number(g.r.valor_anticipo_requerido) > 0
+      );
       let notaPago = '✨ *Nota:* Recuerda que cancelas el valor en el spa (sin cobros anticipados).';
       if (exigeAnticipo) {
-        if (notas.includes('[COMPROBANTE_VALIDO_IA]') || notas.includes('[PAGO_APROBADO]')) {
+        const tienePagoAprobado = grupo.some(
+          (g) => g.notas.includes('[COMPROBANTE_VALIDO_IA]') || g.notas.includes('[PAGO_APROBADO]')
+        );
+        if (tienePagoAprobado) {
           notaPago = '✨ *Nota:* Tu abono de anticipo ya fue validado con éxito. El saldo restante lo cancelas en el spa.';
         } else {
           notaPago = '✨ *Nota:* Recuerda que tu cita cuenta con abono registrado.';
         }
       }
 
-      const esManana = fechaCitaCol === fechaMananaCol;
-      const encabezado = esManana
-        ? `💅✨ *RECORDATORIO DE TU CITA MAÑANA - JL MÍMATE NAILS* 🌸`
-        : `💅✨ *RECORDATORIO DE TU CITA - JL MÍMATE NAILS* 🌸`;
-      const saludoTiempo = esManana ? 'para *mañana*:' : `para el *${fechaCita}*:`;
+      const encabezado = `💅✨ *RECORDATORIO DE TU CITA MAÑANA - JL MÍMATE NAILS* 🌸`;
+      const saludoTiempo = 'para *mañana*:';
 
       const mensaje =
         `${encabezado}\n\n` +
-        `¡Hola *${nombreCliente}*! Te recordamos con mucho cariño tu cita programada ${saludoTiempo}\n\n` +
-        `💅 *Servicio:* ${servicio}\n` +
-        `👩‍🎨 *Especialista:* ${cancha.nombre}\n` +
+        `¡Hola *${primera.nombreCliente}*! Te recordamos con mucho cariño tu cita programada ${saludoTiempo}\n\n` +
+        `${etiquetaServicio} ${servicioTexto}\n` +
+        `${etiquetaEspecialista} ${especialistaTexto}\n` +
         `📅 *Fecha:* ${fechaCita}\n` +
         `⏰ *Hora:* ${horaInicio}\n\n` +
         `📍 *Lugar:* Pereira, Cuba (Calle 66 bis #26-57)\n` +
@@ -177,26 +248,28 @@ export class ReminderService {
         `¡Nos vemos pronto para consentirte reina! 💕`;
 
       const botonesOpciones = [
-        { id: `confirmar_cita_${r.id}`, title: '✅ Confirmar Cita' },
-        { id: `cancelar_cita_${r.id}`, title: '❌ Cancelar Cita' },
-        { id: `reagendar_cita_${r.id}`, title: '📅 Cambiar Fecha' },
+        { id: `confirmar_cita_${primera.r.id}`, title: '✅ Confirmar Cita' },
+        { id: `cancelar_cita_${primera.r.id}`, title: '❌ Cancelar Cita' },
+        { id: `reagendar_cita_${primera.r.id}`, title: '📅 Cambiar Fecha' },
       ];
 
       const enviadoExitoso = await this.enviarWhatsApp(
-        telefono,
+        primera.telefono,
         mensaje,
-        complejo?.whatsapp_token,
-        complejo?.whatsapp_phone_number_id,
+        primera.complejo?.whatsapp_token,
+        primera.complejo?.whatsapp_phone_number_id,
         botonesOpciones
       );
 
       if (enviadoExitoso) {
-        await supabase
-          .from('reservas')
-          .update({ notas: `${notas} [REC_1_DIA] [REC_ENVIADO]`.trim() })
-          .eq('id', r.id);
-
-        enviados++;
+        // Marcar todas las citas del grupo para que no se envíe un segundo recordatorio
+        for (const item of grupo) {
+          await supabase
+            .from('reservas')
+            .update({ notas: `${item.notas} [REC_1_DIA] [REC_ENVIADO]`.trim() })
+            .eq('id', item.r.id);
+        }
+        enviados += grupo.length;
       }
     }
 
@@ -229,7 +302,20 @@ export class ReminderService {
     const minVentanaMs = ahora.getTime() + 2 * 60 * 60 * 1000;
     const maxVentanaMs = ahora.getTime() + 3.5 * 60 * 60 * 1000;
 
-    let enviados = 0;
+    interface CitaMismoDia {
+      r: any;
+      dInicio: Date;
+      notas: string;
+      servicio: string;
+      especialista: string;
+      nombreCliente: string;
+      telefono: string;
+      complejo: any;
+      esSpa: boolean;
+    }
+
+    const mapaGruposMismoDia = new Map<string, CitaMismoDia[]>();
+
     for (const r of reservas) {
       const notas = r.notas || '';
       // Si ya recibió recordatorio de 1 día antes o de mismo día, NUNCA volver a enviar
@@ -269,63 +355,94 @@ export class ReminderService {
       const matchNom = notas.match(/Clienta:\s*([^|[\n]+)/i);
       if (matchNom && matchNom[1]) nombreCliente = matchNom[1].trim();
 
-      const horaInicio = dInicio.toLocaleTimeString('es-CO', {
-        timeZone: 'America/Bogota',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-      });
-
       let servicio = 'tu servicio de uñas';
       const matchSvc = notas.match(/Servicio:\s*([^|[\n]+)/i);
       if (matchSvc && matchSvc[1]) servicio = matchSvc[1].trim();
 
+      const especialista = this.obtenerNombreEspecialista(cancha);
+      const cleanTel = telefono.replace(/\D/g, '');
+      const keyGrupo = cleanTel.length >= 10 ? cleanTel.slice(-10) : (r.cliente_id || cleanTel);
+
+      const item: CitaMismoDia = {
+        r,
+        dInicio,
+        notas,
+        servicio,
+        especialista,
+        nombreCliente,
+        telefono,
+        complejo,
+        esSpa,
+      };
+
+      if (!mapaGruposMismoDia.has(keyGrupo)) {
+        mapaGruposMismoDia.set(keyGrupo, []);
+      }
+      mapaGruposMismoDia.get(keyGrupo)!.push(item);
+    }
+
+    let enviados = 0;
+
+    for (const [_, grupo] of mapaGruposMismoDia.entries()) {
+      grupo.sort((a, b) => a.dInicio.getTime() - b.dInicio.getTime());
+      const primera = grupo[0];
+      const horaInicio = this.formatearHora12(primera.dInicio);
+
+      const serviciosList = Array.from(new Set(grupo.map((g) => g.servicio).filter(Boolean)));
+      const servicioTexto = serviciosList.join(' + ');
+      const etiquetaServicio = serviciosList.length > 1 ? '💅 *Servicios:*' : '💅 *Servicio:*';
+
+      const especialistasList = Array.from(new Set(grupo.map((g) => g.especialista).filter(Boolean)));
+      const especialistaTexto = especialistasList.join(' y ');
+      const etiquetaEspecialista = especialistasList.length > 1 ? '👩‍🎨 *Especialistas:*' : '👩‍🎨 *Especialista:*';
+
       let mensaje = '';
       let botonesOpciones: Array<{ id: string; title: string }> | undefined;
 
-      if (esSpa) {
+      if (primera.esSpa) {
         mensaje =
           `🔔 *RECORDATORIO DE TU CITA HOY (EN 3 HORAS) - JL MÍMATE NAILS* 🌸\n\n` +
-          `¡Hola *${nombreCliente}*! Te recordamos con mucho amor tu cita programada para *hoy a las ${horaInicio}*:\n\n` +
-          `💅 *Servicio:* ${servicio}\n` +
-          `👩‍🎨 *Especialista:* ${cancha.nombre}\n` +
+          `¡Hola *${primera.nombreCliente}*! Te recordamos con mucho amor tu cita programada para *hoy a las ${horaInicio}*:\n\n` +
+          `${etiquetaServicio} ${servicioTexto}\n` +
+          `${etiquetaEspecialista} ${especialistaTexto}\n` +
           `⏰ *Hora:* ${horaInicio}\n` +
           `📍 *Lugar:* Pereira, Cuba (Calle 66 bis #26-57)\n\n` +
           `¡Te esperamos con amor reina! 💕💅`;
 
         botonesOpciones = [
-          { id: `confirmar_cita_${r.id}`, title: '✅ Confirmar Cita' },
-          { id: `cancelar_cita_${r.id}`, title: '❌ Cancelar Cita' },
-          { id: `reagendar_cita_${r.id}`, title: '📅 Cambiar Fecha' },
+          { id: `confirmar_cita_${primera.r.id}`, title: '✅ Confirmar Cita' },
+          { id: `cancelar_cita_${primera.r.id}`, title: '❌ Cancelar Cita' },
+          { id: `reagendar_cita_${primera.r.id}`, title: '📅 Cambiar Fecha' },
         ];
       } else {
         mensaje =
           `🔔 *RECORDATORIO DE TU TURNO HOY (EN 3 HORAS)*\n\n` +
-          `¡Hola *${nombreCliente}*! Te recordamos tu cita hoy en *${complejo.nombre}* a las *${horaInicio}* con ${cancha.nombre}.\n\n` +
+          `¡Hola *${primera.nombreCliente}*! Te recordamos tu cita hoy en *${primera.complejo.nombre}* a las *${horaInicio}* con ${especialistaTexto}.\n\n` +
           `Te esperamos puntualmente. ¡Que tengas un excelente día!`;
 
         botonesOpciones = [
-          { id: `confirmar_cita_${r.id}`, title: '✅ Confirmar' },
-          { id: `cancelar_cita_${r.id}`, title: '❌ Cancelar' },
-          { id: `reagendar_cita_${r.id}`, title: '📅 Cambiar Fecha' },
+          { id: `confirmar_cita_${primera.r.id}`, title: '✅ Confirmar' },
+          { id: `cancelar_cita_${primera.r.id}`, title: '❌ Cancelar' },
+          { id: `reagendar_cita_${primera.r.id}`, title: '📅 Cambiar Fecha' },
         ];
       }
 
       const enviadoExitoso = await this.enviarWhatsApp(
-        telefono,
+        primera.telefono,
         mensaje,
-        complejo?.whatsapp_token,
-        complejo?.whatsapp_phone_number_id,
+        primera.complejo?.whatsapp_token,
+        primera.complejo?.whatsapp_phone_number_id,
         botonesOpciones
       );
 
       if (enviadoExitoso) {
-        await supabase
-          .from('reservas')
-          .update({ notas: `${notas} [REC_MISMO_DIA] [REC_ENVIADO]`.trim() })
-          .eq('id', r.id);
-
-        enviados++;
+        for (const item of grupo) {
+          await supabase
+            .from('reservas')
+            .update({ notas: `${item.notas} [REC_MISMO_DIA] [REC_ENVIADO]`.trim() })
+            .eq('id', item.r.id);
+        }
+        enviados += grupo.length;
       }
     }
 
