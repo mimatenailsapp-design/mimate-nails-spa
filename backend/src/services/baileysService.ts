@@ -785,7 +785,11 @@ export class BaileysService {
   /**
    * Envía un mensaje simulando comportamiento humano (escribiendo...) y adaptando menús interactivos
    */
-  private static async enviarConTipeoHumano(remoteJid: string, response: string | BotResponse): Promise<boolean> {
+  private static async enviarConTipeoHumano(
+    remoteJid: string,
+    response: string | BotResponse,
+    esProactivo: boolean = false
+  ): Promise<boolean> {
     if (!this.socket) return false;
 
     // Responder SIEMPRE directamente al chat exacto desde donde provino el mensaje
@@ -797,21 +801,25 @@ export class BaileysService {
     }
     let enviadoOk = false;
 
-    // 1. Simular presencia de "escribiendo..." (composing)
-    try {
-      await this.socket.sendPresenceUpdate('composing', targetJid);
-    } catch (e) {
-      // Ignorar si falla presencia
+    if (!esProactivo) {
+      // 1. Simular presencia de "escribiendo..." (composing) solo en respuestas conversacionales
+      try {
+        await this.socket.sendPresenceUpdate('composing', targetJid);
+      } catch (e) {
+        // Ignorar si falla presencia
+      }
+
+      // 2. Retardo natural proporcional a la longitud del texto (1.5s a 3.5s)
+      const msTipeo = Math.min(1800 + textoFinal.length * 10, 3800) + Math.random() * 500;
+      await this.delay(msTipeo);
+
+      // 3. Pausar presencia
+      try {
+        await this.socket.sendPresenceUpdate('paused', targetJid);
+      } catch (e) {}
+    } else {
+      await this.delay(350);
     }
-
-    // 2. Retardo natural proporcional a la longitud del texto (1.5s a 3.5s)
-    const msTipeo = Math.min(1800 + textoFinal.length * 10, 3800) + Math.random() * 500;
-    await this.delay(msTipeo);
-
-    // 3. Pausar presencia
-    try {
-      await this.socket.sendPresenceUpdate('paused', targetJid);
-    } catch (e) {}
 
     // 4. Envío garantizado del mensaje en formato texto estándar y seguro
     try {
@@ -930,19 +938,13 @@ export class BaileysService {
     }
     let remoteJid = `${clean}@s.whatsapp.net`;
 
-    // Verificar que el número tenga WhatsApp, usar su JID real y mapear el LID para reconocer sus respuestas
+    // Intentar resolver el JID real y mapear el LID con timeout corto (sin bloquear el envío si onWhatsApp falla o tarda)
     try {
       const results: any = await Promise.race([
         this.socket.onWhatsApp(clean),
-        new Promise((resolve) => setTimeout(() => resolve(null), 8000)),
+        new Promise((resolve) => setTimeout(() => resolve(null), 3000)),
       ]);
-      if (results && results[0]) {
-        if (results[0].exists === false) {
-          this.fallosPermanentesEnvio.set(this.claveSilencio(clean), Date.now());
-          this.addDebugEvent('ENVIO_DIRECTO_SIN_WHATSAPP', { telefono: clean });
-          console.warn(`[Baileys] ⚠️ El número ${clean} no tiene WhatsApp registrado. No se envía mensaje.`);
-          return false;
-        }
+      if (results && results[0] && results[0].exists) {
         if (results[0].jid) {
           remoteJid = results[0].jid;
         }
@@ -964,7 +966,7 @@ export class BaileysService {
       textoSalida = `${mensaje}\n\n${opciones}\n\n👉 Responde con el número de tu opción.`;
     }
 
-    return await this.enviarConTipeoHumano(remoteJid, textoSalida);
+    return await this.enviarConTipeoHumano(remoteJid, textoSalida, true);
   }
 
   public static getSocketUser(): any {

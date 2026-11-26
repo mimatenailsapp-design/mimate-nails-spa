@@ -2813,15 +2813,23 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
         `¡Nos vemos pronto para consentirte reina! 💕🌸`;
     }
 
+    // Enviar confirmación / solicitud de abono sin bloquear el HTTP response (evita timeouts en Vercel -> fallback sin WhatsApp).
+    // Esperamos hasta 3.5 s para reportar resultado inmediato; si tarda o está reconectando, sigue en segundo plano con reintentos deduplicados.
     let waEnviado = false;
     try {
-      await enviarMensajeWhatsApp(
+      const envioPromise = enviarMensajeWhatsApp(
         cleanPhone,
         voucherWhatsApp,
         complejo?.whatsapp_token,
         complejo?.whatsapp_phone_number_id
-      );
-      waEnviado = true;
+      ).catch((e: any) => {
+        console.warn('No se pudo enviar WhatsApp inmediato:', e?.message || e);
+        return false;
+      });
+      waEnviado = await Promise.race([
+        envioPromise,
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 3500)),
+      ]);
     } catch (e: any) {
       console.warn('No se pudo enviar WhatsApp inmediato:', e.message);
     }
