@@ -13,6 +13,25 @@ export interface ComplejoKnowledge {
   informacion_libre?: string;
 }
 
+export interface CitaActivaResumen {
+  id: string;
+  fechaLegible: string;
+  horaInicio: string;
+  horaFin: string;
+  servicio: string;
+  especialista: string;
+  estado: 'confirmada' | 'pendiente_pago';
+  valorTotal: number;
+  anticipoRequerido: number;
+  esHoy: boolean;
+}
+
+export interface ContextoClientaCitas {
+  nombre?: string;
+  telefonoLimpio: string;
+  citasActivas: CitaActivaResumen[];
+}
+
 export interface ReceptionistResponse {
   esPreguntaOAtencion: boolean;
   esSolicitudHumano?: boolean;
@@ -220,7 +239,8 @@ export class AIReceptionistService {
     texto: string,
     complejo: Complejo,
     forzarRespuestaNatural: boolean = false,
-    yaTieneLink: boolean = false
+    yaTieneLink: boolean = false,
+    contextoClienta?: ContextoClientaCitas
   ): Promise<ReceptionistResponse> {
     const t = texto.toLowerCase().trim();
 
@@ -255,7 +275,7 @@ export class AIReceptionistService {
     const apiKey = process.env.GEMINI_API_KEY;
     if (apiKey) {
       try {
-        const respuestaIA = await this.consultarGemini(texto, complejo, apiKey, yaTieneLink);
+        const respuestaIA = await this.consultarGemini(texto, complejo, apiKey, yaTieneLink, contextoClienta);
         if (respuestaIA) {
           return {
             esPreguntaOAtencion: true,
@@ -268,7 +288,7 @@ export class AIReceptionistService {
     }
 
     // Motor NLU local enriquecido para responder con precisión cualquier pregunta en español
-    const respuestaReglas = this.generarRespuestaPorReglas(texto, complejo, yaTieneLink);
+    const respuestaReglas = this.generarRespuestaPorReglas(texto, complejo, yaTieneLink, contextoClienta);
     return {
       esPreguntaOAtencion: true,
       respuestaTexto: respuestaReglas,
@@ -328,7 +348,8 @@ export class AIReceptionistService {
     pregunta: string,
     complejo: Complejo,
     apiKey: string,
-    yaTieneLink: boolean = false
+    yaTieneLink: boolean = false,
+    contextoClienta?: ContextoClientaCitas
   ): Promise<string | null> {
     const apertura = complejo.hora_apertura ? complejo.hora_apertura.slice(0, 5) : '09:30';
     const cierre = complejo.hora_cierre ? complejo.hora_cierre.slice(0, 5) : '17:30';
@@ -415,7 +436,25 @@ ${formatearCuentasRecaudoMensaje(complejo)}
 - Domicilios: NO realizamos servicio a domicilio. Todo es en nuestras instalaciones por bioseguridad y esterilización.
 - Especialistas / Manicuristas: Contamos con profesionales capacitadas y dedicadas. La clienta puede elegir su manicurista favorita directamente en la web.
 - Atención a hombres y niñas: ¡Sí atendemos caballeros y niñas!
-
+${
+  contextoClienta && contextoClienta.citasActivas.length > 0
+    ? `\nCONTEXTO REAL DE ESTA CLIENTA (YA TIENE CITA AGENDADA EN EL SISTEMA):
+- Nombre registrado: ${contextoClienta.nombre || 'Clienta'}
+- Próximas citas activas:
+${contextoClienta.citasActivas
+  .slice(0, 3)
+  .map((c, idx) => {
+    const estadoTxt = c.estado === 'confirmada' ? 'CONFIRMADA' : `PENDIENTE DE ABONO ($${c.anticipoRequerido.toLocaleString('es-CO')} COP)`;
+    const saldoSpa =
+      c.estado === 'confirmada' && c.anticipoRequerido > 0
+        ? Math.max(0, c.valorTotal - c.anticipoRequerido)
+        : c.valorTotal;
+    return `  ${idx + 1}. ${c.fechaLegible} de ${c.horaInicio} a ${c.horaFin} | Servicio: ${c.servicio} | Especialista: ${c.especialista} | Estado: ${estadoTxt} | Total: $${c.valorTotal.toLocaleString('es-CO')} COP | Saldo aprox en spa: $${saldoSpa.toLocaleString('es-CO')} COP | Link directo reagendar: ${baseUrl}/?reagendar=${c.id}&tel=${contextoClienta.telefonoLimpio}`;
+  })
+  .join('\n')}
+- INSTRUCCIÓN CLAVE DE CONTEXTO: Esta clienta YA tiene cita agendada. NO le des la bienvenida genérica ni le envíes el link general de agendar a menos que ella pida explícitamente agendar otra cita adicional. Responde directamente usando los datos reales de su cita (fecha, hora, especialista, servicio, saldo, o enlace de reagendamiento si desea cambiarla). Si pide algo que requiere ajuste manual (como agregar un diseño complejo, cambiar de especialista sin reagendar o reportar un inconveniente), dile que le pasas el mensaje a la encargada o sugiérele escribir *ASESOR*.\n`
+    : ''
+}
 MENSAJE DEL CLIENTE:
 "${pregunta}"
 
@@ -423,7 +462,7 @@ REGLAS ESTRICTAS DE SEGURIDAD Y CERO ALUCINACIÓN (PROHIBIDO INVENTAR):
 1. SERVICIOS NO INCLUIDOS: No prestamos servicios ajenos a uñas (NO hacemos pestañas, cejas, depilación, masajes corporales, peluquería, tintes, peinados ni cortes de cabello). Si preguntan por cualquiera de estos u otros servicios ajenos, aclárales con amor que no los ofrecemos porque somos un spa especializado 100% exclusivo en el cuidado y embellecimiento de uñas.
 2. LO QUE NO SEPAS O NO ESTÉ AQUÍ, NO LO INVENTES: Si el cliente pregunta por promociones no oficiales (como 2x1 o descuentos especiales), venta de esmaltes al por mayor, cursos, convenios o cualquier tema del que no tengas certeza en esta ficha técnica, NUNCA inventes precios, condiciones ni respuestas al azar. Di amablemente que no dispones de esa información y sugiérele escribir la palabra *ASESOR* para que nuestra encargada le responda personalmente al WhatsApp ${complejo.telefono_whatsapp || ''}.
 3. PREGUNTAS FUERA DE CONTEXTO: Si preguntan sobre temas totalmente ajenos al negocio (política, cultura general, etc.), responde amablemente que eres la recepcionista virtual de JL Mímate Nails Spa y que estás para asesorarle en servicios de uñas y citas.
-4. NO CONFIRMAR CITAS EN EL CHAT: No inventes que ya le apartaste la cita en el chat. Recuerda que las citas se reservan mediante el agendamiento virtual.${yaTieneLink ? ' Como la clienta ya tiene el enlace arriba, NO repitas el link ni insistas con entrar a la web a menos que te lo pida.' : ` Guía siempre a la clienta a revisar disponibilidad real y reservar en: ${baseUrl}`}
+4. NO CONFIRMAR CITAS EN EL CHAT: No inventes que ya le apartaste o modificaste la cita en el chat. Recuerda que las citas se reservan o reagendan mediante el enlace oficial.${yaTieneLink || (contextoClienta && contextoClienta.citasActivas.length > 0) ? ' NO repitas el link general de bienvenida ni insistas con entrar a la web a menos que ella lo pida expresamente.' : ` Guía siempre a la clienta a revisar disponibilidad real y reservar en: ${baseUrl}`}
 5. FORMATO Y DURACIONES: Si preguntan precio o duración, indícalo exactamente expresando siempre la duración en minutos (ej: 60 min, 90 min, 120 min). Responde en máximo 3 a 4 oraciones cortas con tono cálido ("¡Hola reina!", "¡Claro que sí hermosa!") y emojis sutiles (💅🌸✨).`;
 
     const modelosDisponibles = [
@@ -467,11 +506,13 @@ REGLAS ESTRICTAS DE SEGURIDAD Y CERO ALUCINACIÓN (PROHIBIDO INVENTAR):
   private static generarRespuestaPorReglas(
     preguntaOriginal: string,
     complejo: Complejo,
-    yaTieneLink: boolean = false
+    yaTieneLink: boolean = false,
+    contextoClienta?: ContextoClientaCitas
   ): string {
     const t = preguntaOriginal.toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     const baseUrl = process.env.FRONTEND_URL || 'https://mimate-nails-spa.vercel.app';
-    const pie = yaTieneLink ? '' : `\n\n📅 *Puedes elegir tu horario y agendar directamente aquí:*\n👉 ${baseUrl}`;
+    const tieneCitasActivas = Boolean(contextoClienta && contextoClienta.citasActivas.length > 0);
+    const pie = yaTieneLink || tieneCitasActivas ? '' : `\n\n📅 *Puedes elegir tu horario y agendar directamente aquí:*\n👉 ${baseUrl}`;
     const info = this.getConocimientoComplejo(complejo);
     const apertura = complejo.hora_apertura ? complejo.hora_apertura.slice(0, 5) : '09:30';
     const cierre = complejo.hora_cierre ? complejo.hora_cierre.slice(0, 5) : '17:30';
@@ -693,6 +734,15 @@ REGLAS ESTRICTAS DE SEGURIDAD Y CERO ALUCINACIÓN (PROHIBIDO INVENTAR):
         `🌸 ¡Con muchísimo gusto reina! Estamos para consentirte en *${complejo.nombre}* 💕.\n\n` +
         `Si tienes cualquier otra pregunta sobre nuestros servicios, precios o ubicación, escríbeme con confianza. ¡Te esperamos! 💅✨` +
         pie
+      );
+    }
+
+    if (tieneCitasActivas && contextoClienta) {
+      const proxima = contextoClienta.citasActivas[0];
+      const nombreSaludo = contextoClienta.nombre ? ` ${contextoClienta.nombre}` : ' reina';
+      return (
+        `🌸 ¡Hola${nombreSaludo}! 💕 Veo que tienes tu cita de *${proxima.servicio}* el *${proxima.fechaLegible}* a las *${proxima.horaInicio}* con *${proxima.especialista}*.\n\n` +
+        `Cuéntanos en qué te podemos ayudar con tu cita o servicio, y si prefieres hablar directamente con una encargada escribe *ASESOR* 💅✨`
       );
     }
 

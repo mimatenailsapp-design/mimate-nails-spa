@@ -36,6 +36,18 @@ export class BaileysService {
   // Silencio temporal del bot por chat (atención humana en curso): teléfono normalizado -> timestamp de expiración
   private static silenciosTemporales = new Map<string, number>();
   private static readonly SILENCIO_HUMANO_MS = 1 * 60 * 60 * 1000; // 1 hora, se renueva con cada mensaje humano
+  private static fallosPermanentesEnvio = new Map<string, number>();
+
+  public static esFalloPermanenteEnvio(tel: string): boolean {
+    const clave = this.claveSilencio(tel);
+    const ts = this.fallosPermanentesEnvio.get(clave);
+    if (!ts) return false;
+    if (Date.now() - ts > 10 * 60 * 1000) {
+      this.fallosPermanentesEnvio.delete(clave);
+      return false;
+    }
+    return true;
+  }
 
   private static claveSilencio(tel: string): string {
     let d = String(tel || '').replace(/\D/g, '');
@@ -751,14 +763,22 @@ export class BaileysService {
     // 9. Enviar respuesta adaptada para Baileys con presencia de tipeo humano
     await this.enviarConTipeoHumano(jidDestino, respuestaBot);
 
-    // 10. Si la clienta pidió hablar con un asesor / encargada, pausar el bot en este chat para que la atienda una persona
+    // 10. Si la clienta pidió hablar con un asesor / encargada o el flujo indicó atención humana, pausar el bot 1 hora
     const textoNorm = texto.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    if (!m.key.fromMe && /\b(asesor|asesora|encargad[oa]|humano|contacto_asesor)\b/.test(textoNorm)) {
-      this.silenciarChatTemporalmente(telefonoNormalizado, 'clienta solicitó asesor');
-      await this.enviarConTipeoHumano(
-        jidDestino,
-        `💬 Una encargada del spa te atenderá personalmente por este chat. Mientras tanto, el asistente virtual quedará en pausa para no interrumpirlas 🌸`
+    const pidioAsesor = /\b(asesor|asesora|encargad[oa]|humano|contacto_asesor)\b/.test(textoNorm);
+    const flujoPidioPausa = Boolean(typeof respuestaBot === 'object' && respuestaBot?.pausarBot);
+
+    if (!m.key.fromMe && (pidioAsesor || flujoPidioPausa)) {
+      this.silenciarChatTemporalmente(
+        telefonoNormalizado,
+        pidioAsesor ? 'clienta solicitó asesor' : 'requiere atención humana'
       );
+      if (pidioAsesor) {
+        await this.enviarConTipeoHumano(
+          jidDestino,
+          `💬 Una encargada del spa te atenderá personalmente por este chat. Mientras tanto, el asistente virtual quedará en pausa para no interrumpirlas 🌸`
+        );
+      }
     }
   }
 
@@ -904,6 +924,7 @@ export class BaileysService {
       clean = `57${clean}`;
     }
     if (await BotExclusionsService.esNumeroExcluido(clean)) {
+      this.fallosPermanentesEnvio.set(this.claveSilencio(clean), Date.now());
       console.log(`[Baileys] Envío directo a ${clean} cancelado (número en lista de exclusión/atención humana).`);
       return false;
     }
@@ -917,6 +938,7 @@ export class BaileysService {
       ]);
       if (results && results[0]) {
         if (results[0].exists === false) {
+          this.fallosPermanentesEnvio.set(this.claveSilencio(clean), Date.now());
           this.addDebugEvent('ENVIO_DIRECTO_SIN_WHATSAPP', { telefono: clean });
           console.warn(`[Baileys] ⚠️ El número ${clean} no tiene WhatsApp registrado. No se envía mensaje.`);
           return false;

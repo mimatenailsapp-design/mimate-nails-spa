@@ -1,4 +1,5 @@
 import express, { Request, Response } from 'express';
+import { createHash } from 'crypto';
 import cors from 'cors';
 // @ts-ignore
 import compression from 'compression';
@@ -614,6 +615,16 @@ app.get(['/qr/image', '/api/baileys/qr.png'], (req: Request, res: Response) => {
  * Función central de despacho de mensajes de WhatsApp
  * Utiliza Baileys exclusivamente simulando tipeo humano y respetando lista blanca.
  */
+const mensajesDirectosEnviados = new Map<string, number>();
+const reintentosEnvioEnCurso = new Set<string>();
+const DEDUP_ENVIO_TTL_MS = 30 * 60 * 1000;
+
+function obtenerClaveDeduplicacionEnvio(cleanTo: string, message: string | BotResponse): string {
+  const texto = typeof message === 'string' ? message : JSON.stringify(message);
+  const hash = createHash('sha256').update(texto).digest('hex').slice(0, 16);
+  return `${cleanTo}|${hash}`;
+}
+
 async function enviarMensajeWhatsApp(
   to: string,
   message: string | BotResponse,
@@ -626,22 +637,57 @@ async function enviarMensajeWhatsApp(
     cleanTo = `57${cleanTo}`;
   }
 
+  const claveDedup = obtenerClaveDeduplicacionEnvio(cleanTo, message);
+  const ahora = Date.now();
+
+  // Limpiar entradas expiradas periódicamente
+  if (mensajesDirectosEnviados.size > 500) {
+    for (const [k, ts] of mensajesDirectosEnviados.entries()) {
+      if (ahora - ts > DEDUP_ENVIO_TTL_MS) mensajesDirectosEnviados.delete(k);
+    }
+  }
+
+  // Garantizar que nunca se envíe el mismo mensaje repetido al mismo número dentro de la ventana de deduplicación
+  const enviadoPrevioTs = mensajesDirectosEnviados.get(claveDedup);
+  if (enviadoPrevioTs && ahora - enviadoPrevioTs < DEDUP_ENVIO_TTL_MS) {
+    reintentosEnvioEnCurso.delete(claveDedup);
+    console.log(`⏭️ [WHATSAPP] Mensaje idéntico ya entregado recientemente a ${cleanTo}, se omite duplicado.`);
+    return true;
+  }
+
+  // Si ya hay una cadena de reintentos programada para este mismo mensaje, no duplicar envíos paralelos
+  if (_intento === 0 && reintentosEnvioEnCurso.has(claveDedup)) {
+    console.log(`⏭️ [WHATSAPP] Reintento ya programado para este mensaje a ${cleanTo}, se omite duplicado.`);
+    return false;
+  }
+
   const enviado = await BaileysService.enviarMensajeDirecto(cleanTo, message);
   if (enviado) {
+    mensajesDirectosEnviados.set(claveDedup, Date.now());
+    reintentosEnvioEnCurso.delete(claveDedup);
     console.log(`✅ [WHATSAPP BAILEYS ENVIADO a ${cleanTo}]`);
     addDebugLog('SEND_SUCCESS', { to: cleanTo, provider: 'baileys' });
   } else {
     console.warn(`⚠️ [WHATSAPP BAILEYS NO ENVIADO a ${cleanTo}]: No conectado, sin WhatsApp o número en lista de exclusión`);
     addDebugLog('SEND_ERROR', { to: cleanTo, provider: 'baileys', motivo: 'No conectado, sin WhatsApp o silenciado por exclusión' });
 
-    // Reintentos automáticos (la conexión de WhatsApp puede estar reconectándose): 1, 3 y 8 minutos después
-    if (_intento < 3 && !(await BotExclusionsService.esNumeroExcluido(cleanTo))) {
+    const falloPermanente =
+      BaileysService.esFalloPermanenteEnvio(cleanTo) ||
+      (await BotExclusionsService.esNumeroExcluido(cleanTo));
+
+    // Reintentos automáticos solo para fallos temporales (reconexión), garantizando envío único
+    if (_intento < 3 && !falloPermanente && !mensajesDirectosEnviados.has(claveDedup)) {
       const esperas = [60_000, 180_000, 480_000];
       const espera = esperas[_intento];
+      reintentosEnvioEnCurso.add(claveDedup);
       console.log(`🔁 [WHATSAPP] Reintento ${_intento + 1}/3 para ${cleanTo} en ${espera / 60000} min`);
       setTimeout(() => {
-        enviarMensajeWhatsApp(to, message, _customToken, _customPhoneId, _intento + 1).catch(() => {});
+        enviarMensajeWhatsApp(to, message, _customToken, _customPhoneId, _intento + 1).catch(() => {
+          reintentosEnvioEnCurso.delete(claveDedup);
+        });
       }, espera);
+    } else {
+      reintentosEnvioEnCurso.delete(claveDedup);
     }
   }
   return enviado;

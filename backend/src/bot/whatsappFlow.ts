@@ -1,6 +1,6 @@
 import { BookingService, Complejo, Cancha, HorarioDisponible, getMontoAnticipoFijo, requiereAnticipoParaFecha, formatearCuentasRecaudoMensaje, getLlaveNumero, getTitularLimpio, enriquecerCancha } from '../services/bookingService.js';
 import { ReceiptVerificationService } from '../services/receiptVerificationService.js';
-import { AIReceptionistService } from '../services/aiReceptionistService.js';
+import { AIReceptionistService, CitaActivaResumen, ContextoClientaCitas } from '../services/aiReceptionistService.js';
 import { NLUIntentService } from '../services/nluIntentService.js';
 import { supabase } from '../config/supabase.js';
 
@@ -46,6 +46,7 @@ export interface BotResponse {
   texto: string;
   interactive?: BotInteractiveMessage | BotCtaUrlMessage;
   urlRedirect?: string;
+  pausarBot?: boolean;
 }
 
 interface UserSession {
@@ -90,6 +91,119 @@ function hidratarHorarioRealWa<T extends { fecha_inicio?: string; fecha_fin?: st
 }
 
 export class WhatsAppFlow {
+  /**
+   * Consulta en tiempo real si la clienta ya tiene citas próximas activas en Supabase
+   * para responder de forma contextual en lugar de enviar el saludo genérico con link.
+   */
+  private static async obtenerContextoClientaActiva(telefono: string): Promise<ContextoClientaCitas | undefined> {
+    try {
+      const digits = String(telefono || '').replace(/\D/g, '');
+      if (digits.length < 7) return undefined;
+      const conPais = digits.length === 10 && digits.startsWith('3') ? `57${digits}` : digits;
+      const sinPais = conPais.startsWith('57') && conPais.length === 12 ? conPais.slice(2) : digits;
+
+      const { data: clientes } = await supabase
+        .from('clientes')
+        .select('id, nombre')
+        .or(`telefono_wa.eq.${conPais},telefono_wa.eq.${sinPais}`);
+
+      if (!clientes || clientes.length === 0) return undefined;
+
+      const clienteIds = clientes.map((c) => c.id);
+      const nombreCliente = clientes.find((c) => c.nombre?.trim())?.nombre?.trim();
+
+      // Incluir citas desde hace 2 horas hacia adelante (cubre clientas llegando tarde o justo a su turno)
+      const desdeIso = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+      const { data: reservas } = await supabase
+        .from('reservas')
+        .select('id, fecha_inicio, fecha_fin, estado, valor_total, valor_anticipo_requerido, notas, canchas(id, nombre)')
+        .in('cliente_id', clienteIds)
+        .in('estado', ['confirmada', 'pendiente_pago'])
+        .gte('fecha_inicio', desdeIso)
+        .order('fecha_inicio', { ascending: true })
+        .limit(5);
+
+      if (!reservas || reservas.length === 0) {
+        return { nombre: nombreCliente, telefonoLimpio: conPais, citasActivas: [] };
+      }
+
+      const hoyCol = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+      const citasActivas: CitaActivaResumen[] = reservas.map((rRaw: any) => {
+        const r = hidratarHorarioRealWa(rRaw);
+        const notasStr = String(r.notas || '');
+        const dIni = new Date(r.fecha_inicio);
+        const dFin = new Date(r.fecha_fin || dIni.getTime() + 60 * 60 * 1000);
+
+        const fechaLegible = dIni.toLocaleDateString('es-CO', {
+          weekday: 'long',
+          day: 'numeric',
+          month: 'long',
+          timeZone: 'America/Bogota',
+        });
+        const horaInicio = dIni.toLocaleTimeString('es-CO', {
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true,
+          timeZone: 'America/Bogota',
+        });
+        const horaFin = dFin.toLocaleTimeString('es-CO', {
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true,
+          timeZone: 'America/Bogota',
+        });
+        const fechaCol = dIni.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+        const matchServ = notasStr.match(/Servicio:\s*([^|[\n]+)/i);
+        const servicio = matchServ?.[1]?.trim() || 'Servicio de uñas';
+        const canchaEnr = r.canchas ? enriquecerCancha(r.canchas) : null;
+        const especialista = canchaEnr?.nombre || r.canchas?.nombre || 'Especialista del spa';
+
+        return {
+          id: r.id,
+          fechaLegible,
+          horaInicio,
+          horaFin,
+          servicio,
+          especialista,
+          estado: r.estado === 'pendiente_pago' ? 'pendiente_pago' : 'confirmada',
+          valorTotal: Number(r.valor_total || 0),
+          anticipoRequerido: Number(r.valor_anticipo_requerido || 0),
+          esHoy: fechaCol === hoyCol,
+        };
+      });
+
+      return {
+        nombre: nombreCliente,
+        telefonoLimpio: conPais,
+        citasActivas,
+      };
+    } catch (e) {
+      console.warn('[WhatsAppFlow] Error consultando contexto de citas activas:', e);
+      return undefined;
+    }
+  }
+
+  /**
+   * Formatea un resumen legible de las citas activas de la clienta
+   */
+  private static formatearResumenCitasActivas(citas: CitaActivaResumen[]): string {
+    return citas
+      .slice(0, 3)
+      .map((c) => {
+        const estadoTxt =
+          c.estado === 'confirmada'
+            ? '✅ Confirmada'
+            : `⏳ Pendiente de abono ($${c.anticipoRequerido.toLocaleString('es-CO')})`;
+        return (
+          `📅 *${c.fechaLegible}* (${c.horaInicio} - ${c.horaFin})\n` +
+          `💅 Servicio: *${c.servicio}*\n` +
+          `👩‍🎨 Especialista: *${c.especialista}*\n` +
+          `📌 Estado: ${estadoTxt}`
+        );
+      })
+      .join('\n\n');
+  }
+
   /**
    * Procesa el mensaje identificando a qué complejo deportivo pertenece
    * y genera respuestas interactivas de menú desplegable para WhatsApp
@@ -182,9 +296,14 @@ export class WhatsAppFlow {
       const inputNormalizado = input.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
 
       // ==============================================================================
-      // FLUJO INTELIGENTE ANTI-BUCLE PARA JL MÍMATE NAILS SPA
+      // FLUJO INTELIGENTE ANTI-BUCLE Y CONTEXTUAL PARA JL MÍMATE NAILS SPA
       // ==============================================================================
       if (esSpa && !mediaId && !directImageBuffer) {
+        // Consultar si la clienta ya tiene citas próximas activas en Supabase
+        const contextoClienta = await this.obtenerContextoClientaActiva(telefono);
+        const tieneCitasActivas = Boolean(contextoClienta && contextoClienta.citasActivas.length > 0);
+        const nombreClientaSaludo = contextoClienta?.nombre || nombrePush;
+
         // A. Agradecimientos, confirmaciones cortas o cortesías (CERO repetición de link)
         const cortesiasAgradecimiento = [
           'gracias',
@@ -236,18 +355,182 @@ export class WhatsAppFlow {
 
         if (esAgradecimiento || esConfirmacionCorta) {
           session.paso = 'ATENDIENDO';
+          if (tieneCitasActivas) session.linkEnviado = true;
           if (esAgradecimiento) {
             return {
-              texto: `🌸 ¡Con muchísimo gusto, mi reina! 💕💅 Aquí estamos super atentas si tienes cualquier duda o necesitas ayuda con tu reserva.`,
+              texto: `🌸 ¡Con muchísimo gusto, mi reina! 💕💅 Aquí estamos super atentas si tienes cualquier duda o necesitas ayuda con tu cita.`,
             };
           } else {
             return {
-              texto: `🌸 ¡Dale hermosa! Tómate tu tiempo 💕. Si necesitas ayuda con tu cita o cualquier servicio, por aquí estamos para colaborarte.`,
+              texto: `🌸 ¡Dale hermosa! 💕 Si necesitas ayuda con tu cita o cualquier servicio, por aquí estamos para colaborarte.`,
             };
           }
         }
 
-        // B. Solicitud explícita de link / reabrir agenda / problemas para abrir
+        // B. MANEJO CONTEXTUAL CUANDO LA CLIENTA YA TIENE CITA(S) ACTIVA(S)
+        // Nunca responder con saludo genérico + link de agenda si ya tiene cita; analizar su intención y contexto real.
+        if (tieneCitasActivas && contextoClienta) {
+          session.linkEnviado = true;
+          session.paso = 'ATENDIENDO';
+          const proxima = contextoClienta.citasActivas[0];
+          const baseUrl = process.env.FRONTEND_URL || 'https://mimate-nails-spa.vercel.app';
+          const linkReagendar = `${baseUrl}/?reagendar=${proxima.id}&tel=${contextoClienta.telefonoLimpio}`;
+
+          // B1. Solicitud explícita de link para agendar OTRA cita adicional
+          const pideLinkExplicito = [
+            'pasame el link',
+            'pasar el link',
+            'pasa el link',
+            'mandame el link',
+            'manda el link',
+            'enviame el link',
+            'envia el link',
+            'otro turno',
+            'otra cita',
+            'agendar otra',
+            'abrir agenda',
+            'ver agenda',
+          ].some((k) => inputNormalizado.includes(k)) || ['link', 'enlace', 'agenda', 'menu'].includes(inputNormalizado);
+
+          if (pideLinkExplicito) {
+            return await this.manejarReenvioLink(telefono, session, complejo, nombreClientaSaludo);
+          }
+
+          // B2. Aviso de llegada, retraso o en camino (notifica al equipo y silencia el bot para atención humana)
+          const esAvisoLlegadaORetraso = [
+            'voy tarde',
+            'llego tarde',
+            'llegare tarde',
+            'voy retrasad',
+            'me demoro',
+            'me atras',
+            'un poco tarde',
+            'minutos tarde',
+            'estoy llegando',
+            'ya voy llegando',
+            'voy llegando',
+            'ya llegue',
+            'estoy afuera',
+            'en camino',
+            'ya sali',
+          ].some((k) => inputNormalizado.includes(k));
+
+          if (esAvisoLlegadaORetraso) {
+            const saludo = nombreClientaSaludo ? ` ${nombreClientaSaludo}` : ' reina';
+            return {
+              texto:
+                `🌸 ¡Gracias por avisarnos,${saludo}! 💕 Ya tomamos nota para tu cita de *${proxima.servicio}* (${proxima.horaInicio}) con *${proxima.especialista}*.\n\n` +
+                `Le paso el mensaje a nuestra encargada por aquí mismo para coordinarte si hace falta 💅✨`,
+              pausarBot: true,
+            };
+          }
+
+          // B3. Intención de reagendar, cambiar horario/fecha o cancelar su cita activa
+          const esCambioOCancelacion = [
+            'reagendar',
+            'reprogramar',
+            'cambiar mi cita',
+            'cambiar la cita',
+            'cambiar de hora',
+            'cambiar de dia',
+            'mover mi cita',
+            'mover la cita',
+            'correr mi cita',
+            'cancelar mi cita',
+            'cancelar la cita',
+            'no puedo ir',
+            'no puedo asistir',
+            'no alcanzo',
+            'no voy a poder',
+          ].some((k) => inputNormalizado.includes(k));
+
+          if (esCambioOCancelacion) {
+            const saludo = nombreClientaSaludo ? ` ${nombreClientaSaludo}` : ' reina';
+            return {
+              texto:
+                `🌸 ¡Hola${saludo}! 💕 Veo tu próxima cita registrada:\n\n` +
+                `${this.formatearResumenCitasActivas([proxima])}\n\n` +
+                `🔄 *Si deseas cambiar fecha u hora*, puedes reagendarla directamente aquí (tu abono se transfiere automático):\n👉 ${linkReagendar}\n\n` +
+                `💬 Si prefieres cancelarla o necesitas ayuda especial con el cambio, escribe *ASESOR* y nuestra encargada te atiende personalmente.`,
+            };
+          }
+
+          // B4. Consulta sobre los detalles de su cita (hora, día, especialista, confirmación)
+          const esConsultaMiCita = [
+            'mi cita',
+            'mis citas',
+            'a que hora',
+            'que hora es',
+            'que hora tengo',
+            'que dia tengo',
+            'cuando es mi cita',
+            'cuando tengo cita',
+            'con quien tengo',
+            'recordar mi cita',
+            'tengo cita',
+            'si quede agendada',
+            'quede agendada',
+            'quedo agendada',
+          ].some((k) => inputNormalizado.includes(k));
+
+          if (esConsultaMiCita) {
+            const saludo = nombreClientaSaludo ? ` ${nombreClientaSaludo}` : ' reina';
+            const titulo =
+              contextoClienta.citasActivas.length > 1
+                ? `Aquí tienes tus próximas *${contextoClienta.citasActivas.length} citas* agendadas:`
+                : `Aquí tienes los detalles de tu próxima cita:`;
+            return {
+              texto:
+                `🌸 ¡Hola${saludo}! 💕 ${titulo}\n\n` +
+                `${this.formatearResumenCitasActivas(contextoClienta.citasActivas)}\n\n` +
+                `📍 *Dirección:* Pereira, Cuba (Calle 66 bis #26-57)\n` +
+                `💬 Si necesitas hacer algún cambio o tienes alguna duda, cuéntame por aquí o escribe *ASESOR*.`,
+            };
+          }
+
+          // B5. Saludo simple teniendo cita activa -> saludo personalizado con contexto (SIN mandar link genérico)
+          const esSaludoSimpleConCita = [
+            'hola',
+            'hola!',
+            'buenas',
+            'buen dia',
+            'buenos dias',
+            'buenas tardes',
+            'buenas noches',
+            'ola',
+            'hey',
+          ].some((s) => inputNormalizado === s || inputNormalizado === `${s}!`);
+
+          if (esSaludoSimpleConCita) {
+            const saludo = nombreClientaSaludo ? ` ${nombreClientaSaludo}` : ' reina';
+            const estadoCorto =
+              proxima.estado === 'confirmada'
+                ? 'confirmada'
+                : `pendiente de abono ($${proxima.anticipoRequerido.toLocaleString('es-CO')})`;
+            return {
+              texto:
+                `🌸 ¡Hola${saludo}! 💕 Qué gusto saludarte. Veo que tienes tu cita de *${proxima.servicio}* (${estadoCorto}) el *${proxima.fechaLegible}* a las *${proxima.horaInicio}* con *${proxima.especialista}*.\n\n` +
+                `¿En qué te podemos colaborar hoy? (dudas sobre tu cita, cambios, servicios o hablar con una encargada) 💅✨`,
+            };
+          }
+
+          // B6. Cualquier otra pregunta o mensaje libre -> IA con contexto real de sus citas (sin repetir bienvenida ni link)
+          const consultaContextual = await AIReceptionistService.responderConsulta(
+            texto,
+            complejo,
+            true,
+            true,
+            contextoClienta
+          );
+          if (consultaContextual.esPreguntaOAtencion && consultaContextual.respuestaTexto) {
+            return {
+              texto: consultaContextual.respuestaTexto,
+              pausarBot: Boolean(consultaContextual.esSolicitudHumano),
+            };
+          }
+        }
+
+        // C. Solicitud explícita de link / reabrir agenda / problemas para abrir (clientas sin cita activa)
         const palabrasLink = [
           'link',
           'el link',
@@ -288,7 +571,7 @@ export class WhatsAppFlow {
           }
         }
 
-        // C. Saludo cuando el link YA fue enviado previamente (No repetir bienvenida ni link)
+        // D. Saludo cuando el link YA fue enviado previamente (No repetir bienvenida ni link)
         const esSaludoSimple = [
           'hola',
           'hola!',
@@ -309,21 +592,30 @@ export class WhatsAppFlow {
           };
         }
 
-        // D. Preguntas en lenguaje natural (servicios, precios, ubicación, horarios, dudas, etc.)
+        // E. Preguntas en lenguaje natural (servicios, precios, ubicación, horarios, dudas, etc.)
         const tienePreguntaNatural =
           AIReceptionistService.esSolicitudHumano(input) ||
           AIReceptionistService.esPreguntaFrecuente(input);
 
         if (session.linkEnviado || tienePreguntaNatural) {
-          const consulta = await AIReceptionistService.responderConsulta(texto, complejo, true, Boolean(session.linkEnviado));
+          const consulta = await AIReceptionistService.responderConsulta(
+            texto,
+            complejo,
+            true,
+            Boolean(session.linkEnviado),
+            contextoClienta
+          );
           if (consulta.esPreguntaOAtencion && consulta.respuestaTexto) {
             session.linkEnviado = true;
             session.paso = 'ATENDIENDO';
-            return { texto: consulta.respuestaTexto };
+            return {
+              texto: consulta.respuestaTexto,
+              pausarBot: Boolean(consulta.esSolicitudHumano),
+            };
           }
         }
 
-        // E. Primer mensaje de bienvenida para Spa (cuando aún no se ha enviado el link)
+        // F. Primer mensaje de bienvenida para Spa (solo para clientas nuevas sin cita activa)
         if (!session.linkEnviado) {
           return await this.manejarInicio(telefono, session, complejo, nombrePush, texto);
         }
