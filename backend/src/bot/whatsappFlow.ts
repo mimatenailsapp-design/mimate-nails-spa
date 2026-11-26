@@ -49,7 +49,7 @@ export interface BotResponse {
 }
 
 interface UserSession {
-  paso: 'INICIO' | 'SELECCION_CANCHA' | 'SELECCION_FECHA' | 'SELECCION_HORA' | 'CONFIRMACION' | 'ESPERA_PAGO' | 'PEDIDO_ESPERA_DIRECCION';
+  paso: 'INICIO' | 'ATENDIENDO' | 'SELECCION_CANCHA' | 'SELECCION_FECHA' | 'SELECCION_HORA' | 'CONFIRMACION' | 'ESPERA_PAGO' | 'PEDIDO_ESPERA_DIRECCION';
   complejoId?: string;
   canchasDisponibles?: Cancha[];
   canchaSeleccionada?: Cancha;
@@ -60,6 +60,7 @@ interface UserSession {
   nombreCliente?: string;
   ultimoMensaje: number;
   linkEnviado?: boolean;
+  linkEnviadoAt?: number;
   pedidoInfo?: {
     detalle: string;
     total: number;
@@ -109,7 +110,7 @@ export class WhatsAppFlow {
       // Obtener complejo asignado
       const complejo = complejoDirecto || (await BookingService.getComplejos())[0];
 
-      if (!session || ahora - session.ultimoMensaje > 30 * 60 * 1000 || session.complejoId !== complejo.id) {
+      if (!session || ahora - session.ultimoMensaje > 4 * 60 * 60 * 1000 || session.complejoId !== complejo.id) {
         session = { paso: 'INICIO', complejoId: complejo.id, ultimoMensaje: ahora };
         sesiones.set(telefono, session);
       }
@@ -178,7 +179,159 @@ export class WhatsAppFlow {
         }
       }
 
-      // 2. Detección de saludos puros o solicitud explícita del link de agenda
+      const inputNormalizado = input.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+
+      // ==============================================================================
+      // FLUJO INTELIGENTE ANTI-BUCLE PARA JL MÍMATE NAILS SPA
+      // ==============================================================================
+      if (esSpa && !mediaId && !directImageBuffer) {
+        // A. Agradecimientos, confirmaciones cortas o cortesías (CERO repetición de link)
+        const cortesiasAgradecimiento = [
+          'gracias',
+          'muchas gracias',
+          'muchisimas gracias',
+          'mil gracias',
+          'gracias hermosa',
+          'gracias reina',
+          'gracias nena',
+          'gracias bonita',
+          'muy amable',
+          'ok gracias',
+          'listo gracias',
+          'vale gracias',
+          'dale gracias',
+        ];
+        const cortesiasConfirmacion = [
+          'ok',
+          'oka',
+          'okey',
+          'okay',
+          'oki',
+          'okis',
+          'listo',
+          'lista',
+          'vale',
+          'dale',
+          'perfecto',
+          'bueno',
+          'super',
+          'genial',
+          'excelente',
+          'ya miro',
+          'ya voy a mirar',
+          'ya vi',
+          'ya voy a entrar',
+          'ya voy a agendar',
+          'ya entro',
+          'ya estoy mirando',
+          'ya lo abro',
+        ];
+
+        const esAgradecimiento = cortesiasAgradecimiento.some(
+          (c) => inputNormalizado === c || inputNormalizado.startsWith(c + ' ') || inputNormalizado.endsWith(' ' + c)
+        );
+        const esConfirmacionCorta = cortesiasConfirmacion.some(
+          (c) => inputNormalizado === c || inputNormalizado.startsWith(c + ' ') || inputNormalizado.endsWith(' ' + c)
+        );
+
+        if (esAgradecimiento || esConfirmacionCorta) {
+          session.paso = 'ATENDIENDO';
+          if (esAgradecimiento) {
+            return {
+              texto: `🌸 ¡Con muchísimo gusto, mi reina! 💕💅 Aquí estamos super atentas si tienes cualquier duda o necesitas ayuda con tu reserva.`,
+            };
+          } else {
+            return {
+              texto: `🌸 ¡Dale hermosa! Tómate tu tiempo 💕. Si necesitas ayuda con tu cita o cualquier servicio, por aquí estamos para colaborarte.`,
+            };
+          }
+        }
+
+        // B. Solicitud explícita de link / reabrir agenda / problemas para abrir
+        const palabrasLink = [
+          'link',
+          'el link',
+          'enlace',
+          'el enlace',
+          'pasame el link',
+          'pasar el link',
+          'pasa el link',
+          'mandame el link',
+          'manda el link',
+          'enviame el link',
+          'envia el link',
+          'no me abre',
+          'no abre',
+          'no puedo entrar',
+          'abrir agenda',
+          'ver agenda',
+          'donde agendo',
+          'donde puedo agendar',
+          'agenda',
+          'la pagina',
+          'pagina',
+          'web',
+          'agendar',
+          'agendame',
+        ];
+        const esSolicitudExplicitaLink =
+          input === 'menu' ||
+          input === 'inicio' ||
+          input === 'cancelar' ||
+          palabrasLink.some((k) => inputNormalizado === k || inputNormalizado.includes(k));
+
+        if (esSolicitudExplicitaLink) {
+          if (session.linkEnviado) {
+            return await this.manejarReenvioLink(telefono, session, complejo, nombrePush);
+          } else {
+            return await this.manejarInicio(telefono, session, complejo, nombrePush, texto);
+          }
+        }
+
+        // C. Saludo cuando el link YA fue enviado previamente (No repetir bienvenida ni link)
+        const esSaludoSimple = [
+          'hola',
+          'hola!',
+          'buenas',
+          'buen dia',
+          'buenos dias',
+          'buenas tardes',
+          'buenas noches',
+          'ola',
+          'hey',
+        ].some((s) => inputNormalizado === s || inputNormalizado.startsWith(s + ' '));
+
+        if (session.linkEnviado && esSaludoSimple) {
+          session.paso = 'ATENDIENDO';
+          const saludoNombre = nombrePush ? ` ${nombrePush}` : ' reina';
+          return {
+            texto: `🌸 ¡Hola de nuevo${saludoNombre}! 💕 ¿En qué te podemos consentir o colaborar hoy? Cuéntanos si tienes alguna duda sobre nuestros servicios o si necesitas ayuda con tu cita.`,
+          };
+        }
+
+        // D. Preguntas en lenguaje natural (servicios, precios, ubicación, horarios, dudas, etc.)
+        const tienePreguntaNatural =
+          AIReceptionistService.esSolicitudHumano(input) ||
+          AIReceptionistService.esPreguntaFrecuente(input);
+
+        if (session.linkEnviado || tienePreguntaNatural) {
+          const consulta = await AIReceptionistService.responderConsulta(texto, complejo, true, Boolean(session.linkEnviado));
+          if (consulta.esPreguntaOAtencion && consulta.respuestaTexto) {
+            session.linkEnviado = true;
+            session.paso = 'ATENDIENDO';
+            return { texto: consulta.respuestaTexto };
+          }
+        }
+
+        // E. Primer mensaje de bienvenida para Spa (cuando aún no se ha enviado el link)
+        if (!session.linkEnviado) {
+          return await this.manejarInicio(telefono, session, complejo, nombrePush, texto);
+        }
+      }
+
+      // ==============================================================================
+      // FLUJO TRADICIONAL PARA OTROS NEGOCIOS
+      // ==============================================================================
       const esSaludoOLinkDirecto = [
         'hola',
         'hola!',
@@ -199,30 +352,6 @@ export class WhatsAppFlow {
         'citas',
       ].includes(input);
 
-      // Si es una pregunta en lenguaje natural (ej. "hola, cuánto valen las acrílicas?", "dónde están ubicados?", etc.)
-      const tienePreguntaNatural =
-        AIReceptionistService.esSolicitudHumano(input) ||
-        AIReceptionistService.esPreguntaFrecuente(input);
-
-      // Si el bot YA envió el link antes y el usuario escribe cualquier cosa en lenguaje natural (no solo un comando de reinicio/link),
-      // responderle de forma inteligente a su pregunta o mensaje
-      if (esSpa && !mediaId && !directImageBuffer && !esSaludoOLinkDirecto && (session.linkEnviado || tienePreguntaNatural)) {
-        const consulta = await AIReceptionistService.responderConsulta(texto, complejo, true);
-        if (consulta.esPreguntaOAtencion && consulta.respuestaTexto) {
-          session.linkEnviado = true;
-          return { texto: consulta.respuestaTexto };
-        }
-      }
-
-      // Si aún no se había enviado el link pero el primer mensaje mismo ya es una pregunta específica (ej. "cuánto vale el semipermanente?")
-      if (!mediaId && !directImageBuffer && !esSaludoOLinkDirecto && tienePreguntaNatural) {
-        const consulta = await AIReceptionistService.responderConsulta(texto, complejo, true);
-        if (consulta.esPreguntaOAtencion && consulta.respuestaTexto) {
-          session.linkEnviado = true;
-          return { texto: consulta.respuestaTexto };
-        }
-      }
-
       const esSoloSaludo =
         esSaludoOLinkDirecto ||
         input.startsWith('hola') ||
@@ -237,15 +366,9 @@ export class WhatsAppFlow {
         session.horariosDisponibles = undefined;
         session.reservaId = undefined;
 
-        // Para JL Mímate Nails Spa: responder de inmediato con bienvenida y botón para abrir la agenda
         if (esSpa && !mediaId && !directImageBuffer) {
           return await this.manejarInicio(telefono, session, complejo, nombrePush, texto);
         }
-      }
-
-      // Si es Spa y está en inicio (primer mensaje sin haber enviado el link aún), enviar la bienvenida con el link
-      if (esSpa && session.paso === 'INICIO' && !mediaId && !directImageBuffer) {
-        return await this.manejarInicio(telefono, session, complejo, nombrePush, texto);
       }
 
       // Detección inteligente de consultas libres (FAQ) y derivación a asesor humano para otros negocios
@@ -288,6 +411,14 @@ export class WhatsAppFlow {
       // 4. FLUJO GUIADO DE RESERVAS Y CITAS
       switch (session.paso) {
         case 'INICIO':
+          return await this.manejarInicio(telefono, session, complejo, nombrePush, texto);
+
+        case 'ATENDIENDO':
+          if (esSpa) {
+            return {
+              texto: `🌸 ¡Hola reina! 💕 Cuéntanos qué servicio o consulta tienes, o escribe *AGENDA* si deseas abrir el calendario de citas para reservar.`,
+            };
+          }
           return await this.manejarInicio(telefono, session, complejo, nombrePush, texto);
 
         case 'SELECCION_CANCHA':
@@ -526,8 +657,9 @@ export class WhatsAppFlow {
     const esSpa = complejo.slug === 'mimate-nails' || complejo.tipo_negocio === 'belleza_unas';
 
     if (esSpa) {
-      session.paso = 'INICIO';
+      session.paso = 'ATENDIENDO';
       session.linkEnviado = true;
+      session.linkEnviadoAt = Date.now();
       const baseUrl = process.env.FRONTEND_URL || 'https://mimate-nails-spa.vercel.app';
       const cleanTel = telefono.replace(/\D/g, '');
       const queryParams = new URLSearchParams();
@@ -602,6 +734,51 @@ export class WhatsAppFlow {
               rows,
             },
           ],
+        },
+      },
+    };
+  }
+
+  /**
+   * Reenvía el enlace de agendamiento cuando la clienta lo pide explícitamente (link, agenda, no me abre, etc.)
+   */
+  private static async manejarReenvioLink(
+    telefono: string,
+    session: UserSession,
+    complejo: Complejo,
+    nombrePush?: string
+  ): Promise<BotResponse> {
+    session.paso = 'ATENDIENDO';
+    session.linkEnviado = true;
+    session.linkEnviadoAt = Date.now();
+    const baseUrl = process.env.FRONTEND_URL || 'https://mimate-nails-spa.vercel.app';
+    const cleanTel = telefono.replace(/\D/g, '');
+    const queryParams = new URLSearchParams();
+    if (cleanTel) queryParams.set('tel', cleanTel);
+    if (nombrePush) queryParams.set('nombre', nombrePush);
+    const urlAgenda = `${baseUrl}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+
+    const saludoNombre = nombrePush ? ` ${nombrePush}` : '';
+    const textoReenvio =
+      `🌸 ¡Claro que sí${saludoNombre ? saludoNombre : ', reina'}! Aquí tienes nuevamente el enlace directo para agendar tu cita y elegir tu manicurista preferida:\n\n` +
+      `📅 *ABRIR AGENDA:*\n👉 ${urlAgenda}\n\n` +
+      `📍 Pereira, Cuba (Calle 66 bis #26-57)\n` +
+      `¡Te esperamos con amor para consentirte! 💕💅`;
+
+    return {
+      texto: textoReenvio,
+      urlRedirect: urlAgenda,
+      interactive: {
+        type: 'cta_url',
+        header: '🌸 JL Mímate Nails Spa',
+        body: textoReenvio,
+        footer: 'JL Mímate Nails',
+        action: {
+          name: 'cta_url',
+          parameters: {
+            display_text: 'Abrir Agenda',
+            url: urlAgenda,
+          },
         },
       },
     };

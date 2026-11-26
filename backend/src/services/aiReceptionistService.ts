@@ -219,7 +219,8 @@ export class AIReceptionistService {
   static async responderConsulta(
     texto: string,
     complejo: Complejo,
-    forzarRespuestaNatural: boolean = false
+    forzarRespuestaNatural: boolean = false,
+    yaTieneLink: boolean = false
   ): Promise<ReceptionistResponse> {
     const t = texto.toLowerCase().trim();
 
@@ -254,7 +255,7 @@ export class AIReceptionistService {
     const apiKey = process.env.GEMINI_API_KEY;
     if (apiKey) {
       try {
-        const respuestaIA = await this.consultarGemini(texto, complejo, apiKey);
+        const respuestaIA = await this.consultarGemini(texto, complejo, apiKey, yaTieneLink);
         if (respuestaIA) {
           return {
             esPreguntaOAtencion: true,
@@ -267,7 +268,7 @@ export class AIReceptionistService {
     }
 
     // Motor NLU local enriquecido para responder con precisión cualquier pregunta en español
-    const respuestaReglas = this.generarRespuestaPorReglas(texto, complejo);
+    const respuestaReglas = this.generarRespuestaPorReglas(texto, complejo, yaTieneLink);
     return {
       esPreguntaOAtencion: true,
       respuestaTexto: respuestaReglas,
@@ -323,7 +324,12 @@ export class AIReceptionistService {
   /**
    * Consulta a Google Gemini Flash con el contexto específico de JL Mímate Nails Spa
    */
-  private static async consultarGemini(pregunta: string, complejo: Complejo, apiKey: string): Promise<string | null> {
+  private static async consultarGemini(
+    pregunta: string,
+    complejo: Complejo,
+    apiKey: string,
+    yaTieneLink: boolean = false
+  ): Promise<string | null> {
     const apertura = complejo.hora_apertura ? complejo.hora_apertura.slice(0, 5) : '09:30';
     const cierre = complejo.hora_cierre ? complejo.hora_cierre.slice(0, 5) : '17:30';
     const direccion = complejo.direccion || 'Calle 66 bis #26-57, Cuba, Pereira';
@@ -417,7 +423,7 @@ REGLAS ESTRICTAS DE SEGURIDAD Y CERO ALUCINACIÓN (PROHIBIDO INVENTAR):
 1. SERVICIOS NO INCLUIDOS: No prestamos servicios ajenos a uñas (NO hacemos pestañas, cejas, depilación, masajes corporales, peluquería, tintes, peinados ni cortes de cabello). Si preguntan por cualquiera de estos u otros servicios ajenos, aclárales con amor que no los ofrecemos porque somos un spa especializado 100% exclusivo en el cuidado y embellecimiento de uñas.
 2. LO QUE NO SEPAS O NO ESTÉ AQUÍ, NO LO INVENTES: Si el cliente pregunta por promociones no oficiales (como 2x1 o descuentos especiales), venta de esmaltes al por mayor, cursos, convenios o cualquier tema del que no tengas certeza en esta ficha técnica, NUNCA inventes precios, condiciones ni respuestas al azar. Di amablemente que no dispones de esa información y sugiérele escribir la palabra *ASESOR* para que nuestra encargada le responda personalmente al WhatsApp ${complejo.telefono_whatsapp || ''}.
 3. PREGUNTAS FUERA DE CONTEXTO: Si preguntan sobre temas totalmente ajenos al negocio (política, cultura general, etc.), responde amablemente que eres la recepcionista virtual de JL Mímate Nails Spa y que estás para asesorarle en servicios de uñas y citas.
-4. NO CONFIRMAR CITAS EN EL CHAT: No inventes que ya le apartaste la cita en el chat. Guía siempre a la clienta a revisar disponibilidad real y reservar en: ${baseUrl}
+4. NO CONFIRMAR CITAS EN EL CHAT: No inventes que ya le apartaste la cita en el chat. Recuerda que las citas se reservan mediante el agendamiento virtual.${yaTieneLink ? ' Como la clienta ya tiene el enlace arriba, NO repitas el link ni insistas con entrar a la web a menos que te lo pida.' : ` Guía siempre a la clienta a revisar disponibilidad real y reservar en: ${baseUrl}`}
 5. FORMATO Y DURACIONES: Si preguntan precio o duración, indícalo exactamente expresando siempre la duración en minutos (ej: 60 min, 90 min, 120 min). Responde en máximo 3 a 4 oraciones cortas con tono cálido ("¡Hola reina!", "¡Claro que sí hermosa!") y emojis sutiles (💅🌸✨).`;
 
     const modelosDisponibles = [
@@ -458,10 +464,14 @@ REGLAS ESTRICTAS DE SEGURIDAD Y CERO ALUCINACIÓN (PROHIBIDO INVENTAR):
   /**
    * Motor local de respuestas naturales (Fallback cuando no hay conexión a Gemini o respuesta inmediata)
    */
-  private static generarRespuestaPorReglas(preguntaOriginal: string, complejo: Complejo): string {
+  private static generarRespuestaPorReglas(
+    preguntaOriginal: string,
+    complejo: Complejo,
+    yaTieneLink: boolean = false
+  ): string {
     const t = preguntaOriginal.toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     const baseUrl = process.env.FRONTEND_URL || 'https://mimate-nails-spa.vercel.app';
-    const pie = `\n\n📅 *Puedes elegir tu horario y agendar directamente aquí:*\n👉 ${baseUrl}`;
+    const pie = yaTieneLink ? '' : `\n\n📅 *Puedes elegir tu horario y agendar directamente aquí:*\n👉 ${baseUrl}`;
     const info = this.getConocimientoComplejo(complejo);
     const apertura = complejo.hora_apertura ? complejo.hora_apertura.slice(0, 5) : '09:30';
     const cierre = complejo.hora_cierre ? complejo.hora_cierre.slice(0, 5) : '17:30';
