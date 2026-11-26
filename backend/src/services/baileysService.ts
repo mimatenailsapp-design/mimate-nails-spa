@@ -29,6 +29,46 @@ export class BaileysService {
   private static qrCode: string | null = null;
   private static statusConexion: 'DESCONECTADO' | 'ESPERANDO_QR' | 'CONECTANDO' | 'CONECTADO' = 'DESCONECTADO';
   private static procesadosCache = new Set<string>();
+
+  // IDs de mensajes enviados por el propio bot (para distinguirlos de los escritos por una persona desde el celular/WhatsApp Web)
+  private static botEnviadosIds = new Set<string>();
+
+  // Silencio temporal del bot por chat (atención humana en curso): teléfono normalizado -> timestamp de expiración
+  private static silenciosTemporales = new Map<string, number>();
+  private static readonly SILENCIO_HUMANO_MS = 3 * 60 * 60 * 1000; // 3 horas, se renueva con cada mensaje humano
+
+  private static claveSilencio(tel: string): string {
+    let d = String(tel || '').replace(/\D/g, '');
+    if (d.length === 10 && d.startsWith('3')) d = `57${d}`;
+    return d;
+  }
+
+  public static silenciarChatTemporalmente(tel: string, motivo: string): void {
+    const clave = this.claveSilencio(tel);
+    if (!clave) return;
+    this.silenciosTemporales.set(clave, Date.now() + this.SILENCIO_HUMANO_MS);
+    this.addDebugEvent('BOT_SILENCIADO_TEMPORAL', { telefono: clave, motivo });
+    console.log(`[Baileys] 🤫 Bot silenciado temporalmente para ${clave} (${motivo}) por ${this.SILENCIO_HUMANO_MS / 3600000} h.`);
+  }
+
+  public static reactivarChat(tel: string): void {
+    const clave = this.claveSilencio(tel);
+    if (this.silenciosTemporales.delete(clave)) {
+      this.addDebugEvent('BOT_REACTIVADO', { telefono: clave });
+      console.log(`[Baileys] 🔊 Bot reactivado para ${clave}.`);
+    }
+  }
+
+  public static estaSilenciadoTemporalmente(tel: string): boolean {
+    const clave = this.claveSilencio(tel);
+    const exp = this.silenciosTemporales.get(clave);
+    if (!exp) return false;
+    if (Date.now() > exp) {
+      this.silenciosTemporales.delete(clave);
+      return false;
+    }
+    return true;
+  }
   private static mensajeStore = new Map<string, proto.IMessage>();
   public static eventosDebug: Array<{ hora: string; tipo: string; detalle: any }> = [];
   private static isStarting = false;
@@ -538,8 +578,24 @@ export class BaileysService {
         (myNormalizedLid && areJidsSameUser(normalizedJid, myNormalizedLid)) ||
         telefonoLimpio === this.socket.user?.id?.split(':')[0]?.replace(/\D/g, '');
 
-      // Si el mensaje fue enviado por el bot/admin a otro usuario en un chat ordinario, no auto-responder
+      // Mensaje enviado desde el celular / WhatsApp Web hacia una clienta (chat ordinario)
       if (!esChatPropio) {
+        // Esperar un instante por si es el eco de un mensaje del propio bot cuyo ID aún no se registró
+        await this.delay(1500);
+        if (this.botEnviadosIds.has(msgId)) return;
+
+        // Mensaje escrito por una persona (admin / especialista): silenciar el bot SOLO para este chat
+        const textoHumano = (
+          m.message.conversation ||
+          m.message.extendedTextMessage?.text ||
+          ''
+        ).trim().toLowerCase();
+
+        if (textoHumano === '#bot' || textoHumano === '/bot') {
+          this.reactivarChat(telefonoLimpio);
+        } else {
+          this.silenciarChatTemporalmente(telefonoLimpio, 'respuesta humana');
+        }
         return;
       }
       this.addDebugEvent('CHAT_PROPIO_TEST', { telefonoLimpio });
@@ -554,6 +610,13 @@ export class BaileysService {
     if (esExcluido) {
       this.addDebugEvent('IGNORADO_ATENCION_HUMANA', { telefonoLimpio });
       console.log(`[Baileys] 👤 Mensaje de ${telefonoLimpio} ignorado (en lista de atención humana).`);
+      return;
+    }
+
+    // 4B. SILENCIO TEMPORAL: una persona (admin / especialista) está atendiendo este chat, el bot no interviene
+    if (!m.key.fromMe && this.estaSilenciadoTemporalmente(telefonoLimpio)) {
+      this.addDebugEvent('IGNORADO_SILENCIO_TEMPORAL', { telefonoLimpio });
+      console.log(`[Baileys] 🤫 Mensaje de ${telefonoLimpio} ignorado (chat en atención humana temporal).`);
       return;
     }
 
@@ -687,6 +750,16 @@ export class BaileysService {
 
     // 9. Enviar respuesta adaptada para Baileys con presencia de tipeo humano
     await this.enviarConTipeoHumano(jidDestino, respuestaBot);
+
+    // 10. Si la clienta pidió hablar con un asesor / encargada, pausar el bot en este chat para que la atienda una persona
+    const textoNorm = texto.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (!m.key.fromMe && /\b(asesor|asesora|encargad[oa]|humano|contacto_asesor)\b/.test(textoNorm)) {
+      this.silenciarChatTemporalmente(telefonoNormalizado, 'clienta solicitó asesor');
+      await this.enviarConTipeoHumano(
+        jidDestino,
+        `💬 Una encargada del spa te atenderá personalmente por este chat. Mientras tanto, el asistente virtual quedará en pausa para no interrumpirlas 🌸`
+      );
+    }
   }
 
   /**
@@ -723,6 +796,8 @@ export class BaileysService {
     try {
       const sent = await this.socket.sendMessage(targetJid, { text: textoFinal });
       if (sent?.key?.id) {
+        this.botEnviadosIds.add(sent.key.id);
+        if (this.botEnviadosIds.size > 2000) this.botEnviadosIds.clear();
         this.procesadosCache.add(sent.key.id);
         if (sent.message) {
           this.mensajeStore.set(sent.key.id, sent.message);
@@ -744,6 +819,7 @@ export class BaileysService {
             console.log(`[Baileys] 🔄 Reintentando envío a través de JID telefónico: ${fallbackJid}`);
             const sentFallback = await this.socket.sendMessage(fallbackJid, { text: textoFinal });
             if (sentFallback?.key?.id) {
+              this.botEnviadosIds.add(sentFallback.key.id);
               this.procesadosCache.add(sentFallback.key.id);
               if (sentFallback.message) {
                 this.mensajeStore.set(sentFallback.key.id, sentFallback.message);
