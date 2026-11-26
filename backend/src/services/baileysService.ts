@@ -35,7 +35,7 @@ export class BaileysService {
 
   // Silencio temporal del bot por chat (atención humana en curso): teléfono normalizado -> timestamp de expiración
   private static silenciosTemporales = new Map<string, number>();
-  private static readonly SILENCIO_HUMANO_MS = 3 * 60 * 60 * 1000; // 3 horas, se renueva con cada mensaje humano
+  private static readonly SILENCIO_HUMANO_MS = 1 * 60 * 60 * 1000; // 1 hora, se renueva con cada mensaje humano
 
   private static claveSilencio(tel: string): string {
     let d = String(tel || '').replace(/\D/g, '');
@@ -765,16 +765,17 @@ export class BaileysService {
   /**
    * Envía un mensaje simulando comportamiento humano (escribiendo...) y adaptando menús interactivos
    */
-  private static async enviarConTipeoHumano(remoteJid: string, response: string | BotResponse): Promise<void> {
-    if (!this.socket) return;
+  private static async enviarConTipeoHumano(remoteJid: string, response: string | BotResponse): Promise<boolean> {
+    if (!this.socket) return false;
 
     // Responder SIEMPRE directamente al chat exacto desde donde provino el mensaje
     const targetJid = jidNormalizedUser(remoteJid);
     const textoFinal = this.formatearTextoParaBaileys(response);
     if (!textoFinal.trim()) {
       console.warn(`[Baileys] Texto final vacío para ${targetJid}, no se envía mensaje.`);
-      return;
+      return false;
     }
+    let enviadoOk = false;
 
     // 1. Simular presencia de "escribiendo..." (composing)
     try {
@@ -805,6 +806,7 @@ export class BaileysService {
       }
       this.addDebugEvent('RESPUESTA_TEXTO_ENVIADA', { destinatario: targetJid, preview: textoFinal.slice(0, 60) });
       console.log(`[Baileys] ✅ Mensaje respondido exitosamente a ${targetJid}`);
+      enviadoOk = true;
     } catch (sendErr) {
       console.error('[Baileys] ❌ Error enviando mensaje a:', targetJid, sendErr);
       this.addDebugEvent('ERROR_ENVIO', { destinatario: targetJid, error: String(sendErr) });
@@ -827,12 +829,14 @@ export class BaileysService {
             }
             this.addDebugEvent('RESPUESTA_FALLBACK_ENVIADA', { destinatario: fallbackJid });
             console.log(`[Baileys] ✅ Mensaje respondido exitosamente por fallback telefónico a ${fallbackJid}`);
+            enviadoOk = true;
           } catch (fallbackErr) {
             console.error('[Baileys] ❌ Fallback telefónico también falló:', fallbackErr);
           }
         }
       }
     }
+    return enviadoOk;
   }
 
   /**
@@ -885,7 +889,14 @@ export class BaileysService {
     mensaje: string | BotResponse,
     botones?: Array<{ id: string; title: string }>
   ): Promise<boolean> {
+    // Si el socket está reconectándose (p. ej. tras hibernar el servidor), esperar hasta 10 s a que vuelva a estar conectado
+    // (si no vuelve, index.ts reintenta el envío automáticamente a los 1, 3 y 8 minutos)
+    for (let i = 0; i < 5 && (!this.socket || this.statusConexion !== 'CONECTADO'); i++) {
+      await this.delay(2000);
+    }
     if (!this.socket || this.statusConexion !== 'CONECTADO') {
+      this.addDebugEvent('ENVIO_DIRECTO_SIN_CONEXION', { telefono });
+      console.warn(`[Baileys] ⚠️ Envío directo a ${telefono} no realizado: WhatsApp no está conectado.`);
       return false;
     }
     let clean = telefono.replace(/\D/g, '');
@@ -896,19 +907,33 @@ export class BaileysService {
       console.log(`[Baileys] Envío directo a ${clean} cancelado (número en lista de exclusión/atención humana).`);
       return false;
     }
-    const remoteJid = `${clean}@s.whatsapp.net`;
+    let remoteJid = `${clean}@s.whatsapp.net`;
 
-    // Mapear dinámicamente el LID de la destinataria en WhatsApp para reconocer sus respuestas de inmediato
+    // Verificar que el número tenga WhatsApp, usar su JID real y mapear el LID para reconocer sus respuestas
     try {
-      this.socket.onWhatsApp(clean).then((results: any) => {
-        if (results && results[0]?.lid && results[0]?.jid) {
+      const results: any = await Promise.race([
+        this.socket.onWhatsApp(clean),
+        new Promise((resolve) => setTimeout(() => resolve(null), 8000)),
+      ]);
+      if (results && results[0]) {
+        if (results[0].exists === false) {
+          this.addDebugEvent('ENVIO_DIRECTO_SIN_WHATSAPP', { telefono: clean });
+          console.warn(`[Baileys] ⚠️ El número ${clean} no tiene WhatsApp registrado. No se envía mensaje.`);
+          return false;
+        }
+        if (results[0].jid) {
+          remoteJid = results[0].jid;
+        }
+        if (results[0].lid && results[0].jid) {
           const lidId = String(results[0].lid).split('@')[0].replace(/\D/g, '');
           const phoneId = String(results[0].jid).split('@')[0].replace(/\D/g, '');
           this.lidToPhoneMap.set(lidId, phoneId);
           console.log(`[Baileys] 🔗 LID dinámico asociado para destinataria ${phoneId}: ${lidId}`);
         }
-      }).catch(() => {});
-    } catch {}
+      }
+    } catch (e) {
+      console.warn('[Baileys] No se pudo verificar el número con onWhatsApp, se intenta envío directo:', e);
+    }
 
     // Si tiene botones, estructurarlos como opciones numeradas para compatibilidad universal en cualquier teléfono
     let textoSalida = mensaje;
@@ -917,8 +942,7 @@ export class BaileysService {
       textoSalida = `${mensaje}\n\n${opciones}\n\n👉 Responde con el número de tu opción.`;
     }
 
-    await this.enviarConTipeoHumano(remoteJid, textoSalida);
-    return true;
+    return await this.enviarConTipeoHumano(remoteJid, textoSalida);
   }
 
   public static getSocketUser(): any {

@@ -618,7 +618,8 @@ async function enviarMensajeWhatsApp(
   to: string,
   message: string | BotResponse,
   _customToken?: string,
-  _customPhoneId?: string
+  _customPhoneId?: string,
+  _intento: number = 0
 ): Promise<boolean> {
   let cleanTo = String(to).replace(/\D/g, '');
   if (cleanTo.length === 10 && cleanTo.startsWith('3')) {
@@ -630,8 +631,18 @@ async function enviarMensajeWhatsApp(
     console.log(`✅ [WHATSAPP BAILEYS ENVIADO a ${cleanTo}]`);
     addDebugLog('SEND_SUCCESS', { to: cleanTo, provider: 'baileys' });
   } else {
-    console.warn(`⚠️ [WHATSAPP BAILEYS NO ENVIADO a ${cleanTo}]: No conectado o número en lista de exclusión`);
-    addDebugLog('SEND_ERROR', { to: cleanTo, provider: 'baileys', motivo: 'No conectado o silenciado por exclusión' });
+    console.warn(`⚠️ [WHATSAPP BAILEYS NO ENVIADO a ${cleanTo}]: No conectado, sin WhatsApp o número en lista de exclusión`);
+    addDebugLog('SEND_ERROR', { to: cleanTo, provider: 'baileys', motivo: 'No conectado, sin WhatsApp o silenciado por exclusión' });
+
+    // Reintentos automáticos (la conexión de WhatsApp puede estar reconectándose): 1, 3 y 8 minutos después
+    if (_intento < 3 && !(await BotExclusionsService.esNumeroExcluido(cleanTo))) {
+      const esperas = [60_000, 180_000, 480_000];
+      const espera = esperas[_intento];
+      console.log(`🔁 [WHATSAPP] Reintento ${_intento + 1}/3 para ${cleanTo} en ${espera / 60000} min`);
+      setTimeout(() => {
+        enviarMensajeWhatsApp(to, message, _customToken, _customPhoneId, _intento + 1).catch(() => {});
+      }, espera);
+    }
   }
   return enviado;
 }
