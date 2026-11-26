@@ -8,6 +8,11 @@ const MimateNailsBooking = lazy(() =>
 const MimateNailsDashboard = lazy(() =>
   import('./components/MimateNailsDashboard').then((m) => ({ default: m.MimateNailsDashboard }))
 );
+const WhatsAppSimuladorDrawer = lazy(() =>
+  import('./components/pruebas/WhatsAppSimuladorDrawer').then((m) => ({
+    default: m.WhatsAppSimuladorDrawer,
+  }))
+);
 
 function PantallaCarga({ mensaje }: { mensaje?: string }) {
   return (
@@ -52,8 +57,15 @@ export function App() {
     setVista('reservas');
   };
 
+  const abrirSimuladorPorRuta = ['whatsapp-simulado', 'simulador', 'pruebas'].includes(
+    window.location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase()
+  );
+
   return (
     <>
+      <Suspense fallback={null}>
+        <WhatsAppSimuladorDrawer abiertoInicial={abrirSimuladorPorRuta} />
+      </Suspense>
       {vista === 'admin' ? (
         <Suspense fallback={<PantallaCarga mensaje="Cargando Panel de Administración..." />}>
           <MimateNailsDashboard
