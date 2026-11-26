@@ -90,17 +90,17 @@ export class ReminderService {
           ? matchReal[1].trim()
           : r.fecha_inicio;
       const dInicio = new Date(fechaInicioRealIso);
-      if (dInicio.getTime() <= ahora.getTime() || dInicio.getTime() > ahora.getTime() + 36 * 60 * 60 * 1000) {
+      if (dInicio.getTime() <= ahora.getTime()) {
         continue;
       }
       const fechaCitaCol = this.obtenerFechaCol(dInicio);
 
-      // Si la cita es para HOY en Colombia, este método NO la procesa (le corresponde al de 3 horas antes)
-      if (fechaCitaCol === fechaHoyCol) {
+      // El recordatorio de 1 día antes aplica ESTRICTAMENTE cuando la cita es MAÑANA en Colombia
+      if (fechaCitaCol !== fechaMananaCol) {
         continue;
       }
 
-      // Si la cita es para MAÑANA (o días posteriores dentro de la ventana de aviso):
+      // Si la cita es para MAÑANA:
       const cliente = r.clientes as any;
       const cancha = r.canchas as any;
       const complejo = cancha?.complejos as any;
@@ -162,7 +162,7 @@ export class ReminderService {
         { id: `reagendar_cita_${r.id}`, title: '📅 Cambiar Fecha' },
       ];
 
-      await this.enviarWhatsApp(
+      const enviadoExitoso = await this.enviarWhatsApp(
         telefono,
         mensaje,
         complejo?.whatsapp_token,
@@ -170,12 +170,14 @@ export class ReminderService {
         botonesOpciones
       );
 
-      await supabase
-        .from('reservas')
-        .update({ notas: `${notas} [REC_1_DIA] [REC_ENVIADO]`.trim() })
-        .eq('id', r.id);
+      if (enviadoExitoso) {
+        await supabase
+          .from('reservas')
+          .update({ notas: `${notas} [REC_1_DIA] [REC_ENVIADO]`.trim() })
+          .eq('id', r.id);
 
-      enviados++;
+        enviados++;
+      }
     }
 
     return { enviados };
@@ -289,7 +291,7 @@ export class ReminderService {
         ];
       }
 
-      await this.enviarWhatsApp(
+      const enviadoExitoso = await this.enviarWhatsApp(
         telefono,
         mensaje,
         complejo?.whatsapp_token,
@@ -297,12 +299,14 @@ export class ReminderService {
         botonesOpciones
       );
 
-      await supabase
-        .from('reservas')
-        .update({ notas: `${notas} [REC_MISMO_DIA] [REC_ENVIADO]`.trim() })
-        .eq('id', r.id);
+      if (enviadoExitoso) {
+        await supabase
+          .from('reservas')
+          .update({ notas: `${notas} [REC_MISMO_DIA] [REC_ENVIADO]`.trim() })
+          .eq('id', r.id);
 
-      enviados++;
+        enviados++;
+      }
     }
 
     return { enviados };
@@ -314,7 +318,7 @@ export class ReminderService {
     _tokenOverride?: string,
     _phoneIdOverride?: string,
     botones?: Array<{ id: string; title: string }>
-  ) {
+  ): Promise<boolean> {
     let cleanPhone = to.replace(/\D/g, '');
     if (cleanPhone.length === 10 && cleanPhone.startsWith('3')) {
       cleanPhone = `57${cleanPhone}`;
@@ -323,8 +327,10 @@ export class ReminderService {
     const enviado = await BaileysService.enviarMensajeDirecto(cleanPhone, message, botones);
     if (enviado) {
       console.log(`✅ [RECORDATORIO BAILEYS ENVIADO a ${cleanPhone}]`);
+      return true;
     } else {
       console.warn(`⚠️ [RECORDATORIO BAILEYS NO ENVIADO a ${cleanPhone}]: No conectado o número fuera de lista blanca.`);
+      return false;
     }
   }
 }
