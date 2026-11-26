@@ -52,6 +52,19 @@ export class ReminderService {
    */
   static async procesarRecordatoriosDiaAntes() {
     const ahora = new Date();
+
+    // Solo enviar recordatorios del día antes en horario diurno respetuoso (entre 8:00 a.m. y 8:00 p.m. en Colombia)
+    // para evitar escribir a las clientas en la madrugada (ej. a las 12:05 a.m.)
+    const horaStr = new Intl.DateTimeFormat('es-CO', {
+      timeZone: 'America/Bogota',
+      hour: 'numeric',
+      hour12: false,
+    }).format(ahora);
+    const horaActualCol = parseInt(horaStr, 10);
+    if (horaActualCol < 8 || horaActualCol >= 20) {
+      return { enviados: 0 };
+    }
+
     const fechaHoyCol = this.obtenerFechaCol(ahora);
 
     // Calculamos la fecha de mañana en Colombia
