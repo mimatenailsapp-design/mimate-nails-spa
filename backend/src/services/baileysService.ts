@@ -20,6 +20,7 @@ import qrcode from 'qrcode-terminal';
 import path from 'path';
 import fs from 'fs';
 import { WhatsAppFlow, BotResponse } from '../bot/whatsappFlow.js';
+import { AIReceptionistService } from './aiReceptionistService.js';
 import { BookingService, Complejo, esIdentificadorLid, extraerDigitosLid } from './bookingService.js';
 import { BotExclusionsService } from './botExclusionsService.js';
 import { supabase } from '../config/supabase.js';
@@ -884,8 +885,8 @@ export class BaileysService {
 
     this.addDebugEvent('TEXTO_PROCESANDO', { telefonoNormalizado, texto, jidDestino });
 
-    // Si envió imagen de comprobante, enviar de inmediato mensaje de espera
-    if (directBuffer) {
+    // Si envió imagen de comprobante, enviar de inmediato mensaje de espera (salvo si reporta una queja o inconsistencia)
+    if (directBuffer && !AIReceptionistService.esDerivacionInmediataAsesor(texto)) {
       const nombreDest = nombrePush ? ` ${nombrePush}` : '';
       const msgEspera =
         `🌸 *¡Hola${nombreDest}!* Recibimos tu comprobante de pago 💕.\n\n` +
@@ -908,17 +909,27 @@ export class BaileysService {
     // 9. Enviar respuesta adaptada para Baileys con presencia de tipeo humano
     await this.enviarConTipeoHumano(jidDestino, respuestaBot);
 
-    // 10. Si la clienta pidió hablar con un asesor / encargada o el flujo indicó atención humana, pausar el bot 1 hora
+    // 10. Si la clienta pidió asesor, reportó inconsistencia/queja/problema/reclamo o el flujo indicó atención humana, pausar el bot 1 hora
     const textoNorm = texto.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     const pidioAsesor = /\b(asesor|asesora|encargad[oa]|humano|contacto_asesor)\b/.test(textoNorm);
+    const esQuejaOReclamo = AIReceptionistService.esQuejaOInconsistencia(texto);
+    const esDerivacionAsesor =
+      pidioAsesor ||
+      esQuejaOReclamo ||
+      Boolean(typeof respuestaBot === 'object' && respuestaBot?.esDerivacionAsesor);
     const flujoPidioPausa = Boolean(typeof respuestaBot === 'object' && respuestaBot?.pausarBot);
 
-    if (!m.key.fromMe && (pidioAsesor || flujoPidioPausa)) {
-      this.silenciarChatTemporalmente(
-        telefonoNormalizado,
-        pidioAsesor ? 'clienta solicitó asesor' : 'requiere atención humana'
-      );
-      if (pidioAsesor) {
+    if (!m.key.fromMe && (esDerivacionAsesor || flujoPidioPausa)) {
+      const motivo = esQuejaOReclamo
+        ? 'inconsistencia, queja, problema o reclamo'
+        : esDerivacionAsesor
+        ? 'clienta derivada a asesor'
+        : 'requiere atención humana';
+
+      this.silenciarChatTemporalmente(telefonoNormalizado, motivo);
+
+      if (esDerivacionAsesor) {
+        console.log(`[Baileys] 🚨 Derivación inmediata a asesor activada para ${telefonoNormalizado} (${motivo}).`);
         await this.enviarConTipeoHumano(
           jidDestino,
           `💬 Una encargada del spa te atenderá personalmente por este chat. Mientras tanto, el asistente virtual quedará en pausa para no interrumpirlas 🌸`

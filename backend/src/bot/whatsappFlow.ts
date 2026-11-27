@@ -47,6 +47,7 @@ export interface BotResponse {
   interactive?: BotInteractiveMessage | BotCtaUrlMessage;
   urlRedirect?: string;
   pausarBot?: boolean;
+  esDerivacionAsesor?: boolean;
 }
 
 interface UserSession {
@@ -305,6 +306,23 @@ export class WhatsAppFlow {
         };
       }
 
+      // 0. INTERCEPTACIÓN PRIORITARIA: Quejas, inconsistencias, problemas, reclamos o solicitud directa de asesor
+      // Procede de inmediato al flujo de asesor sin pedirle escribir *ASESOR* ni enviarla al flujo de agenda/pago
+      if (texto && texto.trim().length > 0 && AIReceptionistService.esDerivacionInmediataAsesor(texto)) {
+        const esQueja = AIReceptionistService.esQuejaOInconsistencia(texto);
+        session.paso = 'ATENDIENDO';
+        session.linkEnviado = true;
+        const derivacion = AIReceptionistService.generarRespuestaDerivacionHumana(complejo, {
+          esQuejaOInconsistencia: esQueja,
+          nombreClienta: nombrePush,
+        });
+        return {
+          texto: derivacion.respuestaTexto || '👩‍💼 Enseguida nuestra encargada te atenderá personalmente por aquí.',
+          pausarBot: true,
+          esDerivacionAsesor: true,
+        };
+      }
+
       // Detección de respuesta al menú de recordatorio (Confirmar, Cancelar o Reagendar)
       const resRecordatorio = await this.manejarRespuestaRecordatorio(telefono, texto, input, complejo, session);
       if (resRecordatorio) {
@@ -559,6 +577,7 @@ export class WhatsAppFlow {
             return {
               texto: consultaContextual.respuestaTexto,
               pausarBot: Boolean(consultaContextual.esSolicitudHumano),
+              esDerivacionAsesor: Boolean(consultaContextual.esSolicitudHumano),
             };
           }
         }
@@ -644,6 +663,7 @@ export class WhatsAppFlow {
             return {
               texto: consulta.respuestaTexto,
               pausarBot: Boolean(consulta.esSolicitudHumano),
+              esDerivacionAsesor: Boolean(consulta.esSolicitudHumano),
             };
           }
         }
@@ -700,7 +720,11 @@ export class WhatsAppFlow {
       if (!mediaId && (AIReceptionistService.esSolicitudHumano(input) || AIReceptionistService.esPreguntaFrecuente(input))) {
         const consulta = await AIReceptionistService.responderConsulta(texto, complejo);
         if (consulta.esPreguntaOAtencion && consulta.respuestaTexto) {
-          return { texto: consulta.respuestaTexto };
+          return {
+            texto: consulta.respuestaTexto,
+            pausarBot: Boolean(consulta.esSolicitudHumano),
+            esDerivacionAsesor: Boolean(consulta.esSolicitudHumano),
+          };
         }
       }
 

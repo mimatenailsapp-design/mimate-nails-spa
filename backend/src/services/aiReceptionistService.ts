@@ -35,55 +35,226 @@ export interface ContextoClientaCitas {
 export interface ReceptionistResponse {
   esPreguntaOAtencion: boolean;
   esSolicitudHumano?: boolean;
+  esQuejaOInconsistencia?: boolean;
   respuestaTexto?: string;
 }
 
 export class AIReceptionistService {
+  private static normalizarTextoComparacion(texto: string): string {
+    return String(texto || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
   /**
-   * Determina si el texto del usuario es una solicitud de hablar con un humano
+   * Detecta si el mensaje expresa alguna inconsistencia, queja, problema, reclamo,
+   * inconformidad, error de cita/pago/horario o garantía post-servicio.
    */
-  static esSolicitudHumano(texto: string): boolean {
-    const t = texto.toLowerCase().trim();
-    const patrones = [
-      'humano',
-      'persona',
-      'asesor',
-      'asesora',
-      'encargado',
-      'encargada',
-      'administrador',
-      'administradora',
-      'admin',
-      'dueno',
-      'dueño',
-      'recepcionista',
+  static esQuejaOInconsistencia(texto: string): boolean {
+    let t = this.normalizarTextoComparacion(texto);
+    if (!t) return false;
+
+    // Eliminar expresiones cotidianas inocuas para evitar falsos positivos
+    t = t
+      .replace(/\b(sin|ningun|cero)\s+(ningun\s+)?(problema|problemas|inconveniente|inconvenientes)\b/g, ' ')
+      .replace(/\bno\s+(hay|tengo|tiene|hubo|habria)\s+(ningun\s+)?(problema|problemas|inconveniente|inconvenientes)\b/g, ' ')
+      .replace(/\b(menos\s+mal|no\s+esta\s+mal|nada\s+mal)\b/g, ' ')
+      .replace(/\b(disculpa|disculpe|que\s+pena|perdona)\s+la\s+molestia\b/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!t) return false;
+
+    const patronPalabrasDirectas =
+      /\b(inconsistencia|inconsistencias|inconsistente|queja|quejas|quejarme|reclamo|reclamos|reclamar|problema|problemas|inconveniente|inconvenientes|inconformidad|inconforme|insatisfecha|insatisfecho|disgustada|disgustado|indignada|decepcionada|pesimo|pesima|garantia)\b/;
+    if (patronPalabrasDirectas.test(t)) return true;
+
+    const frasesInconsistenciaOReclamo = [
+      // Mal servicio o trato
+      'mal servicio',
+      'mala atencion',
+      'mal trato',
+      'muy molesta',
+      'estoy molesta',
+      'super molesta',
+      'grosera',
+      'grosero',
+      // Inconsistencias de agenda, horario o especialista
+      'no concuerda',
+      'no coincide',
+      'no corresponde',
+      'no cuadra',
+      'hora equivocada',
+      'hora incorrecta',
+      'hora mal',
+      'otra hora',
+      'fecha equivocada',
+      'fecha incorrecta',
+      'mal agendad',
+      'agendo mal',
+      'me llego mal',
+      'sale otra hora',
+      'aparece otra hora',
+      'dice otra hora',
+      'otra manicurista',
+      'otra especialista',
+      'salio con otra',
+      'error en mi cita',
+      'error con mi cita',
+      'error en la cita',
+      'error en la hora',
+      'error en la pagina',
+      'no me deja agendar',
+      'me sale error',
+      'me cancelaron sin',
+      // Inconsistencias de pago / cobro
+      'ya pague y no',
+      'ya transferi y no',
+      'envie el comprobante y no',
+      'no me han confirmado',
+      'me rechazaron el comprobante',
+      'comprobante rechazado',
+      'me cobraron mal',
+      'me cobraron de mas',
+      'cobro indebido',
+      'cobro doble',
+      'doble cobro',
+      'devolucion del dinero',
+      'devuelvan el dinero',
+      'reembolso',
+      // Inconformidad post-servicio o daño en uñas
+      'se me cayo',
+      'se me cayeron',
+      'se cayo una una',
+      'se cayo la una',
+      'se me partio',
+      'se partio una una',
+      'se me despego',
+      'se despego',
+      'se me levanto',
+      'se levantaron',
+      'se descascaro',
+      'se pelaron',
+      'se me danaron',
+      'me quedo mal',
+      'me quedaron mal',
+      'quedaron feas',
+      'mal hechas',
+      'mal pintadas',
+      'me lastimo',
+      'me lastimaron',
+      'me corto',
+      'me cortaron',
+      'no era lo que pedi',
+    ];
+    if (frasesInconsistenciaOReclamo.some((f) => t.includes(f))) return true;
+
+    if (/\bagende\b.*\by\s+(dice|sale|aparece|me\s+llego)\b/.test(t)) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Detecta solicitudes explícitas para hablar con una persona / asesora / encargada
+   */
+  static esSolicitudExplicitaAsesor(texto: string): boolean {
+    const t = this.normalizarTextoComparacion(texto);
+    if (!t) return false;
+
+    if (/\b(asesor|asesora|encargado|encargada|humano|administrador|administradora|dueno|recepcionista|contacto_asesor)\b/.test(t)) {
+      return true;
+    }
+
+    const frases = [
       'alguien real',
       'hablar con alguien',
+      'hablar con una persona',
       'hablar con un asesor',
+      'hablar con una asesora',
       'hablar con un encargado',
       'hablar con el encargado',
       'hablar con la encargada',
       'hablar con encargado',
       'hablar con asesor',
-      'contacto_asesor',
       'atencion al cliente',
       'atencion personalizada',
-      'queja',
-      'reclamo',
       'contacto humano',
+      'comunicarme con',
+      'comunicar con',
+      'whatsapp del encargado',
+    ];
+    return frases.some((f) => t.includes(f));
+  }
+
+  /**
+   * Determina si el mensaje debe activar de inmediato el flujo de asesor humano
+   */
+  static esDerivacionInmediataAsesor(texto: string): boolean {
+    return this.esQuejaOInconsistencia(texto) || this.esSolicitudExplicitaAsesor(texto);
+  }
+
+  /**
+   * Genera la respuesta de derivación inmediata a asesor humano
+   */
+  static generarRespuestaDerivacionHumana(
+    complejo: Complejo,
+    opciones?: { esQuejaOInconsistencia?: boolean; nombreClienta?: string }
+  ): ReceptionistResponse {
+    const telAdmin = complejo.telefono_whatsapp || '+57 321 961 0896';
+    const telNumeros = (complejo.telefono_whatsapp || '573219610896').replace(/\D/g, '');
+    const enlaceWa = telNumeros.length >= 10 ? `https://wa.me/${telNumeros}` : null;
+    const nombreLimpio = opciones?.nombreClienta?.trim();
+    const saludoNombre = nombreLimpio ? ` ${nombreLimpio}` : ' reina';
+    const esQueja = Boolean(opciones?.esQuejaOInconsistencia);
+
+    const respuestaTexto = esQueja
+      ? `👩‍💼 *Atención Prioritaria con Asesor - ${complejo.nombre}*\n\n` +
+        `Lamentamos mucho el inconveniente,${saludoNombre}. 💕 Entendemos tu novedad y queremos darte una solución oportuna de inmediato.\n\n` +
+        `Acabamos de notificar y pasar tu caso directamente a nuestra encargada de *${complejo.nombre}* para que te atienda personalmente por aquí.\n\n` +
+        `📞 *Contacto directo:*\n` +
+        `• WhatsApp / Teléfono: *${telAdmin}*\n` +
+        (enlaceWa ? `• Chat directo: ${enlaceWa}\n\n` : '\n') +
+        `✍️ Por favor déjanos cualquier detalle o captura aquí mismo y nuestra encargada te responderá enseguida.`
+      : `👩‍💼 *Atención Personalizada - ${complejo.nombre}*\n\n` +
+        `¡Claro que sí,${saludoNombre}! He notificado a nuestra encargada de *${complejo.nombre}* para que te atienda personalmente 📱.\n\n` +
+        `📞 *Contacto directo:*\n` +
+        `• WhatsApp / Teléfono: *${telAdmin}*\n` +
+        (enlaceWa ? `• Chat directo: ${enlaceWa}\n\n` : '\n') +
+        `✍️ Puedes dejar tu inquietud detallada aquí mismo y te responderemos enseguida.\n\n` +
+        `📅 _Si deseas volver a ver la agenda automática, escribe *HOLA* o *AGENDA* en cualquier momento._`;
+
+    return {
+      esPreguntaOAtencion: true,
+      esSolicitudHumano: true,
+      esQuejaOInconsistencia: esQueja,
+      respuestaTexto,
+    };
+  }
+
+  /**
+   * Determina si el texto del usuario es una solicitud de hablar con un humano
+   */
+  static esSolicitudHumano(texto: string): boolean {
+    if (this.esDerivacionInmediataAsesor(texto)) {
+      return true;
+    }
+
+    const t = this.normalizarTextoComparacion(texto);
+    const patrones = [
+      'persona',
+      'admin',
       'soporte',
       'ayuda',
       'contacto',
-      'comunicarme con un asesor',
-      'comunicarme con un encargado',
-      'comunicarme con alguien',
-      'comunicar con asesor',
-      'comunicar con encargado',
       'numero de contacto',
       'linea de atencion',
       'llamar',
       'telefono',
-      'whatsapp del encargado',
     ];
     return patrones.some((p) => t.includes(p));
   }
@@ -244,26 +415,13 @@ export class AIReceptionistService {
   ): Promise<ReceptionistResponse> {
     const t = texto.toLowerCase().trim();
 
-    // 1. DERIVACIÓN A ASESOR / ENCARGADO HUMANO
-    if (this.esSolicitudHumano(t)) {
-      const telAdmin = complejo.telefono_whatsapp || '+57 321 961 0896';
-      const telNumeros = (complejo.telefono_whatsapp || '573219610896').replace(/\D/g, '');
-      const enlaceWa = telNumeros.length >= 10 ? `https://wa.me/${telNumeros}` : null;
-
-      const respuestaTexto =
-        `👩‍💼 *Atención Personalizada - ${complejo.nombre}*\n\n` +
-        `¡Claro que sí reina! He notificado a nuestra encargada de *${complejo.nombre}* para que te atienda personalmente 📱.\n\n` +
-        `📞 *Contacto directo:*\n` +
-        `• WhatsApp / Teléfono: *${telAdmin}*\n` +
-        (enlaceWa ? `• Chat directo: ${enlaceWa}\n\n` : '\n') +
-        `✍️ Puedes dejar tu inquietud detallada aquí mismo y te responderemos enseguida.\n\n` +
-        `📅 _Si deseas volver a ver la agenda automática, escribe *HOLA* o *AGENDA* en cualquier momento._`;
-
-      return {
-        esPreguntaOAtencion: true,
-        esSolicitudHumano: true,
-        respuestaTexto,
-      };
+    // 1. DERIVACIÓN A ASESOR / ENCARGADO HUMANO (incluye quejas, problemas, reclamos o inconsistencias)
+    const esQueja = this.esQuejaOInconsistencia(texto);
+    if (esQueja || this.esSolicitudHumano(t)) {
+      return this.generarRespuestaDerivacionHumana(complejo, {
+        esQuejaOInconsistencia: esQueja,
+        nombreClienta: contextoClienta?.nombre,
+      });
     }
 
     // 2. PREGUNTAS FRECUENTES O LENGUAJE NATURAL DEL COMPLEJO
@@ -277,9 +435,13 @@ export class AIReceptionistService {
       try {
         const respuestaIA = await this.consultarGemini(texto, complejo, apiKey, yaTieneLink, contextoClienta);
         if (respuestaIA) {
+          const derivoGemini = /\[DERIVAR_ASESOR\]/i.test(respuestaIA);
+          const textoLimpio = respuestaIA.replace(/\[DERIVAR_ASESOR\]/gi, '').trim();
           return {
             esPreguntaOAtencion: true,
-            respuestaTexto: respuestaIA,
+            esSolicitudHumano: derivoGemini,
+            esQuejaOInconsistencia: derivoGemini,
+            respuestaTexto: textoLimpio,
           };
         }
       } catch (err: any) {
@@ -452,7 +614,7 @@ ${contextoClienta.citasActivas
     return `  ${idx + 1}. ${c.fechaLegible} de ${c.horaInicio} a ${c.horaFin} | Servicio: ${c.servicio} | Especialista: ${c.especialista} | Estado: ${estadoTxt} | Total: $${c.valorTotal.toLocaleString('es-CO')} COP | Saldo aprox en spa: $${saldoSpa.toLocaleString('es-CO')} COP | Link directo reagendar: ${baseUrl}/?reagendar=${c.id}&tel=${contextoClienta.telefonoLimpio}`;
   })
   .join('\n')}
-- INSTRUCCIÓN CLAVE DE CONTEXTO: Esta clienta YA tiene cita agendada. NO le des la bienvenida genérica ni le envíes el link general de agendar a menos que ella pida explícitamente agendar otra cita adicional. Responde directamente usando los datos reales de su cita (fecha, hora, especialista, servicio, saldo, o enlace de reagendamiento si desea cambiarla). Si pide algo que requiere ajuste manual (como agregar un diseño complejo, cambiar de especialista sin reagendar o reportar un inconveniente), dile que le pasas el mensaje a la encargada o sugiérele escribir *ASESOR*.\n`
+- INSTRUCCIÓN CLAVE DE CONTEXTO: Esta clienta YA tiene cita agendada. NO le des la bienvenida genérica ni le envíes el link general de agendar a menos que ella pida explícitamente agendar otra cita adicional. Responde directamente usando los datos reales de su cita (fecha, hora, especialista, servicio, saldo, o enlace de reagendamiento si desea cambiarla). Si pide ajuste manual (como agregar un diseño complejo o cambiar de especialista sin reagendar) o reporta cualquier inconsistencia, queja, problema o reclamo, inicia tu respuesta EXACTAMENTE con [DERIVAR_ASESOR] y dile con empatía que de inmediato pasas su caso a nuestra encargada por este mismo chat (NO le pidas que escriba *ASESOR*).\n`
     : ''
 }
 MENSAJE DEL CLIENTE:
@@ -463,7 +625,8 @@ REGLAS ESTRICTAS DE SEGURIDAD Y CERO ALUCINACIÓN (PROHIBIDO INVENTAR):
 2. LO QUE NO SEPAS O NO ESTÉ AQUÍ, NO LO INVENTES: Si el cliente pregunta por promociones no oficiales (como 2x1 o descuentos especiales), venta de esmaltes al por mayor, cursos, convenios o cualquier tema del que no tengas certeza en esta ficha técnica, NUNCA inventes precios, condiciones ni respuestas al azar. Di amablemente que no dispones de esa información y sugiérele escribir la palabra *ASESOR* para que nuestra encargada le responda personalmente al WhatsApp ${complejo.telefono_whatsapp || ''}.
 3. PREGUNTAS FUERA DE CONTEXTO: Si preguntan sobre temas totalmente ajenos al negocio (política, cultura general, etc.), responde amablemente que eres la recepcionista virtual de JL Mímate Nails Spa y que estás para asesorarle en servicios de uñas y citas.
 4. NO CONFIRMAR CITAS EN EL CHAT: No inventes que ya le apartaste o modificaste la cita en el chat. Recuerda que las citas se reservan o reagendan mediante el enlace oficial.${yaTieneLink || (contextoClienta && contextoClienta.citasActivas.length > 0) ? ' NO repitas el link general de bienvenida ni insistas con entrar a la web a menos que ella lo pida expresamente.' : ` Guía siempre a la clienta a revisar disponibilidad real y reservar en: ${baseUrl}`}
-5. FORMATO Y DURACIONES: Si preguntan precio o duración, indícalo exactamente expresando siempre la duración en minutos (ej: 60 min, 90 min, 120 min). Responde en máximo 3 a 4 oraciones cortas con tono cálido ("¡Hola reina!", "¡Claro que sí hermosa!") y emojis sutiles (💅🌸✨).`;
+5. FORMATO Y DURACIONES: Si preguntan precio o duración, indícalo exactamente expresando siempre la duración en minutos (ej: 60 min, 90 min, 120 min). Responde en máximo 3 a 4 oraciones cortas con tono cálido ("¡Hola reina!", "¡Claro que sí hermosa!") y emojis sutiles (💅🌸✨).
+6. QUEJAS, RECLAMOS, PROBLEMAS O INCONSISTENCIAS (DERIVACIÓN INMEDIATA): Si detectas que la clienta expresa cualquier queja, reclamo, inconformidad, problema con un servicio/garantía o inconsistencia con su cita, horario, especialista o pago/abono, inicia tu respuesta EXACTAMENTE con la etiqueta [DERIVAR_ASESOR] al comienzo del texto y responde con empatía explicando que ya mismo pasamos su caso a nuestra encargada para darle solución oportuna (PROHIBIDO pedirle que escriba *ASESOR*).`;
 
     const modelosDisponibles = [
       process.env.GEMINI_MODEL,

@@ -768,6 +768,8 @@ app.post('/api/bot/simulate', requireAdminAuth, testLimiter, async (req: Request
       respuesta_bot: typeof respuesta === 'string' ? respuesta : respuesta.texto,
       interactive: typeof respuesta === 'object' ? respuesta.interactive : undefined,
       urlRedirect: typeof respuesta === 'object' ? respuesta.urlRedirect : undefined,
+      pausarBot: typeof respuesta === 'object' ? respuesta.pausarBot : undefined,
+      esDerivacionAsesor: typeof respuesta === 'object' ? respuesta.esDerivacionAsesor : undefined,
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
