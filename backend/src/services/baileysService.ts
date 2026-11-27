@@ -833,7 +833,8 @@ export class BaileysService {
         }
       }
       this.addDebugEvent('RESPUESTA_TEXTO_ENVIADA', { destinatario: targetJid, preview: textoFinal.slice(0, 60) });
-      console.log(`[Baileys] ✅ Mensaje respondido exitosamente a ${targetJid}`);
+      const textoLog = textoFinal.replace(/\r?\n/g, ' \\n ');
+      console.log(`[Baileys] 🤖 Respuesta enviada a ${targetJid}: "${textoLog}"`);
       enviadoOk = true;
     } catch (sendErr) {
       console.error('[Baileys] ❌ Error enviando mensaje a:', targetJid, sendErr);
@@ -856,7 +857,8 @@ export class BaileysService {
               }
             }
             this.addDebugEvent('RESPUESTA_FALLBACK_ENVIADA', { destinatario: fallbackJid });
-            console.log(`[Baileys] ✅ Mensaje respondido exitosamente por fallback telefónico a ${fallbackJid}`);
+            const textoLogFallback = textoFinal.replace(/\r?\n/g, ' \\n ');
+            console.log(`[Baileys] 🤖 Respuesta enviada por fallback telefónico a ${fallbackJid}: "${textoLogFallback}"`);
             enviadoOk = true;
           } catch (fallbackErr) {
             console.error('[Baileys] ❌ Fallback telefónico también falló:', fallbackErr);
