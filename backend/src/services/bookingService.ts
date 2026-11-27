@@ -210,6 +210,34 @@ export interface HorarioDisponible {
   precio: number;
 }
 
+const normalizarTextoComparacion = (texto: string): string =>
+  texto
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+
+/**
+ * Determina si un identificador corresponde a un LID interno de WhatsApp (y no a un teléfono celular real).
+ */
+export function esIdentificadorLid(valor?: string | null): boolean {
+  if (!valor) return false;
+  const raw = String(valor).trim().toLowerCase();
+  if (!raw) return false;
+  if (raw.startsWith('lid:') || raw.endsWith('@lid')) return true;
+  const digitos = raw.split('@')[0].replace(/\D/g, '');
+  return digitos.length >= 14;
+}
+
+/**
+ * Extrae únicamente los dígitos de un identificador LID si aplica; retorna '' si es un teléfono normal.
+ */
+export function extraerDigitosLid(valor?: string | null): string {
+  if (!esIdentificadorLid(valor)) return '';
+  return String(valor || '').split('@')[0].replace(/\D/g, '');
+}
+
 export class BookingService {
   /**
    * Obtiene todos los complejos registrados (Multi-empresa)
@@ -295,35 +323,157 @@ export class BookingService {
   }
 
   /**
-   * Obtiene o crea un cliente en la base de datos a partir de su número de WhatsApp
+   * Obtiene o crea un cliente en la base de datos asegurando que `telefono_wa`
+   * guarde únicamente números telefónicos reales y que los LIDs se vinculen aparte en `email`.
    */
-  static async getOrCreateCliente(telefono: string, nombre?: string) {
-    const { data: existing, error: findError } = await supabase
+  static async getOrCreateCliente(telefono: string, nombre?: string, lidWhatsapp?: string) {
+    const cleanLid = extraerDigitosLid(lidWhatsapp) || extraerDigitosLid(telefono);
+
+    // Nunca registrar ni sobrescribir `telefono_wa` con un LID nuevo como si fuera un celular real
+    if (esIdentificadorLid(telefono)) {
+      if (!cleanLid) return null;
+      const { data: existingLid, error: lidErr } = await supabase
+        .from('clientes')
+        .select('*')
+        .or(`email.eq.lid:${cleanLid},telefono_wa.eq.${cleanLid}`)
+        .maybeSingle();
+      if (lidErr) throw lidErr;
+      if (existingLid) {
+        if (nombre && nombre.trim() && nombre.trim() !== existingLid.nombre) {
+          await supabase
+            .from('clientes')
+            .update({ nombre: nombre.trim() })
+            .eq('id', existingLid.id);
+          existingLid.nombre = nombre.trim();
+        }
+        return existingLid;
+      }
+      return null;
+    }
+
+    const digits = String(telefono || '').replace(/\D/g, '');
+    if (digits.length < 10 || digits.length > 13) {
+      throw new Error('Número de teléfono inválido.');
+    }
+    const cleanPhone = digits.length === 10 && digits.startsWith('3') ? `57${digits}` : digits;
+    const sinPais = cleanPhone.replace(/^57/, '');
+    const nombreLimpio = nombre?.trim() || '';
+
+    const { data: existingPhone, error: findError } = await supabase
       .from('clientes')
       .select('*')
-      .eq('telefono_wa', telefono)
+      .or(`telefono_wa.eq.${cleanPhone},telefono_wa.eq.${sinPais}`)
       .maybeSingle();
 
     if (findError) throw findError;
 
-    if (existing) {
-      if (nombre && nombre.trim() && nombre.trim() !== existing.nombre) {
-        await supabase
-          .from('clientes')
-          .update({ nombre: nombre.trim() })
-          .eq('id', existing.id);
-        existing.nombre = nombre.trim();
+    // Buscar si existe un registro previo que guardó un LID en `telefono_wa`
+    let legacyLidRow: any = null;
+    if (cleanLid) {
+      const { data: byLid } = await supabase
+        .from('clientes')
+        .select('*')
+        .or(`telefono_wa.eq.${cleanLid},email.eq.lid:${cleanLid}`)
+        .maybeSingle();
+      if (byLid) legacyLidRow = byLid;
+    } else if (nombreLimpio) {
+      const terminoSeguro = nombreLimpio.replace(/[%_]/g, '\\$&');
+      const { data: candidatosPorNombre } = await supabase
+        .from('clientes')
+        .select('*')
+        .ilike('nombre', terminoSeguro)
+        .limit(10);
+      const nombreNorm = normalizarTextoComparacion(nombreLimpio);
+      legacyLidRow =
+        (candidatosPorNombre || []).find(
+          (c) =>
+            esIdentificadorLid(c.telefono_wa) &&
+            normalizarTextoComparacion(c.nombre || '') === nombreNorm
+        ) || null;
+    }
+
+    // Caso 1: Existen ambas filas distintas (teléfono real y fila antigua con LID) -> fusionar reservas y eliminar duplicado LID
+    if (existingPhone && legacyLidRow && legacyLidRow.id !== existingPhone.id) {
+      const oldLid = cleanLid || extraerDigitosLid(legacyLidRow.telefono_wa) || extraerDigitosLid(legacyLidRow.email);
+      await supabase
+        .from('reservas')
+        .update({ cliente_id: existingPhone.id })
+        .eq('cliente_id', legacyLidRow.id);
+
+      const updatesPhone: any = {};
+      if (nombreLimpio && nombreLimpio !== existingPhone.nombre) {
+        updatesPhone.nombre = nombreLimpio;
+        existingPhone.nombre = nombreLimpio;
       }
-      return existing;
+      if (oldLid && existingPhone.email !== `lid:${oldLid}`) {
+        updatesPhone.email = `lid:${oldLid}`;
+        existingPhone.email = `lid:${oldLid}`;
+      }
+      if (Object.keys(updatesPhone).length > 0) {
+        await supabase.from('clientes').update(updatesPhone).eq('id', existingPhone.id);
+      }
+
+      await supabase.from('clientes').delete().eq('id', legacyLidRow.id);
+      if (oldLid) BaileysService.lidToPhoneMap.set(oldLid, cleanPhone);
+      return existingPhone;
+    }
+
+    // Caso 2: Solo existe la fila antigua con LID -> reparar in-place pasando teléfono real a `telefono_wa` y LID a `email`
+    if (!existingPhone && legacyLidRow) {
+      const oldLid = cleanLid || extraerDigitosLid(legacyLidRow.telefono_wa) || extraerDigitosLid(legacyLidRow.email);
+      const updatesLegacy: any = {
+        telefono_wa: cleanPhone,
+        nombre: nombreLimpio || legacyLidRow.nombre,
+      };
+      if (oldLid) updatesLegacy.email = `lid:${oldLid}`;
+
+      const { data: repaired, error: repErr } = await supabase
+        .from('clientes')
+        .update(updatesLegacy)
+        .eq('id', legacyLidRow.id)
+        .select()
+        .single();
+
+      if (oldLid) BaileysService.lidToPhoneMap.set(oldLid, cleanPhone);
+      if (!repErr && repaired) return repaired;
+      return { ...legacyLidRow, ...updatesLegacy };
+    }
+
+    // Caso 3: Ya existe por teléfono real
+    if (existingPhone) {
+      const updates: any = {};
+      if (nombreLimpio && nombreLimpio !== existingPhone.nombre) {
+        updates.nombre = nombreLimpio;
+        existingPhone.nombre = nombreLimpio;
+      }
+      if (cleanLid && existingPhone.email !== `lid:${cleanLid}`) {
+        updates.email = `lid:${cleanLid}`;
+        existingPhone.email = `lid:${cleanLid}`;
+      }
+      if (Object.keys(updates).length > 0) {
+        await supabase.from('clientes').update(updates).eq('id', existingPhone.id);
+      }
+      if (cleanLid) BaileysService.lidToPhoneMap.set(cleanLid, cleanPhone);
+      return existingPhone;
+    }
+
+    // Caso 4: Clienta nueva -> crear con teléfono real y guardar LID aparte en `email` si aplica
+    const insertPayload: any = {
+      telefono_wa: cleanPhone,
+      nombre: nombreLimpio || 'Usuario WhatsApp',
+    };
+    if (cleanLid) {
+      insertPayload.email = `lid:${cleanLid}`;
     }
 
     const { data: created, error: createError } = await supabase
       .from('clientes')
-      .insert({ telefono_wa: telefono, nombre: nombre || 'Usuario WhatsApp' })
+      .insert(insertPayload)
       .select()
       .single();
 
     if (createError) throw createError;
+    if (cleanLid) BaileysService.lidToPhoneMap.set(cleanLid, cleanPhone);
     return created;
   }
 

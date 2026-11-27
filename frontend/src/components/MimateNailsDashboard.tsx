@@ -3138,6 +3138,12 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
       return;
     }
 
+    const digitosTelAdmin = agendarTelefono.trim().replace(/\D/g, '');
+    if (digitosTelAdmin.length < 10 || digitosTelAdmin.length >= 14) {
+      setErrorAgendar('Ingresa un número de celular válido de 10 dígitos (no un ID interno).');
+      return;
+    }
+
     setGuardandoCita(true);
     setErrorAgendar(null);
 
@@ -4082,7 +4088,8 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                     const { motivo: motivoBloqueo, por: bloqueadoPor } = obtenerDetalleBloqueo(cita);
                     const nombreClienta = obtenerNombreClienta(cita);
                     const servicioNombre = obtenerServicioCita(cita);
-                    const telLimpio = String(cita.clientes?.telefono_wa || '').replace(/\D/g, '');
+                    const rawTelLimpio = String(cita.clientes?.telefono_wa || '').replace(/\D/g, '');
+                    const telLimpio = rawTelLimpio.length >= 10 && rawTelLimpio.length < 14 ? rawTelLimpio : '';
                     const puedeDesbloquear = esAdmin || (perfilActual?.canchaId === cita.cancha_id);
 
                     const inicioMs = new Date(cita.fecha_inicio).getTime();
@@ -5639,7 +5646,8 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
                           const { motivo: motivoBloqueo, por: bloqueadoPor } = obtenerDetalleBloqueo(cita);
                           const nombreClienta = obtenerNombreClienta(cita);
                           const servicioNombre = obtenerServicioCita(cita);
-                          const telLimpio = String(cita.clientes?.telefono_wa || '').replace(/\D/g, '');
+                          const rawTelLimpio = String(cita.clientes?.telefono_wa || '').replace(/\D/g, '');
+                          const telLimpio = rawTelLimpio.length >= 10 && rawTelLimpio.length < 14 ? rawTelLimpio : '';
 
                           const inicioMs = new Date(cita.fecha_inicio).getTime();
                           const finMs = cita.fecha_fin ? new Date(cita.fecha_fin).getTime() : inicioMs + 45 * 60000;

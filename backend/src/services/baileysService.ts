@@ -20,7 +20,7 @@ import qrcode from 'qrcode-terminal';
 import path from 'path';
 import fs from 'fs';
 import { WhatsAppFlow, BotResponse } from '../bot/whatsappFlow.js';
-import { BookingService, Complejo } from './bookingService.js';
+import { BookingService, Complejo, esIdentificadorLid, extraerDigitosLid } from './bookingService.js';
 import { BotExclusionsService } from './botExclusionsService.js';
 import { supabase } from '../config/supabase.js';
 
@@ -108,7 +108,123 @@ export class BaileysService {
   private static ultimoSyncLids = 0;
 
   /**
-   * Sincroniza dinámicamente los LIDs de WhatsApp para los números autorizados en la lista blanca
+   * Registra en memoria y persiste en BD (columna `email = lid:<digitos>`) el vínculo
+   * entre un LID interno de WhatsApp y su número telefónico real, reparando filas antiguas si existieran.
+   */
+  public static async registrarMapeoLidTelefono(lidRaw: string, phoneRaw: string): Promise<string | null> {
+    const lidDigits = String(lidRaw || '').split('@')[0].replace(/\D/g, '');
+    const phoneDigitsRaw = String(phoneRaw || '').split('@')[0].replace(/\D/g, '');
+    if (
+      lidDigits.length < 14 ||
+      phoneDigitsRaw.length < 10 ||
+      phoneDigitsRaw.length > 13 ||
+      esIdentificadorLid(phoneDigitsRaw)
+    ) {
+      return null;
+    }
+
+    const phoneNorm =
+      phoneDigitsRaw.length === 10 && phoneDigitsRaw.startsWith('3')
+        ? `57${phoneDigitsRaw}`
+        : phoneDigitsRaw;
+
+    if (this.lidToPhoneMap.get(lidDigits) === phoneNorm) {
+      return phoneNorm;
+    }
+
+    this.lidToPhoneMap.set(lidDigits, phoneNorm);
+
+    // Persistir vínculo y reparar si el LID quedó guardado como telefono_wa anteriormente
+    void (async () => {
+      try {
+        const sinPais = phoneNorm.replace(/^57/, '');
+        const { data: filas } = await supabase
+          .from('clientes')
+          .select('id, telefono_wa, email')
+          .or(
+            `telefono_wa.eq.${lidDigits},email.eq.lid:${lidDigits},telefono_wa.eq.${phoneNorm},telefono_wa.eq.${sinPais}`
+          );
+
+        if (!filas || filas.length === 0) return;
+
+        const filaPhone = filas.find(
+          (f) => f.telefono_wa === phoneNorm || f.telefono_wa === sinPais
+        );
+        const filaLid = filas.find(
+          (f) => f.telefono_wa === lidDigits || f.email === `lid:${lidDigits}`
+        );
+
+        if (filaPhone && filaLid && filaPhone.id !== filaLid.id) {
+          await supabase
+            .from('reservas')
+            .update({ cliente_id: filaPhone.id })
+            .eq('cliente_id', filaLid.id);
+          await supabase
+            .from('clientes')
+            .update({ email: `lid:${lidDigits}` })
+            .eq('id', filaPhone.id);
+          await supabase.from('clientes').delete().eq('id', filaLid.id);
+          console.log(`[Baileys] 🔧 Clienta unificada (${lidDigits} -> ${phoneNorm}) en BD.`);
+        } else if (!filaPhone && filaLid && esIdentificadorLid(filaLid.telefono_wa)) {
+          await supabase
+            .from('clientes')
+            .update({ telefono_wa: phoneNorm, email: `lid:${lidDigits}` })
+            .eq('id', filaLid.id);
+          console.log(`[Baileys] 🔧 Teléfono real restaurado en cliente (${lidDigits} -> ${phoneNorm}).`);
+        } else if (filaPhone && filaPhone.email !== `lid:${lidDigits}`) {
+          await supabase
+            .from('clientes')
+            .update({ email: `lid:${lidDigits}` })
+            .eq('id', filaPhone.id);
+        }
+      } catch (errPersist) {
+        console.warn('[Baileys] Error persistiendo vínculo LID->teléfono:', errPersist);
+      }
+    })();
+
+    return phoneNorm;
+  }
+
+  /**
+   * Lee mapeos locales lid-mapping-*.json guardados por Baileys para hidratar `lidToPhoneMap` al iniciar.
+   */
+  private static async cargarMapeosLidLocales(authDir: string): Promise<void> {
+    try {
+      if (!fs.existsSync(authDir)) return;
+      const files = await fs.promises.readdir(authDir);
+      let cargados = 0;
+      for (const f of files) {
+        if (!f.startsWith('lid-mapping-') || !f.endsWith('.json')) continue;
+        try {
+          const content = await fs.promises.readFile(path.join(authDir, f), 'utf-8');
+          const valor = String(JSON.parse(content) || '').replace(/\D/g, '');
+          if (!valor) continue;
+
+          if (f.endsWith('_reverse.json')) {
+            const lidDigits = f.replace('lid-mapping-', '').replace('_reverse.json', '').replace(/\D/g, '');
+            if (lidDigits.length >= 14 && valor.length >= 10 && valor.length <= 13) {
+              const phoneNorm = valor.length === 10 && valor.startsWith('3') ? `57${valor}` : valor;
+              this.lidToPhoneMap.set(lidDigits, phoneNorm);
+              cargados++;
+            }
+          } else {
+            const pnDigits = f.replace('lid-mapping-', '').replace('.json', '').replace(/\D/g, '');
+            if (valor.length >= 14 && pnDigits.length >= 10 && pnDigits.length <= 13) {
+              const phoneNorm = pnDigits.length === 10 && pnDigits.startsWith('3') ? `57${pnDigits}` : pnDigits;
+              this.lidToPhoneMap.set(valor, phoneNorm);
+              cargados++;
+            }
+          }
+        } catch {}
+      }
+      if (cargados > 0) {
+        console.log(`[Baileys] 🔗 ${cargados} mapeo(s) LID cargados desde sesión local.`);
+      }
+    } catch {}
+  }
+
+  /**
+   * Sincroniza dinámicamente los LIDs de WhatsApp para los números reales registrados
    */
   public static async sincronizarLids(forzar: boolean = false): Promise<void> {
     try {
@@ -118,32 +234,35 @@ export class BaileysService {
         return; // Evitar saturación de consultas hacia WhatsApp
       }
       this.ultimoSyncLids = ahora;
-      // Extraer números registrados en el mapa oficial de LIDs
+      // Extraer números reales registrados en el mapa oficial de LIDs
       const phones = Array.from(this.lidToPhoneMap.values())
         .map((n) => n.replace(/\D/g, ''))
         .filter((n) => {
+          if (esIdentificadorLid(n)) return false;
           const ten = n.length >= 10 ? n.slice(-10) : '';
           return ten.startsWith('3') && ten.length === 10;
         })
         .map((n) => `57${n.slice(-10)}`);
 
-      // Cargar dinámicamente teléfonos de clientas de la base de datos para mapear sus LIDs automáticamente
+      // Cargar dinámicamente teléfonos reales de clientas de la base de datos para mapear sus LIDs automáticamente
       try {
         const { data: dbClientes } = await supabase
           .from('clientes')
-          .select('telefono_wa')
+          .select('telefono_wa, email')
           .not('telefono_wa', 'is', null)
-          .limit(100);
+          .limit(300);
         if (dbClientes) {
           for (const c of dbClientes) {
             const raw = String(c.telefono_wa || '').replace(/\D/g, '');
-            if (raw.length >= 10) {
-              const ten = raw.slice(-10);
-              if (ten.startsWith('3')) {
-                phones.push(`57${ten}`);
-              } else {
-                phones.push(raw);
-              }
+            if (!raw || raw.length < 10 || esIdentificadorLid(raw)) continue;
+
+            const ten = raw.slice(-10);
+            const phoneNorm = ten.startsWith('3') && ten.length === 10 ? `57${ten}` : raw;
+            phones.push(phoneNorm);
+
+            const lidEmail = extraerDigitosLid(c.email);
+            if (lidEmail && !this.lidToPhoneMap.has(lidEmail)) {
+              this.lidToPhoneMap.set(lidEmail, phoneNorm);
             }
           }
         }
@@ -151,7 +270,7 @@ export class BaileysService {
         console.warn('[Baileys] Error cargando teléfonos para LIDs:', errClientes);
       }
 
-      const uniquePhones = Array.from(new Set(phones));
+      const uniquePhones = Array.from(new Set(phones)).filter((p) => !esIdentificadorLid(p) && p.length <= 13);
 
       if (uniquePhones.length > 0) {
         // Enviar a WhatsApp SIN el signo '+'
@@ -160,10 +279,8 @@ export class BaileysService {
           this.addDebugEvent('SYNC_LIDS_SUCCESS', { count: results.length, items: results });
           for (const r of (results as any[])) {
             if (r.lid && r.jid) {
-              const lidId = String(r.lid).split('@')[0].replace(/\D/g, '');
-              const phoneId = String(r.jid).split('@')[0].replace(/\D/g, '');
-              this.lidToPhoneMap.set(lidId, phoneId);
-              console.log(`[Baileys] 🔗 LID verificado con WhatsApp server: ${lidId} -> ${phoneId}`);
+              await this.registrarMapeoLidTelefono(String(r.lid), String(r.jid));
+              console.log(`[Baileys] 🔗 LID verificado con WhatsApp server: ${r.lid} -> ${r.jid}`);
             }
           }
         }
@@ -316,6 +433,7 @@ export class BaileysService {
 
       // 1. Restaurar sesión previa de Supabase si estamos en un contenedor nuevo (como Render)
       await this.restaurarSesionDesdeSupabase(authDir);
+      await this.cargarMapeosLidLocales(authDir);
 
       const { state, saveCreds } = await useMultiFileAuthState(authDir);
       // Asegurar que cada nueva sesión Signal (session-*.json) o PreKey (pre-key-*.json) se respalde en Supabase
@@ -451,6 +569,22 @@ export class BaileysService {
           }
         }
 
+      // 2B. Escuchar contactos entrantes para mapear LIDs <-> teléfonos reales automáticamente
+      const contactosActualizados = [
+        ...(events['contacts.upsert'] || []),
+        ...(events['contacts.update'] || []),
+      ] as any[];
+      if (contactosActualizados.length > 0) {
+        for (const c of contactosActualizados) {
+          const lidCandidate = c?.lid || (typeof c?.id === 'string' && c.id.endsWith('@lid') ? c.id : '');
+          const jidCandidate =
+            c?.jid || (typeof c?.id === 'string' && c.id.endsWith('@s.whatsapp.net') ? c.id : '');
+          if (lidCandidate && jidCandidate) {
+            await this.registrarMapeoLidTelefono(lidCandidate, jidCandidate);
+          }
+        }
+      }
+
       // 3. Procesar mensajes entrantes con máxima prioridad e inmediatez
       if (events['messages.upsert']) {
         const { messages, type } = events['messages.upsert'];
@@ -555,14 +689,25 @@ export class BaileysService {
       this.procesadosCache.clear();
     }
 
-    // Si viene de un LID pero trae participant con número telefónico, verificar primero lista blanca
-    const participantJid = m.key?.participant ? jidNormalizedUser(m.key.participant) : '';
-    if (isLidUser(normalizedJid) && participantJid && !isLidUser(participantJid)) {
+    // Si viene de un LID pero trae senderPn / participantPn / remoteJidAlt / participant con teléfono real, mapearlo
+    if (isLidUser(normalizedJid)) {
       const lidRaw = normalizedJid.split('@')[0].replace(/\D/g, '');
-      const telReal = participantJid.split('@')[0].replace(/\D/g, '');
-      if (telReal.length >= 10 && this.estaEnListaBlanca(telReal)) {
-        this.lidToPhoneMap.set(lidRaw, telReal);
-        console.log(`[Baileys] 🔗 LID ${lidRaw} mapeado legítimamente para número autorizado: ${telReal}`);
+      const candidatosPn = [
+        m.key?.senderPn,
+        m.key?.participantPn,
+        (m.key as any)?.remoteJidAlt,
+        m.key?.participant,
+      ];
+      for (const cand of candidatosPn) {
+        if (!cand) continue;
+        const candNorm = jidNormalizedUser(String(cand));
+        if (candNorm && !isLidUser(candNorm)) {
+          const resuelto = await this.registrarMapeoLidTelefono(lidRaw, candNorm);
+          if (resuelto) {
+            console.log(`[Baileys] 🔗 LID ${lidRaw} resuelto desde metadata del mensaje -> ${resuelto}`);
+            break;
+          }
+        }
       }
     }
 
@@ -930,7 +1075,9 @@ export class BaileysService {
       return false;
     }
     let clean = telefono.replace(/\D/g, '');
-    if (clean.length === 10 && clean.startsWith('3')) {
+    if (this.lidToPhoneMap.has(clean)) {
+      clean = this.lidToPhoneMap.get(clean)!;
+    } else if (!esIdentificadorLid(telefono) && clean.length === 10 && clean.startsWith('3')) {
       clean = `57${clean}`;
     }
     if (await BotExclusionsService.esNumeroExcluido(clean)) {
@@ -938,27 +1085,29 @@ export class BaileysService {
       console.log(`[Baileys] Envío directo a ${clean} cancelado (número en lista de exclusión/atención humana).`);
       return false;
     }
-    let remoteJid = `${clean}@s.whatsapp.net`;
 
-    // Intentar resolver el JID real y mapear el LID con timeout corto (sin bloquear el envío si onWhatsApp falla o tarda)
-    try {
-      const results: any = await Promise.race([
-        this.socket.onWhatsApp(clean),
-        new Promise((resolve) => setTimeout(() => resolve(null), 3000)),
-      ]);
-      if (results && results[0] && results[0].exists) {
-        if (results[0].jid) {
-          remoteJid = results[0].jid;
+    const esDestinoLid = esIdentificadorLid(telefono) || clean.length >= 14;
+    let remoteJid = esDestinoLid ? `${clean}@lid` : `${clean}@s.whatsapp.net`;
+
+    // Solo consultar onWhatsApp para números telefónicos reales (evita falsos envíos usando un LID como teléfono)
+    if (!esDestinoLid) {
+      try {
+        const results: any = await Promise.race([
+          this.socket.onWhatsApp(clean),
+          new Promise((resolve) => setTimeout(() => resolve(null), 3000)),
+        ]);
+        if (results && results[0] && results[0].exists) {
+          if (results[0].jid) {
+            remoteJid = results[0].jid;
+          }
+          if (results[0].lid && results[0].jid) {
+            await this.registrarMapeoLidTelefono(String(results[0].lid), String(results[0].jid));
+            console.log(`[Baileys] 🔗 LID dinámico asociado para destinataria ${results[0].jid}: ${results[0].lid}`);
+          }
         }
-        if (results[0].lid && results[0].jid) {
-          const lidId = String(results[0].lid).split('@')[0].replace(/\D/g, '');
-          const phoneId = String(results[0].jid).split('@')[0].replace(/\D/g, '');
-          this.lidToPhoneMap.set(lidId, phoneId);
-          console.log(`[Baileys] 🔗 LID dinámico asociado para destinataria ${phoneId}: ${lidId}`);
-        }
+      } catch (e) {
+        console.warn('[Baileys] No se pudo verificar el número con onWhatsApp, se intenta envío directo:', e);
       }
-    } catch (e) {
-      console.warn('[Baileys] No se pudo verificar el número con onWhatsApp, se intenta envío directo:', e);
     }
 
     // Si tiene botones, estructurarlos como opciones numeradas para compatibilidad universal en cualquier teléfono

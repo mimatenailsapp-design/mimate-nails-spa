@@ -1,4 +1,4 @@
-import { BookingService, Complejo, Cancha, HorarioDisponible, getMontoAnticipoFijo, requiereAnticipoParaFecha, formatearCuentasRecaudoMensaje, getLlaveNumero, getTitularLimpio, enriquecerCancha } from '../services/bookingService.js';
+import { BookingService, Complejo, Cancha, HorarioDisponible, getMontoAnticipoFijo, requiereAnticipoParaFecha, formatearCuentasRecaudoMensaje, getLlaveNumero, getTitularLimpio, enriquecerCancha, esIdentificadorLid, extraerDigitosLid } from '../services/bookingService.js';
 import { ReceiptVerificationService } from '../services/receiptVerificationService.js';
 import { AIReceptionistService, CitaActivaResumen, ContextoClientaCitas } from '../services/aiReceptionistService.js';
 import { NLUIntentService } from '../services/nluIntentService.js';
@@ -92,6 +92,29 @@ function hidratarHorarioRealWa<T extends { fecha_inicio?: string; fecha_fin?: st
 
 export class WhatsAppFlow {
   /**
+   * Construye enlaces a la agenda web separando ?lid= de ?tel= para nunca prellenar un LID como celular real.
+   */
+  private static construirUrlAgendaSpa(
+    baseUrl: string,
+    opts: { telefono?: string; nombre?: string; reagendarId?: string }
+  ): string {
+    const cleanBase = baseUrl.replace(/\/+$/, '');
+    const queryParams = new URLSearchParams();
+    if (opts.reagendarId) queryParams.set('reagendar', opts.reagendarId);
+    const rawTel = String(opts.telefono || '').replace(/\D/g, '');
+    if (rawTel) {
+      if (esIdentificadorLid(opts.telefono) || rawTel.length >= 14) {
+        queryParams.set('lid', rawTel);
+      } else if (rawTel.length >= 10) {
+        queryParams.set('tel', rawTel);
+      }
+    }
+    if (opts.nombre) queryParams.set('nombre', opts.nombre);
+    const qs = queryParams.toString();
+    return `${cleanBase}${opts.reagendarId ? '/' : ''}${qs ? `?${qs}` : ''}`;
+  }
+
+  /**
    * Consulta en tiempo real si la clienta ya tiene citas próximas activas en Supabase
    * para responder de forma contextual en lugar de enviar el saludo genérico con link.
    */
@@ -99,18 +122,29 @@ export class WhatsAppFlow {
     try {
       const digits = String(telefono || '').replace(/\D/g, '');
       if (digits.length < 7) return undefined;
-      const conPais = digits.length === 10 && digits.startsWith('3') ? `57${digits}` : digits;
-      const sinPais = conPais.startsWith('57') && conPais.length === 12 ? conPais.slice(2) : digits;
+      const esLid = esIdentificadorLid(telefono) || digits.length >= 14;
+      const conPais = !esLid && digits.length === 10 && digits.startsWith('3') ? `57${digits}` : digits;
+      const sinPais = !esLid && conPais.startsWith('57') && conPais.length === 12 ? conPais.slice(2) : digits;
 
       const { data: clientes } = await supabase
         .from('clientes')
-        .select('id, nombre')
-        .or(`telefono_wa.eq.${conPais},telefono_wa.eq.${sinPais}`);
+        .select('id, nombre, telefono_wa')
+        .or(
+          esLid
+            ? `email.eq.lid:${digits},telefono_wa.eq.${digits}`
+            : `telefono_wa.eq.${conPais},telefono_wa.eq.${sinPais}`
+        );
 
       if (!clientes || clientes.length === 0) return undefined;
 
       const clienteIds = clientes.map((c) => c.id);
       const nombreCliente = clientes.find((c) => c.nombre?.trim())?.nombre?.trim();
+      const telRealEncontrado = clientes.find(
+        (c) => c.telefono_wa && !esIdentificadorLid(c.telefono_wa)
+      )?.telefono_wa;
+      const telefonoContexto = telRealEncontrado
+        ? String(telRealEncontrado).replace(/\D/g, '')
+        : conPais;
 
       // Incluir citas desde hace 2 horas hacia adelante (cubre clientas llegando tarde o justo a su turno)
       const desdeIso = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
@@ -124,7 +158,7 @@ export class WhatsAppFlow {
         .limit(5);
 
       if (!reservas || reservas.length === 0) {
-        return { nombre: nombreCliente, telefonoLimpio: conPais, citasActivas: [] };
+        return { nombre: nombreCliente, telefonoLimpio: telefonoContexto, citasActivas: [] };
       }
 
       const hoyCol = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
@@ -174,7 +208,7 @@ export class WhatsAppFlow {
 
       return {
         nombre: nombreCliente,
-        telefonoLimpio: conPais,
+        telefonoLimpio: telefonoContexto,
         citasActivas,
       };
     } catch (e) {
@@ -240,11 +274,7 @@ export class WhatsAppFlow {
         const esSpa = complejo.slug === 'mimate-nails' || complejo.tipo_negocio === 'belleza_unas';
         if (esSpa) {
           const baseUrl = process.env.FRONTEND_URL || 'https://mimate-nails-spa.vercel.app';
-          const cleanTel = telefono.replace(/\D/g, '');
-          const queryParams = new URLSearchParams();
-          if (cleanTel) queryParams.set('tel', cleanTel);
-          if (nombrePush) queryParams.set('nombre', nombrePush);
-          const urlAgenda = `${baseUrl}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+          const urlAgenda = this.construirUrlAgendaSpa(baseUrl, { telefono, nombre: nombrePush });
 
           const textoReinicio =
             `🔄 *Conversación reiniciada con éxito* 🌸\n\n` +
@@ -374,7 +404,10 @@ export class WhatsAppFlow {
           session.paso = 'ATENDIENDO';
           const proxima = contextoClienta.citasActivas[0];
           const baseUrl = process.env.FRONTEND_URL || 'https://mimate-nails-spa.vercel.app';
-          const linkReagendar = `${baseUrl}/?reagendar=${proxima.id}&tel=${contextoClienta.telefonoLimpio}`;
+          const linkReagendar = this.construirUrlAgendaSpa(baseUrl, {
+            reagendarId: proxima.id,
+            telefono: contextoClienta.telefonoLimpio,
+          });
 
           // B1. Solicitud explícita de link para agendar OTRA cita adicional
           const pideLinkExplicito = [
@@ -953,11 +986,7 @@ export class WhatsAppFlow {
       session.linkEnviado = true;
       session.linkEnviadoAt = Date.now();
       const baseUrl = process.env.FRONTEND_URL || 'https://mimate-nails-spa.vercel.app';
-      const cleanTel = telefono.replace(/\D/g, '');
-      const queryParams = new URLSearchParams();
-      if (cleanTel) queryParams.set('tel', cleanTel);
-      if (nombrePush) queryParams.set('nombre', nombrePush);
-      const urlAgenda = `${baseUrl}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+      const urlAgenda = this.construirUrlAgendaSpa(baseUrl, { telefono, nombre: nombrePush });
 
       const exigeAnticipo = (Number(complejo.porcentaje_anticipo_minimo) || 0) > 0;
       const montoFijo = getMontoAnticipoFijo(complejo);
@@ -1044,11 +1073,7 @@ export class WhatsAppFlow {
     session.linkEnviado = true;
     session.linkEnviadoAt = Date.now();
     const baseUrl = process.env.FRONTEND_URL || 'https://mimate-nails-spa.vercel.app';
-    const cleanTel = telefono.replace(/\D/g, '');
-    const queryParams = new URLSearchParams();
-    if (cleanTel) queryParams.set('tel', cleanTel);
-    if (nombrePush) queryParams.set('nombre', nombrePush);
-    const urlAgenda = `${baseUrl}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+    const urlAgenda = this.construirUrlAgendaSpa(baseUrl, { telefono, nombre: nombrePush });
 
     const saludoNombre = nombrePush ? ` ${nombrePush}` : '';
     const textoReenvio =
@@ -1487,6 +1512,11 @@ export class WhatsAppFlow {
     session.horarioSeleccionado = horario;
 
     const cliente = await BookingService.getOrCreateCliente(telefono);
+    if (!cliente) {
+      return {
+        texto: '⚠️ No fue posible identificar un número telefónico válido para completar esta reserva.',
+      };
+    }
 
     const formatearTimestampIso = (fecha: string, hora: string): string => {
       const match = hora.match(/^(\d{1,2}):(\d{2})/);
@@ -1800,13 +1830,20 @@ export class WhatsAppFlow {
 
     const { data: clientes } = await supabase
       .from('clientes')
-      .select('id, telefono_wa');
+      .select('id, telefono_wa, email');
 
     const clienteIds = (clientes || [])
       .filter((c) => {
+        const lidGuardado = extraerDigitosLid(c.email);
+        if (lidGuardado && lidGuardado === cleanTel) return true;
         if (!c.telefono_wa) return false;
         const cClean = String(c.telefono_wa).replace(/\D/g, '');
-        return cClean.includes(ultimos10) || ultimos10.includes(cClean);
+        return (
+          cClean === cleanTel ||
+          (ultimos10.length === 10 &&
+            cClean.length <= 13 &&
+            (cClean.includes(ultimos10) || ultimos10.includes(cClean)))
+        );
       })
       .map((c) => c.id);
 
@@ -2314,16 +2351,18 @@ export class WhatsAppFlow {
 
       const { data: clientes } = await supabase
         .from('clientes')
-        .select('id, telefono_wa');
+        .select('id, telefono_wa, email');
 
       const clienteIds = (clientes || [])
         .filter((c) => {
+          const lidGuardado = extraerDigitosLid(c.email);
+          if (lidGuardado && lidGuardado === cleanTel) return true;
           if (!c.telefono_wa) return false;
           const cClean = String(c.telefono_wa).replace(/\D/g, '');
           return (
             telVariaciones.includes(c.telefono_wa) ||
             telVariaciones.includes(cClean) ||
-            cClean.slice(-10) === ultimos10
+            (ultimos10.length === 10 && cClean.length <= 13 && cClean.slice(-10) === ultimos10)
           );
         })
         .map((c) => c.id);
@@ -2360,10 +2399,7 @@ export class WhatsAppFlow {
 
     if (!reserva) {
       const baseUrl = process.env.FRONTEND_URL || 'https://mimate-nails-spa.vercel.app';
-      const cleanTel = telefono.replace(/\D/g, '');
-      const queryParams = new URLSearchParams();
-      if (cleanTel) queryParams.set('tel', cleanTel);
-      const urlAgenda = `${baseUrl}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+      const urlAgenda = this.construirUrlAgendaSpa(baseUrl, { telefono });
       const esSpa = complejo.slug === 'mimate-nails' || complejo.tipo_negocio === 'belleza_unas';
 
       if (esReagendar) {
@@ -2540,8 +2576,10 @@ export class WhatsAppFlow {
     // CASO 3: REAGENDAR (CAMBIAR FECHA)
     if (esReagendar) {
       const baseUrl = process.env.FRONTEND_URL || 'https://mimate-nails-spa.vercel.app';
-      const cleanTel = telefono.replace(/\D/g, '');
-      const linkReagendar = `${baseUrl}/?reagendar=${reserva.id}&tel=${cleanTel}`;
+      const linkReagendar = this.construirUrlAgendaSpa(baseUrl, {
+        reagendarId: reserva.id,
+        telefono,
+      });
 
       const textoSinLink = esSpa
         ? `🌸 *REAGENDAR CITA - JL MÍMATE NAILS* 🌸\n\n` +

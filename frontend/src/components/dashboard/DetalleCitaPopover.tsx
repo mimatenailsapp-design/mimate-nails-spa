@@ -181,7 +181,9 @@ export const DetalleCitaPopover: React.FC<DetalleCitaPopoverProps> = ({
   const { motivo: motivoBloqueo, por: bloqueadoPor } = obtenerDetalleBloqueo(cita);
   const nombreClienta = obtenerNombreClienta(cita);
   const servicioNombre = obtenerServicioCita(cita);
-  const telLimpio = String(cita.clientes?.telefono_wa || '').replace(/\D/g, '');
+  const telCrudo = String(cita.clientes?.telefono_wa || '').replace(/\D/g, '');
+  const esLidTel = telCrudo.length >= 14;
+  const telLimpio = telCrudo && !esLidTel ? telCrudo : '';
   const canchaCita = canchas.find((c) => c.id === cita.cancha_id);
   const puedeDesbloquear = esAdmin || (perfilActual?.canchaId === cita.cancha_id);
   const totalAdicionales = sumarAdicionalesCita(cita.notas);
@@ -527,7 +529,7 @@ export const DetalleCitaPopover: React.FC<DetalleCitaPopoverProps> = ({
               <div className="flex items-center justify-between pt-1 border-t border-slate-200/60">
                 <span className="text-[#7D6870]">Teléfono:</span>
                 <span className="font-mono text-xs text-[#2D2529] font-medium">
-                  {cita.clientes.telefono_wa}
+                  {esLidTel ? 'Sin número visible (ID WhatsApp)' : cita.clientes.telefono_wa}
                 </span>
               </div>
             )}

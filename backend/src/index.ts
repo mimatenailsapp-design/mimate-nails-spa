@@ -19,6 +19,8 @@ import {
   getTitularLimpio,
   formatearCuentasRecaudoMensaje,
   esDiaCerradoPorDomingo,
+  esIdentificadorLid,
+  extraerDigitosLid,
 } from './services/bookingService.js';
 import { AIReceptionistService } from './services/aiReceptionistService.js';
 import { BotExclusionsService } from './services/botExclusionsService.js';
@@ -1522,6 +1524,9 @@ app.get('/api/reservas/:id', async (req: Request, res: Response) => {
     const matchSvc = (reserva.notas || '').match(/Servicio:\s*([^|[\n]+)/i);
     const servicioNombre = matchSvc && matchSvc[1] ? matchSvc[1].trim() : undefined;
 
+    const telCrudo = reserva.clientes?.telefono_wa;
+    const lidDetectado = extraerDigitosLid(telCrudo);
+
     res.json({
       id: reserva.id,
       cancha_id: reserva.cancha_id,
@@ -1532,8 +1537,14 @@ app.get('/api/reservas/:id', async (req: Request, res: Response) => {
       valor_anticipo_requerido: reserva.valor_anticipo_requerido,
       servicio_nombre: servicioNombre,
       abono_previo: abonoPrevio,
+      whatsapp_lid: lidDetectado || undefined,
       canchas: reserva.canchas ? { id: reserva.canchas.id, nombre: reserva.canchas.nombre } : null,
-      clientes: reserva.clientes ? { nombre: reserva.clientes.nombre, telefono_wa: reserva.clientes.telefono_wa } : null,
+      clientes: reserva.clientes
+        ? {
+            nombre: reserva.clientes.nombre,
+            telefono_wa: telCrudo && !esIdentificadorLid(telCrudo) ? telCrudo : '',
+          }
+        : null,
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -2305,7 +2316,8 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
     cliente_telefono,
     reagendar_reserva_id,
     origen,
-    agendado_por
+    agendado_por,
+    whatsapp_lid
   } = req.body;
 
   // Sanitización y normalización defensiva contra XSS y desbordamientos
@@ -2313,10 +2325,18 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
   servicio_nombre = sanitizeInput(servicio_nombre, 250);
   fecha = sanitizeInput(fecha, 10);
   hora = sanitizeInput(hora, 5);
-  cliente_telefono = String(cliente_telefono || '').replace(/\D/g, '').slice(0, 15);
+  const rawTelBody = String(cliente_telefono || '');
+  cliente_telefono = rawTelBody.replace(/\D/g, '').slice(0, 15);
+  const cleanLid = extraerDigitosLid(whatsapp_lid);
 
   if (!fecha || !hora || !cliente_telefono || !cliente_nombre) {
     return res.status(400).json({ error: 'Faltan datos requeridos (fecha, hora, nombre, teléfono)' });
+  }
+
+  if (esIdentificadorLid(rawTelBody) || cliente_telefono.length < 10 || cliente_telefono.length > 13) {
+    return res.status(400).json({
+      error: 'Por favor ingresa un número real de celular de WhatsApp (10 dígitos, ej. 300 123 4567).',
+    });
   }
 
   if (!esFormatoFechaValido(fecha)) {
@@ -2507,7 +2527,7 @@ app.post('/api/spa/reservar', bookingLimiter, async (req: Request, res: Response
       cleanPhone = `57${cleanPhone}`;
     }
 
-    const cliente = await BookingService.getOrCreateCliente(cleanPhone, cliente_nombre.trim());
+    const cliente = await BookingService.getOrCreateCliente(cleanPhone, cliente_nombre.trim(), cleanLid || undefined);
 
     // Determinar si el spa exige abono/anticipo para reservar (o si la cita es en diciembre, donde SIEMPRE se exige abono)
     const exigeAnticipo = requiereAnticipoParaFecha(complejo, fecha);

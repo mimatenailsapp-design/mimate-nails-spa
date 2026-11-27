@@ -130,6 +130,15 @@ function calcularSlotsClientaManicurista(params: {
   return libres;
 }
 
+function esIdentificadorLidFrontend(valor?: string | null): boolean {
+  if (!valor) return false;
+  const raw = String(valor).trim().toLowerCase();
+  if (!raw) return false;
+  if (raw.startsWith('lid:') || raw.endsWith('@lid')) return true;
+  const digitos = raw.split('@')[0].replace(/\D/g, '');
+  return digitos.length >= 14;
+}
+
 function normalizarNombreYFotoEmpleada(emp: { id: string; nombre: string; foto?: string | null }): Empleada {
   let nombre = emp.nombre;
   const nLower = nombre.trim().toLowerCase();
@@ -669,6 +678,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
 
   // Datos del cliente
   const [telefono, setTelefono] = useState('');
+  const [whatsappLid, setWhatsappLid] = useState('');
   const [nombre, setNombre] = useState('');
   const [enviandoReserva, setEnviandoReserva] = useState(false);
   const [aceptaPoliticas, setAceptaPoliticas] = useState(false);
@@ -827,10 +837,20 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
 
     try {
       const params = new URLSearchParams(window.location.search);
+      const urlLid = params.get('lid');
+      if (urlLid) {
+        const cleanUrlLid = urlLid.replace(/\D/g, '');
+        if (cleanUrlLid.length >= 14) setWhatsappLid(cleanUrlLid);
+      }
       const urlTel = params.get('tel') || params.get('telefono');
       if (urlTel) {
-        const cleanUrlTel = urlTel.replace(/\D/g, '').replace(/^57/, '');
-        setTelefono(cleanUrlTel);
+        const digitosUrl = urlTel.replace(/\D/g, '');
+        if (esIdentificadorLidFrontend(urlTel) || digitosUrl.length >= 14) {
+          setWhatsappLid(digitosUrl);
+        } else {
+          const cleanUrlTel = digitosUrl.replace(/^57/, '');
+          setTelefono(cleanUrlTel);
+        }
       }
       const urlNombre = params.get('nombre');
       if (urlNombre) {
@@ -845,10 +865,17 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
           .then((data) => {
             if (data && !data.error) {
               const cliente = data.clientes;
+              if (data.whatsapp_lid) {
+                setWhatsappLid(String(data.whatsapp_lid).replace(/\D/g, ''));
+              }
               if (cliente?.nombre) setNombre(cliente.nombre);
               if (cliente?.telefono_wa) {
-                const telRaw = cliente.telefono_wa.replace(/^57/, '');
-                setTelefono(telRaw);
+                const rawTel = String(cliente.telefono_wa).replace(/\D/g, '');
+                if (esIdentificadorLidFrontend(cliente.telefono_wa) || rawTel.length >= 14) {
+                  setWhatsappLid(rawTel);
+                } else {
+                  setTelefono(rawTel.replace(/^57/, ''));
+                }
               }
               const cancha = data.canchas;
               const fInicio = new Date(data.fecha_inicio);
@@ -1068,6 +1095,12 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
   const handleConfirmarReserva = async () => {
     if (!servicioSeleccionado || !fecha || !horaSeleccionada || !telefono.trim() || !nombre.trim() || !aceptaPoliticas) return;
 
+    const digitsTel = telefono.replace(/\D/g, '');
+    if (esIdentificadorLidFrontend(telefono) || digitsTel.length < 10 || digitsTel.length > 13) {
+      alert('Por favor ingresa tu número real de celular de WhatsApp (10 dígitos, ej. 300 123 4567).');
+      return;
+    }
+
     setEnviandoReserva(true);
 
     try {
@@ -1083,6 +1116,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
           cancha_id: empleadaId || undefined,
           cliente_nombre: nombre.trim(),
           cliente_telefono: telefono.trim(),
+          whatsapp_lid: whatsappLid || undefined,
           reagendar_reserva_id: reagendarId || undefined,
           acepta_politicas: true,
         }),
@@ -2404,7 +2438,7 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                         </label>
                         <input
                           type="tel"
-                          maxLength={15}
+                          maxLength={13}
                           autoComplete="tel"
                           placeholder="300 123 4567"
                           value={telefono}

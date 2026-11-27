@@ -38,6 +38,14 @@ const normalizarTelefonoLocal = (telefono: string) => {
   return digits;
 };
 
+const esIdentificadorLid = (telefono: string): boolean => {
+  const raw = String(telefono || '').trim().toLowerCase();
+  if (!raw) return false;
+  if (raw.startsWith('lid:') || raw.endsWith('@lid')) return true;
+  const digits = raw.split('@')[0].replace(/\D/g, '');
+  return digits.length >= 14;
+};
+
 const formatearTelefonoVisual = (telLocal: string) => {
   if (telLocal.length === 10) {
     return `${telLocal.slice(0, 3)} ${telLocal.slice(3, 6)} ${telLocal.slice(6)}`;
@@ -136,6 +144,7 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
   const [menuExtrasAbierto, setMenuExtrasAbierto] = useState(false);
   const [buscandoCliente, setBuscandoCliente] = useState(false);
   const [clienteEncontrado, setClienteEncontrado] = useState<OpcionClienteMatch | null>(null);
+  const [clientaSoloLid, setClientaSoloLid] = useState<string | null>(null);
   const [opcionesClientes, setOpcionesClientes] = useState<OpcionClienteMatch[]>([]);
   const [esCoincidenciaExactaMultiple, setEsCoincidenciaExactaMultiple] = useState(false);
   const ultimoNombreBuscado = useRef<string>('');
@@ -144,6 +153,7 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
   useEffect(() => {
     if (!abierto) {
       setClienteEncontrado(null);
+      setClientaSoloLid(null);
       setOpcionesClientes([]);
       setEsCoincidenciaExactaMultiple(false);
       setBuscandoCliente(false);
@@ -156,6 +166,7 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
     setAgendarNombre(opcion.nombre);
     setAgendarTelefono(opcion.telefonoLocal);
     setClienteEncontrado(opcion);
+    setClientaSoloLid(null);
     setOpcionesClientes([]);
     setEsCoincidenciaExactaMultiple(false);
   };
@@ -168,6 +179,7 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
 
     if (nombreNorm.length < 2) {
       setClienteEncontrado(null);
+      setClientaSoloLid(null);
       setOpcionesClientes([]);
       setEsCoincidenciaExactaMultiple(false);
       setBuscandoCliente(false);
@@ -214,11 +226,20 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
         }
         const vistosPorNombreYTel = new Set<string>();
         const coincidenciasValidas: OpcionClienteMatch[] = [];
+        const coincidenciasSoloLid: string[] = [];
 
         for (const row of filas) {
           const nombreLimpio = (row.nombre || '').trim();
-          const telLocal = normalizarTelefonoLocal(row.telefono_wa || '');
-          if (!nombreLimpio || telLocal.length < 7) continue;
+          const rawTelDb = String(row.telefono_wa || '');
+          if (!nombreLimpio) continue;
+
+          if (esIdentificadorLid(rawTelDb)) {
+            coincidenciasSoloLid.push(nombreLimpio);
+            continue;
+          }
+
+          const telLocal = normalizarTelefonoLocal(rawTelDb);
+          if (telLocal.length < 10 || telLocal.length > 13) continue;
 
           const clave = `${normalizarTextoCliente(nombreLimpio)}|${telLocal}`;
           if (vistosPorNombreYTel.has(clave)) continue;
@@ -240,28 +261,39 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
         if (exactos.length === 1) {
           const unico = exactos[0];
           setClienteEncontrado(unico);
+          setClientaSoloLid(null);
           setOpcionesClientes([]);
           setEsCoincidenciaExactaMultiple(false);
           setAgendarTelefono(unico.telefonoLocal);
         } else if (exactos.length > 1) {
           // Mismo nombre con múltiples números distintos: mostrar todas las opciones asociadas solo a ese nombre
           setClienteEncontrado(null);
+          setClientaSoloLid(null);
           setOpcionesClientes(exactos);
           setEsCoincidenciaExactaMultiple(true);
         } else if (coincidenciasValidas.length > 0) {
           // Coincidencias parciales mientras escribe: mostrar sugerencias seleccionables
           setClienteEncontrado(null);
+          setClientaSoloLid(null);
           setOpcionesClientes(coincidenciasValidas);
           setEsCoincidenciaExactaMultiple(false);
         } else {
+          const exactoSoloLid = coincidenciasSoloLid.find(
+            (n) => normalizarTextoCliente(n) === nombreNorm
+          );
           setClienteEncontrado(null);
           setOpcionesClientes([]);
           setEsCoincidenciaExactaMultiple(false);
+          setClientaSoloLid(exactoSoloLid || null);
+          if (exactoSoloLid && esIdentificadorLid(agendarTelefono)) {
+            setAgendarTelefono('');
+          }
         }
       } catch (err) {
         if (!cancelado) {
           console.error('Error buscando clienta por nombre:', err);
           setClienteEncontrado(null);
+          setClientaSoloLid(null);
           setOpcionesClientes([]);
           setEsCoincidenciaExactaMultiple(false);
         }
@@ -725,6 +757,7 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                   onChange={(e) => {
                     setAgendarNombre(e.target.value);
                     if (clienteEncontrado) setClienteEncontrado(null);
+                    if (clientaSoloLid) setClientaSoloLid(null);
                   }}
                   className="w-full px-3 py-2 bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl text-[#2D2529] font-medium outline-none focus:border-[#8C243B]"
                   autoComplete="off"
@@ -767,6 +800,13 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                       Teléfono encontrado: <strong className="font-mono">{clienteEncontrado.telefonoVisual}</strong> (llenado automáticamente)
                     </span>
                   </div>
+                ) : clientaSoloLid ? (
+                  <div className="flex items-center gap-1.5 text-[11px] text-amber-800 bg-amber-50 px-2.5 py-1.5 rounded-xl mt-1.5 font-medium border border-amber-200">
+                    <IconAlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                    <span>
+                      Registrada por WhatsApp sin número visible aún · ingresa su celular de 10 dígitos para vincularlo.
+                    </span>
+                  </div>
                 ) : (
                   <p className="text-[10px] text-[#7D6870] mt-0.5">
                     Al escribir el nombre, se mostrará el número automáticamente si la clienta ya está registrada.
@@ -780,6 +820,7 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
                 </label>
                 <input
                   type="tel"
+                  maxLength={13}
                   placeholder="Ej: 321 961 0896"
                   value={agendarTelefono}
                   onChange={(e) => {
