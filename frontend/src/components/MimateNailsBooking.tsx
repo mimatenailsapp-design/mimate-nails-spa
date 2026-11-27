@@ -680,6 +680,10 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
   const [telefono, setTelefono] = useState('');
   const [whatsappLid, setWhatsappLid] = useState('');
   const [nombre, setNombre] = useState('');
+  const [nombreRegistradoDetectado, setNombreRegistradoDetectado] = useState<string | null>(null);
+  const [buscandoClienteTel, setBuscandoClienteTel] = useState(false);
+  const ultimoTelConsultadoRef = useRef<string>('');
+  const nombreEditadoManualRef = useRef<boolean>(false);
   const [enviandoReserva, setEnviandoReserva] = useState(false);
   const [aceptaPoliticas, setAceptaPoliticas] = useState(false);
   const [modalLegalTab, setModalLegalTab] = useState<LegalTab | null>(null);
@@ -916,6 +920,79 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
       }
     } catch {}
   }, []);
+
+  // Autorrellenar nombre guardado en base de datos cuando la clienta ingresa su número telefónico
+  useEffect(() => {
+    const digits = telefono.replace(/\D/g, '');
+    if (esIdentificadorLidFrontend(telefono) || digits.length < 10 || digits.length > 13) {
+      setNombreRegistradoDetectado(null);
+      setBuscandoClienteTel(false);
+      ultimoTelConsultadoRef.current = '';
+      return;
+    }
+
+    const cleanPhone = digits.length === 10 && digits.startsWith('3') ? `57${digits}` : digits;
+    const sinPais = cleanPhone.replace(/^57/, '');
+    if (ultimoTelConsultadoRef.current === cleanPhone) return;
+
+    nombreEditadoManualRef.current = false;
+    let cancelado = false;
+
+    const timer = setTimeout(async () => {
+      ultimoTelConsultadoRef.current = cleanPhone;
+      setBuscandoClienteTel(true);
+      const genericos = new Set(['usuario whatsapp', 'cliente', 'clienta']);
+
+      try {
+        let nombreDb: string | null = null;
+        try {
+          const res = await fetch(`/api/spa/cliente-por-telefono?telefono=${encodeURIComponent(digits)}`);
+          if (res.ok) {
+            const data = await res.json();
+            const cand = String(data?.nombre || '').trim();
+            if (data?.encontrado && cand && !genericos.has(cand.toLowerCase())) {
+              nombreDb = cand;
+            }
+          }
+        } catch {
+          // Respaldo directo en Supabase si la API está en reposo
+          const { data: filasSb } = await supabase
+            .from('clientes')
+            .select('nombre')
+            .or(`telefono_wa.eq.${cleanPhone},telefono_wa.eq.${sinPais}`)
+            .order('creado_en', { ascending: true })
+            .limit(5);
+          const encontradaSb = (filasSb || []).find((f: any) => {
+            const nom = String(f?.nombre || '').trim();
+            return Boolean(nom && !genericos.has(nom.toLowerCase()));
+          });
+          if (encontradaSb?.nombre) {
+            nombreDb = String(encontradaSb.nombre).trim();
+          }
+        }
+
+        if (cancelado) return;
+
+        if (nombreDb) {
+          setNombreRegistradoDetectado(nombreDb);
+          if (!nombreEditadoManualRef.current) {
+            setNombre(nombreDb);
+          }
+        } else {
+          setNombreRegistradoDetectado(null);
+        }
+      } catch {
+        if (!cancelado) setNombreRegistradoDetectado(null);
+      } finally {
+        if (!cancelado) setBuscandoClienteTel(false);
+      }
+    }, 300);
+
+    return () => {
+      cancelado = true;
+      clearTimeout(timer);
+    };
+  }, [telefono]);
 
   const slotsCacheRef = useRef<Map<string, { slots: string[]; aviso: string | null; ts: number }>>(new Map());
 
@@ -1178,19 +1255,32 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
           cleanPhone = `57${cleanPhone}`;
         }
 
+        const sinPaisFb = cleanPhone.replace(/^57/, '');
         let clienteId: string | null = null;
-        const { data: clienteExistente } = await supabase
+        const { data: clientesExistentesFb } = await supabase
           .from('clientes')
-          .select('id')
-          .eq('telefono_wa', cleanPhone)
-          .maybeSingle();
+          .select('id, nombre')
+          .or(`telefono_wa.eq.${cleanPhone},telefono_wa.eq.${sinPaisFb}`)
+          .order('creado_en', { ascending: true })
+          .limit(1);
 
+        const clienteExistente = clientesExistentesFb?.[0];
         if (clienteExistente) {
           clienteId = clienteExistente.id;
+          if (nombre.trim() && nombre.trim() !== clienteExistente.nombre) {
+            await supabase
+              .from('clientes')
+              .update({ nombre: nombre.trim() })
+              .eq('id', clienteId);
+          }
         } else {
           const { data: clienteCreado } = await supabase
             .from('clientes')
-            .insert({ telefono_wa: cleanPhone, nombre: nombre.trim() })
+            .insert({
+              telefono_wa: cleanPhone,
+              nombre: nombre.trim(),
+              ...(whatsappLid ? { email: `lid:${whatsappLid}` } : {}),
+            })
             .select('id')
             .single();
           if (clienteCreado) clienteId = clienteCreado.id;
@@ -2433,9 +2523,21 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
 
                     <div className="space-y-3">
                       <div className="space-y-1">
-                        <label className="text-[11px] font-bold uppercase tracking-wider text-[#665158] block">
-                          WhatsApp de contacto
-                        </label>
+                        <div className="flex items-center justify-between">
+                          <label className="text-[11px] font-bold uppercase tracking-wider text-[#665158] block">
+                            WhatsApp de contacto
+                          </label>
+                          {buscandoClienteTel && (
+                            <span className="text-[10px] text-[#8C243B] flex items-center gap-1 font-medium animate-pulse">
+                              <IconLoader2 className="w-3 h-3 animate-spin" /> Buscando registro...
+                            </span>
+                          )}
+                          {nombreRegistradoDetectado && !buscandoClienteTel && (
+                            <span className="text-[10px] text-emerald-700 font-semibold flex items-center gap-1 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                              <IconCheck className="w-3 h-3 text-emerald-600" /> Clienta registrada
+                            </span>
+                          )}
+                        </div>
                         <input
                           type="tel"
                           maxLength={13}
@@ -2445,6 +2547,11 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                           onChange={(e) => setTelefono(e.target.value)}
                           className="w-full bg-white border border-[#F2C4D2] rounded-xl px-3 py-2 text-base sm:text-xs font-semibold text-[#2D2529] focus:outline-none focus:ring-2 focus:ring-[#C74B66]/20"
                         />
+                        {nombreRegistradoDetectado && !buscandoClienteTel && (
+                          <p className="text-[11px] text-[#8C243B] bg-[#FFF5F7] border border-[#F2C4D2] rounded-xl px-2.5 py-1.5 font-medium">
+                            ✨ Número registrado a nombre de <strong>{nombreRegistradoDetectado}</strong> (completado automáticamente).
+                          </p>
+                        )}
                       </div>
 
                       <div className="space-y-1">
@@ -2457,7 +2564,10 @@ export const MimateNailsBooking: React.FC<Props> = ({ onIrAlAdmin }) => {
                           autoComplete="name"
                           placeholder="Tu nombre y apellido"
                           value={nombre}
-                          onChange={(e) => setNombre(e.target.value)}
+                          onChange={(e) => {
+                            nombreEditadoManualRef.current = true;
+                            setNombre(e.target.value);
+                          }}
                           className="w-full bg-white border border-[#F2C4D2] rounded-xl px-3 py-2 text-base sm:text-xs font-semibold text-[#2D2529] focus:outline-none focus:ring-2 focus:ring-[#C74B66]/20"
                         />
                       </div>

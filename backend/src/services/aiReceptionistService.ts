@@ -434,7 +434,7 @@ ${catalogoTarifasPrompt}
 ${formatearCuentasRecaudoMensaje(complejo)}
   Y también efectivo en el spa.
 - Domicilios: NO realizamos servicio a domicilio. Todo es en nuestras instalaciones por bioseguridad y esterilización.
-- Especialistas / Manicuristas: Contamos con profesionales capacitadas y dedicadas. La clienta puede elegir su manicurista favorita directamente en la web.
+- Especialistas / Manicuristas: Nuestro equipo de profesionales está conformado por Lili, Jhoana y Manuela (nunca las llames "Manicurista 1", "Manicurista 2" ni "Manicurista 3"). La clienta puede elegir su especialista favorita directamente en la web.
 - Atención a hombres y niñas: ¡Sí atendemos caballeros y niñas!
 ${
   contextoClienta && contextoClienta.citasActivas.length > 0

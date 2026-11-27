@@ -224,7 +224,7 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
             );
           }
         }
-        const vistosPorNombreYTel = new Set<string>();
+        const vistosPorTel = new Set<string>();
         const coincidenciasValidas: OpcionClienteMatch[] = [];
         const coincidenciasSoloLid: string[] = [];
 
@@ -241,9 +241,8 @@ export const AgendarCitaModal: React.FC<AgendarCitaModalProps> = ({
           const telLocal = normalizarTelefonoLocal(rawTelDb);
           if (telLocal.length < 10 || telLocal.length > 13) continue;
 
-          const clave = `${normalizarTextoCliente(nombreLimpio)}|${telLocal}`;
-          if (vistosPorNombreYTel.has(clave)) continue;
-          vistosPorNombreYTel.add(clave);
+          if (vistosPorTel.has(telLocal)) continue;
+          vistosPorTel.add(telLocal);
 
           coincidenciasValidas.push({
             id: String(row.id),

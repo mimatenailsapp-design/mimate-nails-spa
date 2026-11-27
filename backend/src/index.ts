@@ -21,6 +21,7 @@ import {
   esDiaCerradoPorDomingo,
   esIdentificadorLid,
   extraerDigitosLid,
+  obtenerNombreRealManicurista,
 } from './services/bookingService.js';
 import { AIReceptionistService } from './services/aiReceptionistService.js';
 import { BotExclusionsService } from './services/botExclusionsService.js';
@@ -135,6 +136,15 @@ const bookingLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Has alcanzado el límite de intentos de agendamiento. Por favor espera unos minutos.' },
+});
+
+// Limiter para autocompletar nombre de clienta por número de teléfono
+const phoneLookupLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 25,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiadas consultas seguidas. Intenta en unos minutos.' },
 });
 
 // Limiter para pruebas y simuladores
@@ -1176,7 +1186,13 @@ app.get('/api/reservas', requireStaffAuth, async (req: Request, res: Response) =
   const { data, error } = await query;
   if (error) return res.status(500).json({ error: error.message });
   const hidratadas = (data || [])
-    .map(hidratarHorarioRealReserva)
+    .map((r: any) => {
+      const hid = hidratarHorarioRealReserva(r);
+      return {
+        ...hid,
+        canchas: hid.canchas ? enriquecerCancha(hid.canchas) : hid.canchas,
+      };
+    })
     .sort((a, b) => new Date(a.fecha_inicio).getTime() - new Date(b.fecha_inicio).getTime());
   res.json(hidratadas);
 });
@@ -1538,7 +1554,7 @@ app.get('/api/reservas/:id', async (req: Request, res: Response) => {
       servicio_nombre: servicioNombre,
       abono_previo: abonoPrevio,
       whatsapp_lid: lidDetectado || undefined,
-      canchas: reserva.canchas ? { id: reserva.canchas.id, nombre: reserva.canchas.nombre } : null,
+      canchas: reserva.canchas ? { id: reserva.canchas.id, nombre: obtenerNombreRealManicurista(reserva.canchas) } : null,
       clientes: reserva.clientes
         ? {
             nombre: reserva.clientes.nombre,
@@ -1642,11 +1658,12 @@ app.patch('/api/reservas/:id/aprobar-anticipo', requireAdminAuth, async (req: Re
       });
 
       const saldoPendiente = (Number(reserva.valor_total) - Number(reserva.valor_anticipo_requerido)).toLocaleString('es-CO');
+      const nombreEspecialista = obtenerNombreRealManicurista(cancha, 'Especialista');
 
       const mensajeConfirmacion =
         `🌸✨ *¡ANTICIPO APROBADO CON ÉXITO!* ✨🌸\n\n` +
         `Hola *${cliente.nombre || 'Reina'}*, tu comprobante de pago ha sido verificado y aprobado por la administración de *${complejo?.nombre || 'JL Mímate Nails Spa'}*.\n\n` +
-        `💅 Especialista: *${cancha.nombre}*\n` +
+        `💅 Especialista: *${nombreEspecialista}*\n` +
         `📅 Fecha: *${fechaFmt}*\n` +
         `⏰ Horario: *${horaInicio} a ${horaFin}*\n` +
         `💵 Saldo a pagar en el spa: *$${saldoPendiente}*\n\n` +
@@ -1707,10 +1724,11 @@ app.patch('/api/reservas/:id/rechazar-anticipo', requireAdminAuth, async (req: R
     const complejo = cancha?.complejos as any;
 
     if (cliente?.telefono_wa) {
+      const nombreEspecialista = obtenerNombreRealManicurista(cancha, 'nuestra especialista');
       const mensajeRechazo =
         `❌ *Comprobante no aprobado:*\n\n` +
         `Hola *${cliente.nombre || 'Reina'}*, la administración de *${complejo?.nombre || 'JL Mímate Nails'}* no pudo validar tu comprobante de pago (${motivo || 'pago no recibido en la cuenta bancaria'}).\n\n` +
-        `El turno con *${cancha.nombre}* ha sido liberado. Si consideras que se trata de un error, por favor comunícate directamente con nosotras. 💕`;
+        `El turno con *${nombreEspecialista}* ha sido liberado. Si consideras que se trata de un error, por favor comunícate directamente con nosotras. 💕`;
 
       await enviarMensajeWhatsApp(
         cliente.telefono_wa,
@@ -2300,6 +2318,41 @@ app.get('/api/spa/slots', async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Consultar únicamente el nombre guardado por teléfono para autorrellenar el formulario web sin duplicar clientas
+app.get('/api/spa/cliente-por-telefono', phoneLookupLimiter, async (req: Request, res: Response) => {
+  const rawTel = String(req.query.telefono || '');
+  const digits = rawTel.replace(/\D/g, '');
+  if (!digits || esIdentificadorLid(rawTel) || digits.length < 10 || digits.length > 13) {
+    return res.json({ encontrado: false });
+  }
+
+  try {
+    const cleanPhone = digits.length === 10 && digits.startsWith('3') ? `57${digits}` : digits;
+    const sinPais = cleanPhone.replace(/^57/, '');
+    const { data, error } = await supabase
+      .from('clientes')
+      .select('nombre, telefono_wa, creado_en')
+      .or(`telefono_wa.eq.${cleanPhone},telefono_wa.eq.${sinPais}`)
+      .order('creado_en', { ascending: true })
+      .limit(5);
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    const genericos = new Set(['usuario whatsapp', 'cliente', 'clienta']);
+    const encontrado = (data || []).find((c) => {
+      const nom = String(c.nombre || '').trim();
+      return Boolean(nom && !genericos.has(nom.toLowerCase()));
+    });
+
+    if (encontrado?.nombre) {
+      return res.json({ encontrado: true, nombre: String(encontrado.nombre).trim() });
+    }
+    return res.json({ encontrado: false });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
   }
 });
 

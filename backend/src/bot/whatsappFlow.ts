@@ -1,4 +1,4 @@
-import { BookingService, Complejo, Cancha, HorarioDisponible, getMontoAnticipoFijo, requiereAnticipoParaFecha, formatearCuentasRecaudoMensaje, getLlaveNumero, getTitularLimpio, enriquecerCancha, esIdentificadorLid, extraerDigitosLid } from '../services/bookingService.js';
+import { BookingService, Complejo, Cancha, HorarioDisponible, getMontoAnticipoFijo, requiereAnticipoParaFecha, formatearCuentasRecaudoMensaje, getLlaveNumero, getTitularLimpio, enriquecerCancha, esIdentificadorLid, extraerDigitosLid, obtenerNombreRealManicurista } from '../services/bookingService.js';
 import { ReceiptVerificationService } from '../services/receiptVerificationService.js';
 import { AIReceptionistService, CitaActivaResumen, ContextoClientaCitas } from '../services/aiReceptionistService.js';
 import { NLUIntentService } from '../services/nluIntentService.js';
@@ -828,12 +828,13 @@ export class WhatsAppFlow {
           return await this.manejarSeleccionHora(idHora, session, telefono, complejo);
         } else {
           // El horario solicitado no está disponible
+          const nombreEsp = obtenerNombreRealManicurista(cancha);
           const disponibles = horarios.filter((h) => h.disponible);
           if (disponibles.length === 0) {
             session.paso = 'SELECCION_FECHA';
             return {
               texto: `⚠️ *Horario no disponible*\n\n` +
-                `El turno de las *${horaPrefix}* para *${cancha.nombre}* el *${fecha}* ya se encuentra reservado.\n\n` +
+                `El turno de las *${horaPrefix}* para *${nombreEsp}* el *${fecha}* ya se encuentra reservado.\n\n` +
                 `❌ Lamentablemente no quedan más turnos libres para esta fecha en este espacio.\n` +
                 `👉 Por favor escribe otra fecha (ej. *"mañana"*, *"el sábado"*) o escribe *MENU*.`,
             };
@@ -850,8 +851,8 @@ export class WhatsAppFlow {
           });
 
           const textoRespuesta = `⚠️ *Horario ocupado*\n\n` +
-            `El turno de las *${horaPrefix}* para *${cancha.nombre}* el *${fecha}* ya fue reservado por otro usuario.\n\n` +
-            `✨ *¡Pero tenemos estos turnos disponibles para ti hoy en ${cancha.nombre}!*:\n` +
+            `El turno de las *${horaPrefix}* para *${nombreEsp}* el *${fecha}* ya fue reservado por otro usuario.\n\n` +
+            `✨ *¡Pero tenemos estos turnos disponibles para ti hoy con ${nombreEsp}!*:\n` +
             `Por favor selecciona tu horario alternativo del menú desplegable a continuación:`;
 
           return {
@@ -1560,12 +1561,13 @@ export class WhatsAppFlow {
         session.paso = 'INICIO';
 
         const esSpa = complejo.slug === 'mimate-nails' || complejo.tipo_negocio === 'belleza_unas';
+        const nombreEspecialistaConfirm = obtenerNombreRealManicurista(session.canchaSeleccionada);
 
         if (esSpa) {
           return {
             texto: `🌸✨ *¡CITA 100% CONFIRMADA EN JL MÍMATE NAILS!* ✨🌸\n\n` +
               `🏢 Spa: *${complejo.nombre}*\n` +
-              `💅 Manicurista: *${session.canchaSeleccionada!.nombre}*\n` +
+              `💅 Especialista: *${nombreEspecialistaConfirm}*\n` +
               `📅 Fecha: *${session.fechaSeleccionada}*\n` +
               `⏰ Horario: *${horaIniNorm} - ${horaFinNorm}*\n` +
               `💰 Valor: *${totalFmt}*\n\n` +
@@ -1579,7 +1581,7 @@ export class WhatsAppFlow {
         return {
           texto: `🌸✨ *¡CITA 100% CONFIRMADA EN JL MÍMATE NAILS!* ✨🌸\n\n` +
             `🏢 Spa: *${complejo.nombre}*\n` +
-            `💅 Manicurista: *${session.canchaSeleccionada!.nombre}*\n` +
+            `💅 Especialista: *${nombreEspecialistaConfirm}*\n` +
             `📅 Fecha: *${session.fechaSeleccionada}*\n` +
             `⏰ Horario: *${horaIniNorm} - ${horaFinNorm}*\n` +
             `💰 Valor: *${totalFmt}*\n\n` +
@@ -1600,7 +1602,7 @@ export class WhatsAppFlow {
       return {
         texto: `🔒 *¡Cita apartada temporalmente por 15 minutos!*\n\n` +
           `🏢 Spa: *${complejo.nombre}*\n` +
-          `💅 Manicurista: *${session.canchaSeleccionada!.nombre}*\n` +
+          `💅 Especialista: *${obtenerNombreRealManicurista(session.canchaSeleccionada)}*\n` +
           `📅 Fecha: *${session.fechaSeleccionada}*\n` +
           `⏰ Horario: *${horaIniNorm} - ${horaFinNorm}*\n` +
           `💰 Total: *${totalFmt}*\n` +
@@ -1786,7 +1788,7 @@ export class WhatsAppFlow {
             `• Destino: *${analisis.destinatario_detectado || complejo.nombre}*\n\n` +
             `🌸✨ *¡CITA 100% CONFIRMADA EN JL MÍMATE NAILS!* ✨🌸\n` +
             `🏢 Spa: *${complejo.nombre}*\n` +
-            `💅 Manicurista: *${session.canchaSeleccionada?.nombre}*\n` +
+            `💅 Especialista: *${obtenerNombreRealManicurista(session.canchaSeleccionada)}*\n` +
             `📅 Fecha: *${session.fechaSeleccionada}*\n` +
             `⏰ Horario: *${session.horarioSeleccionado?.hora_inicio.slice(0, 5)} - ${session.horarioSeleccionado?.hora_fin.slice(0, 5)}*\n\n` +
             `🔔 Te enviaremos un recordatorio previo a tu cita. ¡Nos vemos para consentirte reina! 💕💅`,
@@ -1923,7 +1925,7 @@ export class WhatsAppFlow {
       // CASO 2.1: NO ES UN COMPROBANTE BANCARIO (selfie, sticker, uña, forro, meme, etc.)
       if (analisis.es_comprobante_bancario === false) {
         const clienteNombre = reservaTarget.clientes?.nombre || 'reina';
-        const nombreManicurista = reservaTarget.canchas?.nombre || 'tu manicurista';
+        const nombreManicurista = obtenerNombreRealManicurista(reservaTarget.canchas, 'tu manicurista');
         const horaInicio = new Date(reservaTarget.fecha_inicio).toLocaleTimeString('es-CO', {
           hour: 'numeric',
           minute: '2-digit',
@@ -2040,7 +2042,7 @@ export class WhatsAppFlow {
       session.paso = 'INICIO';
 
       const clienteNombre = reservaTarget.clientes?.nombre || 'reina';
-      const nombreManicurista = reservaTarget.canchas?.nombre || 'tu especialista';
+      const nombreManicurista = obtenerNombreRealManicurista(reservaTarget.canchas, 'tu especialista');
       const fechaCita = new Date(reservaTarget.fecha_inicio).toLocaleDateString('es-CO', {
         weekday: 'long',
         day: 'numeric',
@@ -2119,7 +2121,7 @@ export class WhatsAppFlow {
       const anticipoFmt = '$' + Number(anticipoRequerido).toLocaleString('es-CO');
       const cuentasMsg = formatearCuentasRecaudoMensaje(complejo);
       const clienteNombre = reservaTarget.clientes?.nombre || 'reina';
-      const nombreManicurista = reservaTarget.canchas?.nombre || 'tu manicurista';
+      const nombreManicurista = obtenerNombreRealManicurista(reservaTarget.canchas, 'tu manicurista');
 
         const horaInicio = new Date(reservaTarget.fecha_inicio).toLocaleTimeString('es-CO', {
           timeZone: 'America/Bogota',
@@ -2482,7 +2484,7 @@ export class WhatsAppFlow {
     }).toLowerCase().replace(/\s+/g, ' ');
 
     const nombresEspecialistas = Array.from(
-      new Set(citasDelMismoDia.map((c) => enriquecerCancha(c.canchas)?.nombre || 'tu especialista'))
+      new Set(citasDelMismoDia.map((c) => obtenerNombreRealManicurista(c.canchas, 'tu especialista')))
     ).join(' y ');
 
     // CASO 1: CONFIRMAR CITA

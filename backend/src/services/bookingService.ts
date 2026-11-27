@@ -195,12 +195,37 @@ export const MAPA_MANICURISTAS: Record<string, { nombre: string; foto: string | 
 
 export function enriquecerCancha<T extends { id?: string; nombre?: string }>(cancha: T): T & { foto?: string | null } {
   if (!cancha) return cancha;
-  const match = (cancha.id && MAPA_MANICURISTAS[cancha.id]) ||
-                (cancha.nombre && MAPA_MANICURISTAS[cancha.nombre]);
+  const rawNombre = String(cancha.nombre || '').trim();
+  const nLower = rawNombre.toLowerCase();
+  const match =
+    (cancha.id && MAPA_MANICURISTAS[cancha.id]) ||
+    (rawNombre && MAPA_MANICURISTAS[rawNombre]) ||
+    (nLower === '1' || nLower.includes('manicurista 1')
+      ? MAPA_MANICURISTAS['Manicurista 1']
+      : nLower === '2' || nLower.includes('manicurista 2')
+      ? MAPA_MANICURISTAS['Manicurista 2']
+      : nLower === '3' || nLower.includes('manicurista 3')
+      ? MAPA_MANICURISTAS['Manicurista 3']
+      : undefined);
   if (match) {
     return { ...cancha, nombre: match.nombre, foto: match.foto };
   }
   return cancha;
+}
+
+/**
+ * Retorna siempre el nombre real configurado de la especialista (Lili, Jhoana, Manuela),
+ * evitando mostrar etiquetas internas como "Manicurista 1/2/3".
+ */
+export function obtenerNombreRealManicurista(canchaOrNombre?: any, fallback: string = 'Especialista'): string {
+  if (!canchaOrNombre) return fallback;
+  const obj =
+    typeof canchaOrNombre === 'string'
+      ? { nombre: canchaOrNombre }
+      : canchaOrNombre;
+  const enr = enriquecerCancha(obj);
+  const limpio = String(enr?.nombre || '').trim();
+  return limpio || fallback;
 }
 
 export interface HorarioDisponible {
@@ -332,12 +357,13 @@ export class BookingService {
     // Nunca registrar ni sobrescribir `telefono_wa` con un LID nuevo como si fuera un celular real
     if (esIdentificadorLid(telefono)) {
       if (!cleanLid) return null;
-      const { data: existingLid, error: lidErr } = await supabase
+      const { data: existingLids, error: lidErr } = await supabase
         .from('clientes')
         .select('*')
         .or(`email.eq.lid:${cleanLid},telefono_wa.eq.${cleanLid}`)
-        .maybeSingle();
+        .limit(5);
       if (lidErr) throw lidErr;
+      const existingLid = existingLids?.[0];
       if (existingLid) {
         if (nombre && nombre.trim() && nombre.trim() !== existingLid.nombre) {
           await supabase
@@ -359,23 +385,72 @@ export class BookingService {
     const sinPais = cleanPhone.replace(/^57/, '');
     const nombreLimpio = nombre?.trim() || '';
 
-    const { data: existingPhone, error: findError } = await supabase
+    const esNombreGenerico = (n?: string | null): boolean => {
+      const clean = String(n || '').trim().toLowerCase();
+      return !clean || clean === 'usuario whatsapp' || clean === 'cliente' || clean === 'clienta';
+    };
+
+    const { data: filasTel, error: findError } = await supabase
       .from('clientes')
       .select('*')
       .or(`telefono_wa.eq.${cleanPhone},telefono_wa.eq.${sinPais}`)
-      .maybeSingle();
+      .order('creado_en', { ascending: true })
+      .limit(10);
 
     if (findError) throw findError;
+
+    let existingPhone: any = null;
+    if (filasTel && filasTel.length > 0) {
+      existingPhone = filasTel.find((f) => f.telefono_wa === cleanPhone) || filasTel[0];
+      const duplicadosTel = filasTel.filter((f) => f.id !== existingPhone.id);
+
+      if (duplicadosTel.length > 0) {
+        let mejorNombre = !esNombreGenerico(existingPhone.nombre) ? existingPhone.nombre : '';
+        let lidRescatado = extraerDigitosLid(existingPhone.email);
+
+        for (const dup of duplicadosTel) {
+          if (!mejorNombre && !esNombreGenerico(dup.nombre)) {
+            mejorNombre = dup.nombre;
+          }
+          if (!lidRescatado) {
+            lidRescatado = extraerDigitosLid(dup.email);
+          }
+          await supabase
+            .from('reservas')
+            .update({ cliente_id: existingPhone.id })
+            .eq('cliente_id', dup.id);
+          await supabase.from('clientes').delete().eq('id', dup.id);
+        }
+
+        const updatesConsolidacion: any = {};
+        if (existingPhone.telefono_wa !== cleanPhone) {
+          updatesConsolidacion.telefono_wa = cleanPhone;
+          existingPhone.telefono_wa = cleanPhone;
+        }
+        if (mejorNombre && mejorNombre !== existingPhone.nombre) {
+          updatesConsolidacion.nombre = mejorNombre;
+          existingPhone.nombre = mejorNombre;
+        }
+        if (lidRescatado && existingPhone.email !== `lid:${lidRescatado}`) {
+          updatesConsolidacion.email = `lid:${lidRescatado}`;
+          existingPhone.email = `lid:${lidRescatado}`;
+        }
+        if (Object.keys(updatesConsolidacion).length > 0) {
+          await supabase.from('clientes').update(updatesConsolidacion).eq('id', existingPhone.id);
+        }
+      }
+    }
 
     // Buscar si existe un registro previo que guardó un LID en `telefono_wa`
     let legacyLidRow: any = null;
     if (cleanLid) {
-      const { data: byLid } = await supabase
+      const { data: byLids } = await supabase
         .from('clientes')
         .select('*')
         .or(`telefono_wa.eq.${cleanLid},email.eq.lid:${cleanLid}`)
-        .maybeSingle();
-      if (byLid) legacyLidRow = byLid;
+        .limit(5);
+      const candidatoLid = (byLids || []).find((r) => !existingPhone || r.id !== existingPhone.id);
+      if (candidatoLid) legacyLidRow = candidatoLid;
     } else if (nombreLimpio) {
       const terminoSeguro = nombreLimpio.replace(/[%_]/g, '\\$&');
       const { data: candidatosPorNombre } = await supabase
@@ -439,9 +514,13 @@ export class BookingService {
       return { ...legacyLidRow, ...updatesLegacy };
     }
 
-    // Caso 3: Ya existe por teléfono real
+    // Caso 3: Ya existe por teléfono real (normalizar siempre a cleanPhone 573...)
     if (existingPhone) {
       const updates: any = {};
+      if (existingPhone.telefono_wa !== cleanPhone) {
+        updates.telefono_wa = cleanPhone;
+        existingPhone.telefono_wa = cleanPhone;
+      }
       if (nombreLimpio && nombreLimpio !== existingPhone.nombre) {
         updates.nombre = nombreLimpio;
         existingPhone.nombre = nombreLimpio;

@@ -3190,12 +3190,14 @@ export const MimateNailsDashboard: React.FC<Props> = ({ onIrAWebReservas, comple
 
         let clienteId: string | null = null;
         const sinPais = cleanPhone.replace(/^57/, '');
-        const { data: clienteExistente } = await supabase
+        const { data: clientesExistentes } = await supabase
           .from('clientes')
           .select('id, nombre')
           .or(`telefono_wa.eq.${cleanPhone},telefono_wa.eq.${sinPais}`)
-          .maybeSingle();
+          .order('creado_en', { ascending: true })
+          .limit(1);
 
+        const clienteExistente = clientesExistentes?.[0];
         if (clienteExistente) {
           clienteId = clienteExistente.id;
           // Si el nombre ingresado por la administradora/especialista fue actualizado, sincronizar en la BD

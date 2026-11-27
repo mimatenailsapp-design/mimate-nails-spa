@@ -1,6 +1,6 @@
 import { supabase } from '../config/supabase.js';
 import { BaileysService } from './baileysService.js';
-import { requiereAnticipoParaFecha, MAPA_MANICURISTAS, enriquecerCancha } from './bookingService.js';
+import { requiereAnticipoParaFecha, obtenerNombreRealManicurista } from './bookingService.js';
 
 export class ReminderService {
   /**
@@ -20,11 +20,7 @@ export class ReminderService {
    * Helper para obtener el nombre real de la especialista (Lili, Jhoana, Manuela)
    */
   private static obtenerNombreEspecialista(cancha: any): string {
-    if (!cancha) return 'Especialista';
-    const match =
-      (cancha.id && MAPA_MANICURISTAS[cancha.id]) ||
-      (cancha.nombre && MAPA_MANICURISTAS[cancha.nombre]);
-    return match ? match.nombre : (cancha.nombre || 'Especialista');
+    return obtenerNombreRealManicurista(cancha, 'Especialista');
   }
   /**
    * Ejecuta la rutina periódica de recordatorios:
